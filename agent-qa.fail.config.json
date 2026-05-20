@@ -1,0 +1,22 @@
+{
+  "baseUrl": "http://127.0.0.1:4174",
+  "appDomains": ["127.0.0.1"],
+  "demand": {
+    "id": "DEM-FAIL-001",
+    "title": "Fixture failure",
+    "description": "Forçar falha para validar evidência"
+  },
+  "llm": {
+    "provider": "fake",
+    "model": "fake",
+    "apiKeyEnv": "GROQ_PROVIDER"
+  },
+  "recovery": {
+    "maxAttemptsPerTask": 3,
+    "maxFallbacksPerStep": 1,
+    "maxEmergencyActionsPerScenario": 2
+  },
+  "output": {
+    "runsDir": "./qa-agent-runs"
+  }
+}

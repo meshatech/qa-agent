@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Login</title>
+  </head>
+  <body>
+    <main>
+      <h1>Acessar conta</h1>
+      <form id="form">
+        <label>E-mail <input id="email" name="email" type="email" /></label>
+        <label>Senha <input id="password" name="password" type="password" /></label>
+        <button id="submit" type="button">Entrar</button>
+      </form>
+      <p id="error" role="alert" style="display:none">Credenciais inválidas</p>
+      <p id="dashboard" style="display:none">Bem-vindo ao Dashboard</p>
+    </main>
+    <script>
+      document.getElementById('submit').addEventListener('click', () => {
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        if (email === 'qa@app.local' && password === 'good-password') {
+          history.replaceState(null, '', '/dashboard');
+          document.getElementById('dashboard').style.display = 'block';
+        } else {
+          document.getElementById('error').style.display = 'block';
+        }
+      });
+    </script>
+  </body>
+</html>

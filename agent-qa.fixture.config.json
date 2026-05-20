@@ -1,0 +1,17 @@
+{
+  "baseUrl": "http://127.0.0.1:4173",
+  "appDomains": ["127.0.0.1"],
+  "demand": {
+    "id": "DEM-001",
+    "title": "Fixture smoke",
+    "description": "Preencher o campo Nome"
+  },
+  "llm": {
+    "provider": "fake",
+    "model": "fake",
+    "apiKeyEnv": "GROQ_PROVIDER"
+  },
+  "output": {
+    "runsDir": "./qa-agent-runs"
+  }
+}
