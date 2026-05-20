@@ -1,0 +1,41 @@
+import { Inject, Injectable } from '@nestjs/common';
+import { ZodError } from 'zod';
+import type { ConfigLoaderPort } from '../ports/config-loader.port.js';
+import { RunConfigSchema, type RunConfig } from '../../domain/schemas/config.schema.js';
+import { ConfigError } from '../../domain/errors.js';
+
+@Injectable()
+export class ValidateConfigUseCase {
+  constructor(@Inject('ConfigLoaderPort') private readonly loader: ConfigLoaderPort) {}
+
+  async execute(configPath: string): Promise<RunConfig> {
+    let raw: unknown;
+    try {
+      raw = await this.loader.load(configPath);
+    } catch (error) {
+      throw new ConfigError(`Failed to load config from ${configPath}: ${error instanceof Error ? error.message : String(error)}`, error);
+    }
+    let config: RunConfig;
+    try {
+      config = RunConfigSchema.parse(raw);
+    } catch (error) {
+      throw new ConfigError(error instanceof ZodError ? error.message : String(error), error);
+    }
+
+    await this.validateLoaded(config);
+    return config;
+  }
+
+  async validateLoaded(config: RunConfig): Promise<void> {
+    if (config.llm.provider !== 'fake' && !process.env[config.llm.apiKeyEnv]) {
+      throw new ConfigError(`Missing env ${config.llm.apiKeyEnv} for llm.provider=${config.llm.provider}`);
+    }
+    if (config.auth.kind === 'formLogin') {
+      for (const key of [config.auth.usernameEnv, config.auth.passwordEnv]) {
+        if (!process.env[key]) throw new ConfigError(`Missing env ${key} for formLogin auth`);
+      }
+    }
+    const res = await fetch(config.baseUrl, { method: 'HEAD' }).catch(() => undefined);
+    if (res && res.status >= 500) throw new ConfigError(`baseUrl health check failed: ${res.status}`);
+  }
+}

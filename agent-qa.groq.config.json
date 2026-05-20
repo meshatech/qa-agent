@@ -1,0 +1,17 @@
+{
+  "baseUrl": "http://127.0.0.1:4173",
+  "appDomains": ["127.0.0.1"],
+  "demand": {
+    "id": "DEM-GROQ-001",
+    "title": "Groq fixture smoke",
+    "description": "Preencher o campo Nome usando decisão da LLM"
+  },
+  "llm": {
+    "provider": "groq",
+    "model": "llama-3.1-8b-instant",
+    "apiKeyEnv": "GROQ_PROVIDER"
+  },
+  "output": {
+    "runsDir": "./qa-agent-runs"
+  }
+}

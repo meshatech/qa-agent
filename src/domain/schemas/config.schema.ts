@@ -1,0 +1,96 @@
+import { z } from 'zod';
+import { LocatorDescriptorSchema } from './action.schema.js';
+
+const AuthSelectorSchema = z.union([z.string(), LocatorDescriptorSchema]);
+
+const SuccessWhenSchema = z.object({
+  urlContains: z.string().optional(),
+  textVisible: z.string().optional(),
+}).refine((s) => s.urlContains || s.textVisible, {
+  message: 'successWhen requires urlContains or textVisible',
+});
+
+export const RunConfigSchema = z.object({
+  baseUrl: z.string().url(),
+  appDomains: z.array(z.string()).min(1),
+  demand: z.object({
+    id: z.string().min(1),
+    title: z.string().min(1),
+    description: z.string().min(1),
+    acceptanceCriteria: z.array(z.string().min(1)).optional(),
+    scope: z.object({ routes: z.array(z.string()).optional(), features: z.array(z.string()).optional() }).optional(),
+  }),
+  browser: z.object({
+    engine: z.enum(['chromium', 'firefox', 'webkit']).default('chromium'),
+    headed: z.boolean().default(false),
+    viewport: z.object({ width: z.number(), height: z.number() }).default({ width: 1280, height: 720 }),
+    locale: z.string().default('pt-BR'),
+    timezone: z.string().default('America/Sao_Paulo'),
+    slowMoMs: z.number().int().nonnegative().optional(),
+  }).default({ engine: 'chromium', headed: false, viewport: { width: 1280, height: 720 }, locale: 'pt-BR', timezone: 'America/Sao_Paulo' }),
+  auth: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('none') }),
+    z.object({ kind: z.literal('storageState'), path: z.string() }),
+    z.object({
+      kind: z.literal('formLogin'),
+      loginUrl: z.string(),
+      usernameSelector: AuthSelectorSchema,
+      passwordSelector: AuthSelectorSchema,
+      submitSelector: AuthSelectorSchema,
+      usernameEnv: z.string(),
+      passwordEnv: z.string(),
+      successUrlContains: z.string().optional(),
+      successWhen: SuccessWhenSchema.optional(),
+      errorTextSelector: z.string().optional(),
+      maxRetries: z.number().int().nonnegative().default(1),
+    }),
+  ]).default({ kind: 'none' }),
+  llm: z.object({
+    provider: z.enum(['fake', 'groq', 'openai']).default('fake'),
+    model: z.string().default('llama-3.1-8b-instant'),
+    apiKeyEnv: z.string().default('GROQ_PROVIDER'),
+    maxSchemaRetries: z.number().int().nonnegative().default(2),
+    promptVersion: z.string().default('v1'),
+    temperature: z.number().min(0).max(1).default(0),
+    maxTokens: z.number().int().positive().default(2048),
+    rateLimitRetries: z.number().int().nonnegative().default(3),
+    rateLimitMaxWaitMs: z.number().int().positive().default(30000),
+  }).default({ provider: 'fake', model: 'fake', apiKeyEnv: 'GROQ_PROVIDER', maxSchemaRetries: 2, promptVersion: 'v1', temperature: 0, maxTokens: 2048, rateLimitRetries: 3, rateLimitMaxWaitMs: 30000 }),
+  timeouts: z.object({
+    quiescenceMs: z.number().int().positive().default(3000),
+    actionMs: z.number().int().positive().default(15000),
+    navigationMs: z.number().int().positive().default(30000),
+    scenarioMs: z.number().int().positive().default(180000),
+    runMs: z.number().int().positive().default(1800000),
+  }).default({ quiescenceMs: 3000, actionMs: 15000, navigationMs: 30000, scenarioMs: 180000, runMs: 1800000 }),
+  runtime: z.object({
+    maxActionsPerTask: z.number().int().positive().default(3),
+  }).default({ maxActionsPerTask: 3 }),
+  recovery: z.object({
+    maxAttemptsPerTask: z.number().int().positive().default(3),
+    maxFallbacksPerStep: z.number().int().positive().default(1),
+    maxEmergencyActionsPerScenario: z.number().int().positive().default(5),
+  }).default({ maxAttemptsPerTask: 3, maxFallbacksPerStep: 1, maxEmergencyActionsPerScenario: 5 }),
+  classifier: z.object({
+    knownNoiseRegexes: z.array(z.string()).optional(),
+    knownThirdPartyDomains: z.array(z.string()).optional(),
+    knownTrackingDomains: z.array(z.string()).optional(),
+    treatThirdPartyNetwork5xxAsBug: z.boolean().default(false),
+  }).default({ treatThirdPartyNetwork5xxAsBug: false }),
+  privacy: z.object({
+    maskEmails: z.boolean().default(false),
+    maskJwt: z.boolean().default(true),
+    maskCookies: z.boolean().default(true),
+    additionalRegexes: z.array(z.string()).optional(),
+  }).default({ maskEmails: false, maskJwt: true, maskCookies: true }),
+  allowedRoutes: z.array(z.string()).optional(),
+  output: z.object({
+    runsDir: z.string().default('./qa-agent-runs'),
+    keepVideoOnPass: z.boolean().default(false),
+    keepTraceOnPass: z.boolean().default(false),
+  }).default({ runsDir: './qa-agent-runs', keepVideoOnPass: false, keepTraceOnPass: false }),
+  agentVersion: z.string().default('0.1.0'),
+});
+
+export type RunConfig = z.infer<typeof RunConfigSchema>;
+export type SuccessWhen = z.infer<typeof SuccessWhenSchema>;
