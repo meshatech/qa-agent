@@ -1,15 +1,21 @@
-import { Injectable } from '@nestjs/common';
-import type { DecisionInput, DecisionProviderPort } from '../../application/ports/decision-provider.port.js';
+import { Inject, Injectable } from '@nestjs/common';
+import { request as httpsRequest } from 'node:https';
+import type { DecisionInput, DecisionProviderPort, ReplanInput } from '../../application/ports/decision-provider.port.js';
 import { QaActionEnvelopeSchema, type ExpectedAfterAction, type QaAction, type QaActionEnvelope } from '../../domain/schemas/action.schema.js';
 import type { QaScenario, QaTask } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
-import { DECISION_SYSTEM_PROMPT, PLAN_SYSTEM_PROMPT, buildDecisionUserMessage, buildPlanUserMessage } from './prompt-builder.js';
+import type { ExecutionPlan, PlanPatch } from '../../domain/schemas/execution-plan.schema.js';
+import { DECISION_SYSTEM_PROMPT, EXECUTION_PLAN_SYSTEM_PROMPT, PLAN_SYSTEM_PROMPT, REPLAN_SYSTEM_PROMPT, buildDecisionUserMessage, buildExecutionPlanUserMessage, buildPlanUserMessage, buildReplanUserMessage } from './prompt-builder.js';
+import { LlmPlanPatchNormalizer } from './llm-output-normalizer.js';
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
 @Injectable()
 export class GroqDecisionProvider implements DecisionProviderPort {
   private calls = 0;
+  private readonly wrappers: Array<{ kind: 'plan' | 'patch'; wrapper: string }> = [];
+
+  constructor(@Inject(LlmPlanPatchNormalizer) private readonly normalizer: LlmPlanPatchNormalizer = new LlmPlanPatchNormalizer()) {}
 
   async plan(config: RunConfig): Promise<QaScenario[]> {
     const key = process.env[config.llm.apiKeyEnv];
@@ -25,6 +31,42 @@ export class GroqDecisionProvider implements DecisionProviderPort {
       ],
     });
     return this.normalizePlan(JSON.parse(json.choices[0]?.message.content ?? '{}'), config);
+  }
+
+  async buildPlan(config: RunConfig, scenarios: QaScenario[] = []): Promise<ExecutionPlan> {
+    const key = process.env[config.llm.apiKeyEnv];
+    if (!key) throw new Error(`Missing env ${config.llm.apiKeyEnv}`);
+    const json = await this.chatJson(config, key, 'execution-plan', {
+      model: config.llm.model,
+      temperature: config.llm.temperature,
+      max_tokens: config.llm.maxTokens,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: EXECUTION_PLAN_SYSTEM_PROMPT },
+        { role: 'user', content: buildExecutionPlanUserMessage(config, scenarios) },
+      ],
+    });
+    const parsed = this.normalizer.parsePlan(json.choices[0]?.message.content ?? '{}');
+    this.wrappers.push({ kind: 'plan', wrapper: parsed.wrapper });
+    return parsed.value;
+  }
+
+  async replan(input: ReplanInput): Promise<PlanPatch> {
+    const key = process.env[input.config.llm.apiKeyEnv];
+    if (!key) throw new Error(`Missing env ${input.config.llm.apiKeyEnv}`);
+    const json = await this.chatJson(input.config, key, 'replan', {
+      model: input.config.llm.model,
+      temperature: input.config.llm.temperature,
+      max_tokens: input.config.llm.maxTokens,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: REPLAN_SYSTEM_PROMPT },
+        { role: 'user', content: buildReplanUserMessage(input) },
+      ],
+    });
+    const parsed = this.normalizer.parsePatch(json.choices[0]?.message.content ?? '{}');
+    this.wrappers.push({ kind: 'patch', wrapper: parsed.wrapper });
+    return parsed.value;
   }
 
   async decide(input: DecisionInput): Promise<QaActionEnvelope> {
@@ -53,18 +95,14 @@ export class GroqDecisionProvider implements DecisionProviderPort {
   }
 
   stats() {
-    return { calls: this.calls };
+    return { calls: this.calls, wrappers: this.wrappers.slice(-20) };
   }
 
-  private async chatJson(config: RunConfig, key: string, kind: 'plan' | 'decision', body: unknown): Promise<GroqChatResponse> {
+  private async chatJson(config: RunConfig, key: string, kind: 'plan' | 'decision' | 'execution-plan' | 'replan', body: unknown): Promise<GroqChatResponse> {
     let lastError = '';
     for (let attempt = 0; attempt <= config.llm.rateLimitRetries; attempt++) {
       this.calls++;
-      const res = await fetch(GROQ_URL, {
-        method: 'POST',
-        headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+      const res = await this.fetchGroq(key, body, kind);
       if (res.ok) return (await res.json()) as GroqChatResponse;
 
       const text = await res.text().catch(() => '');
@@ -73,6 +111,64 @@ export class GroqDecisionProvider implements DecisionProviderPort {
       await this.sleep(this.retryWaitMs(res.headers, text, attempt, config.llm.rateLimitMaxWaitMs));
     }
     throw new Error(lastError);
+  }
+
+  private async fetchGroq(key: string, body: unknown, kind: string): Promise<Response> {
+    try {
+      return await fetch(GROQ_URL, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${key.trim()}`, 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } catch (error) {
+      if (this.isTlsCertificateError(error) && process.env.AGENT_QA_ALLOW_INSECURE_LLM_TLS === 'true') {
+        return this.insecureTlsFetch(key, body);
+      }
+      if (this.isTlsCertificateError(error)) {
+        throw new Error(
+          `Groq ${kind} TLS certificate verification failed. Configure NODE_EXTRA_CA_CERTS with the corporate/root CA certificate, or set AGENT_QA_ALLOW_INSECURE_LLM_TLS=true only in local/HML environments. Cause: ${this.errorCause(error)}`,
+        );
+      }
+      throw error;
+    }
+  }
+
+  private insecureTlsFetch(key: string, body: unknown): Promise<Response> {
+    return new Promise((resolve, reject) => {
+      const req = httpsRequest(
+        GROQ_URL,
+        {
+          method: 'POST',
+          rejectUnauthorized: false,
+          headers: {
+            authorization: `Bearer ${key.trim()}`,
+            'content-type': 'application/json',
+          },
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (chunk: Buffer) => chunks.push(chunk));
+          res.on('end', () => {
+            const text = Buffer.concat(chunks).toString('utf8');
+            resolve(new Response(text, { status: res.statusCode ?? 500, statusText: res.statusMessage, headers: res.headers as HeadersInit }));
+          });
+        },
+      );
+      req.on('error', reject);
+      req.write(JSON.stringify(body));
+      req.end();
+    });
+  }
+
+  private isTlsCertificateError(error: unknown): boolean {
+    const cause = error && typeof error === 'object' ? (error as { cause?: { code?: string; message?: string } }).cause : undefined;
+    const message = cause?.message ?? (error instanceof Error ? error.message : String(error));
+    return cause?.code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' || /certificate|unable to verify/i.test(message);
+  }
+
+  private errorCause(error: unknown): string {
+    const cause = error && typeof error === 'object' ? (error as { cause?: { code?: string; message?: string } }).cause : undefined;
+    return [cause?.code, cause?.message].filter(Boolean).join(' - ') || (error instanceof Error ? error.message : String(error));
   }
 
   private retryWaitMs(headers: Headers, body: string, attempt: number, maxWaitMs: number): number {

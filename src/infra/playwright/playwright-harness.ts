@@ -7,6 +7,7 @@ import type { BoundExpectedAfterAction, LocatorDescriptor, QaAction } from '../.
 import type { ScreenObservation } from '../../domain/schemas/observation.schema.js';
 import type { ActionExecutionResult, AssertionResult, QuiescenceResult } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
+import type { PlanCondition, RuntimeStateSnapshot } from '../../domain/schemas/execution-plan.schema.js';
 import { HarnessFatalError } from '../../domain/errors.js';
 import { PlaywrightQuiescenceGuard } from './playwright-quiescence.guard.js';
 import { ObservationService } from '../observation/observation.service.js';
@@ -156,6 +157,49 @@ export class PlaywrightHarness implements BrowserHarnessPort {
     }
   }
 
+  async runtimeState(observation: ScreenObservation, conditions: PlanCondition[]): Promise<RuntimeStateSnapshot> {
+    const page = this.mustPage();
+    const attributeConditions = conditions.filter((c): c is Extract<PlanCondition, { type: 'attribute_state' }> => c.type === 'attribute_state');
+    const storageConditions = conditions.filter((c): c is Extract<PlanCondition, { type: 'storage_state' }> => c.type === 'storage_state');
+    const attributes: Record<string, unknown> = {};
+    for (const condition of attributeConditions) {
+      const key = `${JSON.stringify(condition.target)}::${condition.attribute}`;
+      try {
+        attributes[key] = condition.target.strategy === 'document'
+          ? await page.evaluate((attr) => document.documentElement.getAttribute(attr) ?? document.body?.getAttribute(attr), condition.attribute)
+          : await this.locator(condition.target).first().getAttribute(condition.attribute);
+      } catch (error) {
+        attributes[key] = error instanceof Error ? error.message : String(error);
+      }
+    }
+    const storage = await page.evaluate((items) => {
+      const out: Record<string, unknown> = {};
+      for (const item of items) {
+        const area = item.storage === 'localStorage' ? window.localStorage : window.sessionStorage;
+        out[`${item.storage}:${item.key}`] = area.getItem(item.key);
+      }
+      return out;
+    }, storageConditions.map((c) => ({ storage: c.storage, key: c.key }))).catch(() => ({}));
+    const domState = await page.evaluate(() => ({
+      htmlClass: document.documentElement.className,
+      bodyClass: document.body?.className ?? '',
+      htmlTheme: document.documentElement.getAttribute('data-theme') ?? document.documentElement.getAttribute('data-color-mode'),
+      bodyTheme: document.body?.getAttribute('data-theme') ?? document.body?.getAttribute('data-color-mode'),
+      colorScheme: getComputedStyle(document.documentElement).colorScheme,
+      backgroundColor: getComputedStyle(document.body ?? document.documentElement).backgroundColor,
+      localTheme: window.localStorage.getItem('theme') ?? window.localStorage.getItem('color-theme') ?? window.localStorage.getItem('appearance'),
+      sessionTheme: window.sessionStorage.getItem('theme') ?? window.sessionStorage.getItem('color-theme') ?? window.sessionStorage.getItem('appearance'),
+    })).catch(() => ({}));
+    return {
+      observationId: observation.observationId,
+      url: observation.url,
+      semanticStates: this.semanticStates(observation, domState),
+      attributes,
+      storage,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   async waitForQuiescence(timeoutMs: number): Promise<QuiescenceResult> {
     const page = this.mustPage();
     if (page.isClosed()) return { stable: false, reason: 'TIMEOUT_BUT_CONTINUABLE', elapsedMs: 0 };
@@ -208,11 +252,32 @@ export class PlaywrightHarness implements BrowserHarnessPort {
 
   private locator(desc: LocatorDescriptor): Locator {
     const p = this.mustPage();
+    if (desc.strategy === 'semantic') return this.locator(desc.candidates[0]!);
+    if (desc.strategy === 'text_any') return p.getByText(new RegExp(desc.texts.map((t) => this.escapeRegExp(t)).join('|'), desc.exact ? undefined : 'i')).first();
+    if (desc.strategy === 'document') return p.locator('html');
     if (desc.strategy === 'label') return p.getByLabel(desc.text, { exact: desc.exact });
     if (desc.strategy === 'placeholder') return p.getByPlaceholder(desc.text, { exact: desc.exact });
     if (desc.strategy === 'text') return p.getByText(desc.text, { exact: desc.exact });
     if (desc.strategy === 'testid') return p.getByTestId(desc.value);
     return p.getByRole(desc.role as Parameters<Page['getByRole']>[0], { name: desc.name, exact: desc.exact });
+  }
+
+  private semanticStates(observation: ScreenObservation, domState: Record<string, unknown> = {}): Record<string, unknown> {
+    const text = [...observation.visibleTexts, ...observation.elements.flatMap((e) => [e.name, e.text ?? '', String(e.checked ?? ''), String(e.expanded ?? '')])].join(' | ');
+    const loginRoute = /\/(login|signin|sign-in|auth)\b/i.test(observation.url);
+    const loginFormText = /\b(entrar|login|senha|password|sign in|acessar)\b/i.test(text) && /\b(senha|password)\b/i.test(text);
+    const appSurface = /\b(caixa de entrada|inbox|escrever|arquivados|rascunhos|lixeira|configura[cç][õo]es|settings)\b/i.test(text);
+    return {
+      url: observation.url,
+      auth: loginRoute || (loginFormText && !appSurface) ? 'anonymous' : 'authenticated',
+      menuOpen: /\b(sair|logout|sign out|tema|theme|configura[cç][õo]es|settings)\b/i.test(text),
+      appearance_mode: JSON.stringify(domState),
+      visibleTextSignature: text.slice(0, 800),
+    };
+  }
+
+  private escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   private mustPage(): Page {

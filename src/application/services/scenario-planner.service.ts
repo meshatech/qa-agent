@@ -15,8 +15,8 @@ export class ScenarioPlannerService {
       scenarios = undefined;
     }
     if (!scenarios?.length) scenarios = this.fallback(config);
-    const normalized = scenarios.map((s) => ({ ...s, tasks: this.authAwareTasks(this.topoSort(s.tasks), config) }));
-    return config.auth.kind === 'none' ? normalized : this.authenticatedPlan(normalized, config);
+    const normalized = scenarios.map((s) => ({ ...s, tasks: this.authAwareTasks(this.topoSort(s.tasks).map((task) => this.canonicalTask(task)), config) }));
+    return this.enforcePlanPolicy(config.auth.kind === 'none' ? normalized : this.authenticatedPlan(normalized, config), config);
   }
 
   topoSort(tasks: QaTask[]): QaTask[] {
@@ -66,7 +66,7 @@ export class ScenarioPlannerService {
   private compactCriteria(config: RunConfig): string[] {
     const criteria = config.demand.acceptanceCriteria ?? config.demand.description.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
     if (!criteria.length) return [config.demand.description];
-    return criteria.filter((line) => !this.isGlobalSafetyText(line)).slice(0, 5);
+    return criteria.filter((line) => !this.isGlobalSafetyText(line)).slice(0, 4);
   }
 
   private authAwareTasks(tasks: QaTask[], config: RunConfig): QaTask[] {
@@ -91,6 +91,33 @@ export class ScenarioPlannerService {
     }];
   }
 
+  private enforcePlanPolicy(scenarios: QaScenario[], config: RunConfig): QaScenario[] {
+    const limit = config.auth.kind === 'none' ? 8 : 6;
+    return scenarios.map((scenario) => {
+      const unique = this.dedupe(scenario.tasks).filter((task) => !this.isLowValueTask(task));
+      const logout = unique.find((task) => this.isLogoutTask(task));
+      const body = unique.filter((task) => !this.isLogoutTask(task)).slice(0, logout ? limit - 1 : limit);
+      const ordered = logout ? [...body, logout] : body;
+      const tasks = config.auth.kind === 'none' ? this.relinkDependencies(ordered) : this.sequential(ordered);
+      return { ...scenario, tasks: tasks.length ? tasks : [this.fallbackAuthTask(config)] };
+    });
+  }
+
+  private canonicalTask(task: QaTask): QaTask {
+    const text = `${task.title} ${task.expected}`.toLowerCase();
+    if (this.isLogoutTask(task)) return { ...task, expected: 'Logout retorna para tela de login ou estado não autenticado visível' };
+    if (/\b(tema|theme|apar[eê]ncia|appearance|modo escuro|dark mode|light mode)\b/i.test(text)) {
+      return { ...task, expected: 'Tema visual alterna e a opção/estado visual alterado fica visível' };
+    }
+    if (/\b(menu|conta|opções|opcoes|settings|configurações|configuracoes)\b/i.test(text)) {
+      return { ...task, expected: 'Menu ou painel solicitado fica visível com itens acionáveis' };
+    }
+    if (/(área autenticada|area autenticada|authenticated area)/i.test(text)) {
+      return { ...task, expected: 'Área autenticada está visível e não está na tela de login' };
+    }
+    return task;
+  }
+
   private fallbackAuthTask(config: RunConfig): QaTask {
     const criteria = this.compactCriteria(config);
     const title = criteria[0] ?? config.demand.title;
@@ -106,6 +133,7 @@ export class ScenarioPlannerService {
   private isLoginTask(task: QaTask): boolean {
     if (this.isLogoutTask(task)) return false;
     const text = `${task.title} ${task.expected}`.toLowerCase();
+    if (/(área autenticada|area autenticada|authenticated area|não está na tela de login|nao esta na tela de login)/i.test(text)) return false;
     return /\b(login|logar|entrar|senha|password|e-?mail|email|submit|credenciais?)\b/i.test(text);
   }
 
@@ -120,6 +148,21 @@ export class ScenarioPlannerService {
 
   private isGlobalSafetyText(text: string): boolean {
     return /Nenhuma ação destrutiva|não execução de ações destrutivas|sem erro HTTP 5xx|erro crítico de console|falhas de rede|envio real/i.test(text);
+  }
+
+  private isLowValueTask(task: QaTask): boolean {
+    const text = `${task.title} ${task.expected}`.toLowerCase();
+    return /^(clicar|click|avançar|advance|interagir|verificar tela|validar tela)\b/.test(text.trim());
+  }
+
+  private dedupe(tasks: QaTask[]): QaTask[] {
+    const seen = new Set<string>();
+    return tasks.filter((task) => {
+      const key = `${task.title} ${task.expected}`.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/\W+/g, ' ').trim();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
 
   private sequential(tasks: QaTask[]): QaTask[] {

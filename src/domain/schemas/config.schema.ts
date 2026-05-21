@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { LocatorDescriptorSchema } from './action.schema.js';
+import { DestructiveActionPolicySchema, RuntimeModeSchema } from './execution-plan.schema.js';
 
 const AuthSelectorSchema = z.union([z.string(), LocatorDescriptorSchema]);
 
@@ -65,7 +66,18 @@ export const RunConfigSchema = z.object({
   }).default({ quiescenceMs: 3000, actionMs: 15000, navigationMs: 30000, scenarioMs: 180000, runMs: 1800000 }),
   runtime: z.object({
     maxActionsPerTask: z.number().int().positive().default(3),
-  }).default({ maxActionsPerTask: 3 }),
+    mode: RuntimeModeSchema.default('HYBRID_GUARDED'),
+    maxAttemptsPerStep: z.number().int().positive().default(2),
+    maxReplansPerScenario: z.number().int().nonnegative().default(2),
+    destructiveActionPolicy: DestructiveActionPolicySchema.default('BLOCK'),
+    semanticKeys: z.record(z.string(), z.object({ description: z.string(), type: z.enum(['action', 'state', 'container']).default('state') })).default({}),
+    elementAvailability: z.object({
+      enabled: z.boolean().default(true),
+      maxOpenAttempts: z.number().int().nonnegative().default(1),
+      allowGlobalEscape: z.boolean().default(false),
+      allowClickOutside: z.boolean().default(false),
+    }).default({ enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false }),
+  }).default({ maxActionsPerTask: 3, mode: 'HYBRID_GUARDED', maxAttemptsPerStep: 2, maxReplansPerScenario: 2, destructiveActionPolicy: 'BLOCK', semanticKeys: {}, elementAvailability: { enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false } }),
   recovery: z.object({
     maxAttemptsPerTask: z.number().int().positive().default(3),
     maxFallbacksPerStep: z.number().int().positive().default(1),
@@ -87,8 +99,9 @@ export const RunConfigSchema = z.object({
   output: z.object({
     runsDir: z.string().default('./qa-agent-runs'),
     keepVideoOnPass: z.boolean().default(false),
+    keepScreenshotOnPass: z.boolean().default(false),
     keepTraceOnPass: z.boolean().default(false),
-  }).default({ runsDir: './qa-agent-runs', keepVideoOnPass: false, keepTraceOnPass: false }),
+  }).default({ runsDir: './qa-agent-runs', keepVideoOnPass: false, keepScreenshotOnPass: false, keepTraceOnPass: false }),
   agentVersion: z.string().default('0.1.0'),
 });
 

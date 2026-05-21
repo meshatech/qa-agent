@@ -1,6 +1,6 @@
 import type { BoundExpectedAfterAction, QaAction } from '../schemas/action.schema.js';
 
-export type QaRunStatus = 'PASSED' | 'FAILED' | 'BLOCKED';
+export type QaRunStatus = 'PASSED' | 'PASSED_WITH_WARNINGS' | 'FAILED' | 'BLOCKED';
 export type RuntimeErrorCode =
   | 'STALE_OBSERVATION'
   | 'LOCATOR_NOT_FOUND'
@@ -82,7 +82,7 @@ export interface QaTask {
   id: string;
   title: string;
   expected: string;
-  status: 'PENDING' | 'PASSED' | 'FAILED' | 'BLOCKED' | 'SKIPPED';
+  status: 'PENDING' | 'PASSED' | 'PASSED_WITH_WARNINGS' | 'FAILED' | 'BLOCKED' | 'SKIPPED';
   dependsOn?: string[];
   intent?: ScenarioIntent;
   attempts?: AttemptRecord[];
@@ -92,7 +92,7 @@ export interface QaScenario {
   id: string;
   title: string;
   tasks: QaTask[];
-  status: 'PLANNED' | 'RUNNING' | 'PASSED' | 'FAILED' | 'PARTIAL' | 'BLOCKED';
+  status: 'PLANNED' | 'RUNNING' | 'PASSED' | 'PASSED_WITH_WARNINGS' | 'FAILED' | 'PARTIAL' | 'BLOCKED';
   intent?: ScenarioIntent;
   preconditions?: string[];
 }

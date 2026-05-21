@@ -1,0 +1,92 @@
+import { Inject, Injectable } from '@nestjs/common';
+import type { BrowserHarnessPort } from '../ports/browser-harness.port.js';
+import type { RunConfig } from '../../domain/schemas/config.schema.js';
+import type { LocatorDescriptor, QaAction } from '../../domain/schemas/action.schema.js';
+import type { PlanAction, PlanCondition } from '../../domain/schemas/execution-plan.schema.js';
+import type { ScreenObservation } from '../../domain/schemas/observation.schema.js';
+import { LocatorResolverService } from './locator-resolver.service.js';
+
+export interface SemanticContainerDescriptor {
+  semanticKey: string;
+  openAction: PlanAction;
+  expectedState?: PlanCondition;
+}
+
+export interface EnsureElementAvailablePolicy {
+  enabled: boolean;
+  maxOpenAttempts: number;
+  allowedContainers: SemanticContainerDescriptor[];
+  allowGlobalEscape?: boolean;
+  allowClickOutside?: boolean;
+}
+
+export interface EnsureElementAvailableResult {
+  available: boolean;
+  observation: ScreenObservation;
+  openedContainer?: string;
+  reobserved: boolean;
+  reason: 'FOUND_DIRECTLY' | 'FOUND_AFTER_OPEN_CONTAINER' | 'NOT_FOUND' | 'POLICY_DISABLED' | 'MAX_ATTEMPTS_EXCEEDED';
+  attempts: Array<{ actionType: string; result: 'PASSED' | 'FAILED'; reason?: string; ts: string }>;
+}
+
+@Injectable()
+export class ElementAvailabilityResolver {
+  constructor(
+    @Inject('BrowserHarnessPort') private readonly browser: BrowserHarnessPort,
+    @Inject(LocatorResolverService) private readonly locators: LocatorResolverService,
+  ) {}
+
+  async ensureAvailable(input: { target: LocatorDescriptor; observation: ScreenObservation; policy: EnsureElementAvailablePolicy; config: RunConfig }): Promise<EnsureElementAvailableResult> {
+    const attempts: EnsureElementAvailableResult['attempts'] = [];
+    if (this.exists(input.observation, input.target)) return { available: true, observation: input.observation, reobserved: false, reason: 'FOUND_DIRECTLY', attempts };
+    if (!input.policy.enabled) return { available: false, observation: input.observation, reobserved: false, reason: 'POLICY_DISABLED', attempts };
+
+    let current = input.observation;
+    for (let i = 0; i < input.policy.maxOpenAttempts; i++) {
+      const container = this.pickContainer(input.target, input.policy.allowedContainers);
+      if (!container) break;
+      const action = this.resolvePlanAction(container.openAction, current);
+      if (!action) break;
+      const exec = await this.browser.execute(action);
+      attempts.push({ actionType: action.type, result: exec.ok ? 'PASSED' : 'FAILED', reason: exec.error?.message, ts: new Date().toISOString() });
+      await this.browser.waitForQuiescence(input.config.timeouts.quiescenceMs).catch(() => undefined);
+      current = await this.browser.observe();
+      this.locators.rebuild(current);
+      if (this.exists(current, input.target)) return { available: true, observation: current, openedContainer: container.semanticKey, reobserved: true, reason: 'FOUND_AFTER_OPEN_CONTAINER', attempts };
+    }
+    return { available: false, observation: current, reobserved: current !== input.observation, reason: input.policy.maxOpenAttempts <= 0 ? 'MAX_ATTEMPTS_EXCEEDED' : 'NOT_FOUND', attempts };
+  }
+
+  private exists(obs: ScreenObservation, target: LocatorDescriptor): boolean {
+    try {
+      this.locators.findByLocator(obs, target);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private pickContainer(target: LocatorDescriptor, containers: SemanticContainerDescriptor[]): SemanticContainerDescriptor | undefined {
+    const text = JSON.stringify(target).toLowerCase();
+    if (/(sair|logout|sign out|tema|theme|escuro|claro|account|conta|perfil)/i.test(text)) {
+      return containers.find((container) => /account|conta|perfil|menu/i.test(container.semanticKey)) ?? containers[0];
+    }
+    return containers[0];
+  }
+
+  private resolvePlanAction(action: PlanAction, obs: ScreenObservation): QaAction | undefined {
+    if (!('target' in action)) return action as QaAction;
+    if (!action.target) return action.type === 'press' ? { type: 'press', key: action.key, reason: action.reason } : undefined;
+    try {
+      const targetElementId = this.locators.findByLocator(obs, action.target);
+      if (action.type === 'click') return { type: 'click', targetElementId, reason: action.reason };
+      if (action.type === 'fill') return { type: 'fill', targetElementId, value: action.value, reason: action.reason };
+      if (action.type === 'select') return { type: 'select', targetElementId, option: action.option, reason: action.reason };
+      if (action.type === 'press') return { type: 'press', key: action.key, targetElementId, reason: action.reason };
+      if (action.type === 'assertVisible') return { type: 'assertVisible', targetElementId, text: action.text, reason: action.reason };
+      return undefined;
+    } catch {
+      return undefined;
+    }
+  }
+}
