@@ -17,6 +17,7 @@ import { PlanPatchApplierService } from './services/plan-patch-applier.service.j
 import { PlanExecutorService } from './services/plan-executor.service.js';
 import { PlanReplannerService } from './services/plan-replanner.service.js';
 import { PlaywrightSpecExporter } from './services/playwright-spec-exporter.service.js';
+import { QaToolRegistry } from './tools/qa-tool-registry.js';
 import { CaptureAuthUseCase } from './use-cases/capture-auth.usecase.js';
 import { InspectRunUseCase } from './use-cases/inspect-run.usecase.js';
 import { ReportRunUseCase } from './use-cases/report-run.usecase.js';
@@ -28,6 +29,7 @@ export const APPLICATION_PROVIDERS = [
   AgentService, RunAgentUseCase, ValidateConfigUseCase, InspectRunUseCase, ReportRunUseCase, CaptureAuthUseCase,
   DataHarnessService, LocatorResolverService, ValidationBinderService, ActionPolicyService, RecoveryPolicyService,
   SanitizerService, BugClassifierService, EvidenceService, ScenarioPlannerService, TaskMemoryService, ExecutionPlanFactoryService, ExecutionPlanPlannerService, ElementAvailabilityResolver, PlanPatchApplierService, PlanExecutorService, PlanReplannerService, PlaywrightSpecExporter,
+  QaToolRegistry,
 ];
 
 @Module({ imports: [InfraModule], providers: APPLICATION_PROVIDERS, exports: APPLICATION_PROVIDERS })
