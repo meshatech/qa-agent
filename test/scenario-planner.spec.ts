@@ -198,4 +198,72 @@ describe('ScenarioPlannerService', () => {
 
     expect(scenarios[0]?.tasks.map((t) => t.title)).toEqual(['Verificar área autenticada', 'Verificar logout']);
   });
+
+  it('dedupes verbose provider plans, removes low-value steps, and keeps logout last', async () => {
+    const provider: DecisionProviderPort = {
+      async plan() {
+        return [{
+          id: 's',
+          title: 'S',
+          status: 'PLANNED',
+          tasks: [
+            { id: 'A', title: 'Clicar botão', expected: 'Avançar', status: 'PENDING' },
+            { id: 'B', title: 'Verificar área autenticada', expected: 'Área autenticada visível', status: 'PENDING' },
+            { id: 'C', title: 'Verificar área autenticada', expected: 'Área autenticada visível', status: 'PENDING' },
+            { id: 'D', title: 'Deslogar', expected: 'Tela de login visível', status: 'PENDING' },
+            { id: 'E', title: 'Abrir configurações', expected: 'Configurações visíveis', status: 'PENDING' },
+          ],
+        }];
+      },
+      async decide() {
+        throw new Error('unused');
+      },
+    };
+
+    const scenarios = await new ScenarioPlannerService(provider).plan(RunConfigSchema.parse({
+      baseUrl: 'http://127.0.0.1',
+      appDomains: ['127.0.0.1'],
+      demand: { id: 'D', title: 'Smoke', description: 'Smoke' },
+      auth: {
+        kind: 'formLogin',
+        loginUrl: '/',
+        usernameSelector: '#email',
+        passwordSelector: '#password',
+        submitSelector: 'button',
+        usernameEnv: 'USER',
+        passwordEnv: 'PASS',
+      },
+    }));
+
+    expect(scenarios[0]?.tasks.map((t) => t.title)).toEqual([
+      'Verificar área autenticada',
+      'Abrir configurações',
+      'Deslogar',
+    ]);
+    expect(scenarios[0]?.tasks[2]?.dependsOn).toEqual(['T002']);
+  });
+
+  it('canonicalizes vague expectations into verifiable outcomes', async () => {
+    const provider: DecisionProviderPort = {
+      async plan() {
+        return [{
+          id: 's',
+          title: 'S',
+          status: 'PLANNED',
+          tasks: [
+            { id: 'T001', title: 'Alterar tema visual', expected: 'Tema alterado', status: 'PENDING' },
+            { id: 'T002', title: 'Verificar logout', expected: 'Logout feito', status: 'PENDING' },
+          ],
+        }];
+      },
+      async decide() {
+        throw new Error('unused');
+      },
+    };
+
+    const scenarios = await new ScenarioPlannerService(provider).plan(config);
+
+    expect(scenarios[0]?.tasks[0]?.expected).toContain('opção/estado visual');
+    expect(scenarios[0]?.tasks[1]?.expected).toContain('tela de login');
+  });
 });

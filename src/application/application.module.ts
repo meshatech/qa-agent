@@ -8,7 +8,15 @@ import { LocatorResolverService } from './services/locator-resolver.service.js';
 import { RecoveryPolicyService } from './services/recovery-policy.service.js';
 import { SanitizerService } from './services/sanitizer.service.js';
 import { ScenarioPlannerService } from './services/scenario-planner.service.js';
+import { TaskMemoryService } from './services/task-memory.service.js';
 import { ValidationBinderService } from './services/validation-binder.service.js';
+import { ExecutionPlanFactoryService } from './services/execution-plan-factory.service.js';
+import { ExecutionPlanPlannerService } from './services/execution-plan-planner.service.js';
+import { ElementAvailabilityResolver } from './services/element-availability-resolver.service.js';
+import { PlanPatchApplierService } from './services/plan-patch-applier.service.js';
+import { PlanExecutorService } from './services/plan-executor.service.js';
+import { PlanReplannerService } from './services/plan-replanner.service.js';
+import { PlaywrightSpecExporter } from './services/playwright-spec-exporter.service.js';
 import { CaptureAuthUseCase } from './use-cases/capture-auth.usecase.js';
 import { InspectRunUseCase } from './use-cases/inspect-run.usecase.js';
 import { ReportRunUseCase } from './use-cases/report-run.usecase.js';
@@ -19,7 +27,7 @@ import { InfraModule } from '../infra/infra.module.js';
 export const APPLICATION_PROVIDERS = [
   AgentService, RunAgentUseCase, ValidateConfigUseCase, InspectRunUseCase, ReportRunUseCase, CaptureAuthUseCase,
   DataHarnessService, LocatorResolverService, ValidationBinderService, ActionPolicyService, RecoveryPolicyService,
-  SanitizerService, BugClassifierService, EvidenceService, ScenarioPlannerService,
+  SanitizerService, BugClassifierService, EvidenceService, ScenarioPlannerService, TaskMemoryService, ExecutionPlanFactoryService, ExecutionPlanPlannerService, ElementAvailabilityResolver, PlanPatchApplierService, PlanExecutorService, PlanReplannerService, PlaywrightSpecExporter,
 ];
 
 @Module({ imports: [InfraModule], providers: APPLICATION_PROVIDERS, exports: APPLICATION_PROVIDERS })

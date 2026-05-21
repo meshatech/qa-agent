@@ -2,6 +2,7 @@ import type { BoundExpectedAfterAction, QaAction } from '../../domain/schemas/ac
 import type { ScreenObservation } from '../../domain/schemas/observation.schema.js';
 import type { ActionExecutionResult, AssertionResult, QuiescenceResult } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
+import type { PlanCondition, RuntimeStateSnapshot } from '../../domain/schemas/execution-plan.schema.js';
 
 export interface BrowserHarnessPort {
   open(config: RunConfig): Promise<void>;
@@ -9,6 +10,7 @@ export interface BrowserHarnessPort {
   observe(): Promise<ScreenObservation>;
   execute(action: QaAction): Promise<ActionExecutionResult>;
   validate(expected: BoundExpectedAfterAction): Promise<AssertionResult>;
+  runtimeState?(observation: ScreenObservation, conditions: PlanCondition[]): Promise<RuntimeStateSnapshot>;
   waitForQuiescence(timeoutMs: number): Promise<QuiescenceResult>;
   screenshot(): Promise<Buffer | undefined>;
   domSnapshot(): Promise<string | undefined>;

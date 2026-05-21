@@ -94,10 +94,24 @@ describe('ReportRenderer', () => {
         totalDurationMs: 300000,
       },
     };
+    (result as QaRunResult & { planRuntime: Record<string, unknown> }).planRuntime = {
+      plannerProvider: 'groq',
+      plannerModel: 'llama-3.1-8b-instant',
+      planSource: 'factory',
+      planVersion: 1,
+      fallbackReason: 'fetch failed',
+      fallbackWarning: 'LLM buildPlan failed; safe factory fallback was used.',
+      warnings: [{ stepId: 'planner', message: 'LLM_BUILD_PLAN_FALLBACK_TO_FACTORY' }],
+    };
     const md = new ReportRenderer().renderExecutionReport(result, config, 'run-id');
     expect(md).toContain('# Execution Report — Run run-id');
     expect(md).toContain('Demanda: Cadastrar produto');
     expect(md).toContain('Status: BLOCKED');
+    expect(md).toContain('## Planner');
+    expect(md).toContain('- Provider: groq');
+    expect(md).toContain('- Plan source: factory');
+    expect(md).toContain('- Fallback reason: fetch failed');
+    expect(md).toContain('- planner: LLM_BUILD_PLAN_FALLBACK_TO_FACTORY');
     expect(md).toContain('| Cenários | 1 |');
     expect(md).toContain('| Bugs CRITICAL | 1 |');
     expect(md).toContain('### Cadastrar produto — BLOCKED');

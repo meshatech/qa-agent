@@ -4,6 +4,7 @@ import { DecisionRouterProvider } from './llm/decision-router.provider.js';
 import { FakeDecisionProvider } from './llm/fake-decision.provider.js';
 import { GroqDecisionProvider } from './llm/groq-decision.provider.js';
 import { OpenAiLangChainDecisionProvider } from './llm/openai-langchain-decision.provider.js';
+import { JsonObjectExtractor, LlmOutputSanitizer, LlmPlanPatchNormalizer, SafeJsonParser } from './llm/llm-output-normalizer.js';
 import { ReportRenderer } from './persistence/report-renderer.js';
 import { FileRunRepository } from './persistence/file-run.repository.js';
 import { RunDirectoryManager } from './persistence/run-directory.manager.js';
@@ -29,6 +30,10 @@ export const INFRA_PROVIDERS = [
   FileRunRepository,
   RunDirectoryManager,
   FakeDecisionProvider,
+  LlmOutputSanitizer,
+  JsonObjectExtractor,
+  SafeJsonParser,
+  LlmPlanPatchNormalizer,
   GroqDecisionProvider,
   OpenAiLangChainDecisionProvider,
   DecisionRouterProvider,
