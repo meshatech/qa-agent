@@ -3,13 +3,29 @@ import { z } from 'zod';
 const el = z.string().regex(/^el_\d{3}$/);
 const reason = z.string().min(1);
 
-export const LocatorDescriptorSchema = z.discriminatedUnion('strategy', [
+const BaseLocatorDescriptorSchema = z.discriminatedUnion('strategy', [
   z.object({ strategy: z.literal('role'), role: z.string(), name: z.string().optional(), exact: z.boolean().optional() }),
   z.object({ strategy: z.literal('label'), text: z.string(), exact: z.boolean().optional() }),
   z.object({ strategy: z.literal('placeholder'), text: z.string(), exact: z.boolean().optional() }),
   z.object({ strategy: z.literal('text'), text: z.string(), exact: z.boolean().optional() }),
+  z.object({ strategy: z.literal('text_any'), texts: z.array(z.string().min(1)).min(1), exact: z.boolean().optional() }),
   z.object({ strategy: z.literal('testid'), value: z.string() }),
+  z.object({ strategy: z.literal('document') }),
 ]);
+
+type BaseLocatorDescriptorInput = z.infer<typeof BaseLocatorDescriptorSchema>;
+type LocatorDescriptorInput = BaseLocatorDescriptorInput | { strategy: 'semantic'; semanticKey: string; intent: string; candidates: LocatorDescriptorInput[]; minConfidence?: number };
+
+export const LocatorDescriptorSchema: z.ZodType<LocatorDescriptorInput> = z.lazy(() => z.discriminatedUnion('strategy', [
+  ...BaseLocatorDescriptorSchema.options,
+  z.object({
+    strategy: z.literal('semantic'),
+    semanticKey: z.string().min(1),
+    intent: z.string().min(1),
+    candidates: z.array(LocatorDescriptorSchema).min(1),
+    minConfidence: z.number().min(0).max(1).optional(),
+  }),
+]));
 
 export const QaActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('click'), targetElementId: el, reason }),

@@ -91,7 +91,7 @@ export class ObservationService {
   }
 
   private preferLocator(a: LocatorDescriptor, b: LocatorDescriptor): LocatorDescriptor {
-    const order: Record<LocatorDescriptor['strategy'], number> = { testid: 0, label: 1, placeholder: 2, role: 3, text: 4 };
+    const order: Record<LocatorDescriptor['strategy'], number> = { testid: 0, label: 1, placeholder: 2, role: 3, text_any: 4, text: 5, semantic: 6, document: 7 };
     return order[a.strategy] <= order[b.strategy] ? a : b;
   }
 }

@@ -16,4 +16,15 @@ export class ActionPolicyService {
     }
     return { ok: true };
   }
+
+  validateDestructiveText(text: string, config: RunConfig): { ok: true } | { ok: false; code: RuntimeErrorCode; message: string } {
+    if (!this.looksDestructive(text)) return { ok: true };
+    const policy = config.runtime.destructiveActionPolicy;
+    if (policy === 'ALLOW') return { ok: true };
+    return { ok: false, code: 'NAVIGATION_BLOCKED', message: `Destructive action blocked by policy ${policy}: ${text}` };
+  }
+
+  private looksDestructive(text: string): boolean {
+    return /\b(excluir|deletar|delete|remover|cancelar pedido|confirmar pagamento|pagamento|publicar|publish|alterar senha|enviar e-?mail|send e-?mail)\b/i.test(text);
+  }
 }

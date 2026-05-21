@@ -5,6 +5,7 @@ Runtime de QA guiado por LLM para executar fluxos web via Playwright, com observ
 ## Estado Atual
 
 - Versao atual: `0.1.0`
+- Release runtime: `v0.2-stable` documentada em [`doc/release-notes/v0.2-stable.md`](doc/release-notes/v0.2-stable.md)
 - Stack: `TypeScript`, `NestJS`, `Playwright`, `Zod`, `Commander`
 - Interface principal: CLI `qa-agent`
 - Providers LLM disponiveis hoje: `fake`, `groq`, `openai`

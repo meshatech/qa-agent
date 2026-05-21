@@ -90,6 +90,7 @@ export class ReportRenderer {
     const startedAt = result.startedAt ?? '—';
     const finishedAt = result.finishedAt ?? '—';
     const durationMs = m?.totalDurationMs ?? 0;
+    const planRuntime = (result as QaRunResult & { planRuntime?: Record<string, unknown> }).planRuntime;
     return [
       `# Execution Report — Run ${runId ?? '—'}`,
       '',
@@ -100,6 +101,15 @@ export class ReportRenderer {
       `- Fim: ${finishedAt}`,
       `- Status: ${result.status}`,
       `- Duração: ${durationMs} ms`,
+      '',
+      '## Planner',
+      '',
+      `- Provider: ${String(planRuntime?.plannerProvider ?? config.llm.provider)}`,
+      `- Model: ${String(planRuntime?.plannerModel ?? config.llm.model)}`,
+      `- Plan source: ${String(planRuntime?.planSource ?? '—')}`,
+      `- Plan version: ${String(planRuntime?.planVersion ?? '—')}`,
+      `- Fallback reason: ${String(planRuntime?.fallbackReason ?? '—')}`,
+      `- Fallback warning: ${String(planRuntime?.fallbackWarning ?? '—')}`,
       '',
       '## Métricas',
       '',
@@ -129,6 +139,10 @@ export class ReportRenderer {
       '',
       this.renderBugs(result.bugs ?? []),
       '',
+      '## Warnings operacionais',
+      '',
+      this.renderWarnings(planRuntime?.warnings),
+      '',
       '## Arquivos importantes',
       '',
       '- run.json',
@@ -139,6 +153,19 @@ export class ReportRenderer {
       '- config.json',
       '',
     ].join('\n');
+  }
+
+  private renderWarnings(warnings: unknown): string {
+    if (!Array.isArray(warnings) || !warnings.length) return 'Nenhum warning operacional.';
+    return warnings
+      .map((warning) => {
+        if (warning && typeof warning === 'object') {
+          const item = warning as { stepId?: unknown; message?: unknown };
+          return `- ${String(item.stepId ?? 'runtime')}: ${String(item.message ?? 'warning')}`;
+        }
+        return `- ${String(warning)}`;
+      })
+      .join('\n');
   }
 
   private renderScenarios(scenarios: QaScenario[]): string {
