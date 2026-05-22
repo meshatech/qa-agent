@@ -35,6 +35,56 @@ describe('QaToolRegistry', () => {
     await expect(registry.execute('qa.echo', { message: 'ok' }, {})).rejects.toThrow();
   });
 
+  it('passes controlled QaToolContext to tool execution', async () => {
+    const contextTool: QaTool<{ message: string }, { echoed: string; context: Record<string, unknown> }> = {
+      name: 'qa.context.echo',
+      description: 'Echo context test tool',
+      inputSchema: z.object({ message: z.string() }),
+      outputSchema: z.object({
+        echoed: z.string(),
+        context: z.record(z.string(), z.unknown()),
+      }),
+      async execute(input, context) {
+        return {
+          echoed: input.message,
+          context: {
+            runId: context.runId,
+            runDir: context.runDir,
+            scenarioId: context.scenarioId,
+            taskId: context.taskId,
+            hasConfig: Boolean(context.config),
+            metadataKeys: Object.keys(context.metadata ?? {}),
+          },
+        };
+      },
+    };
+    const registry = new QaToolRegistry([contextTool]);
+    const config = RunConfigSchema.parse({
+      baseUrl: 'https://app.local',
+      appDomains: ['app.local'],
+      demand: { id: 'D1', title: 'Smoke', description: 'Smoke' },
+    });
+
+    await expect(registry.execute('qa.context.echo', { message: 'ok' }, {
+      runId: 'run-1',
+      runDir: '.agent-qa/runs/run-1',
+      scenarioId: 'scenario-001',
+      taskId: 'T001',
+      config,
+      metadata: { service: { name: 'controlled' } },
+    })).resolves.toEqual({
+      echoed: 'ok',
+      context: {
+        runId: 'run-1',
+        runDir: '.agent-qa/runs/run-1',
+        scenarioId: 'scenario-001',
+        taskId: 'T001',
+        hasConfig: true,
+        metadataKeys: ['service'],
+      },
+    });
+  });
+
   it('requires name, description, and inputSchema for registered tools', () => {
     expect(() => new QaToolRegistry([{ ...echoTool, name: '   ' }])).toThrow(/name is required/);
     expect(() => new QaToolRegistry([{ ...echoTool, description: '   ' }])).toThrow(/description is required/);

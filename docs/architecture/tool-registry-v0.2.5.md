@@ -118,6 +118,44 @@ Campos do contrato:
 
 Esse contrato fica em `src/application/tools`, não importa Playwright diretamente e não depende diretamente de LangChain, Hermes ou MCP.
 
+## Contexto controlado `QaToolContext`
+
+A interface `QaToolContext` em `src/application/tools/qa-tool-context.ts` fornece informações úteis e controladas para execução de uma tool registrada no `QaToolRegistry`, sem entregar acesso irrestrito ao runtime ou ao Playwright.
+
+Estrutura atual:
+
+```ts
+export interface QaToolContext {
+  runId?: string;
+  runDir?: string;
+  scenarioId?: string;
+  taskId?: string;
+  config?: RunConfig;
+  metadata?: Record<string, unknown>;
+}
+```
+
+Campos atuais:
+
+- `runId`: identificador da run atual;
+- `runDir`: diretório da run atual, usado por artifacts/evidências/reports;
+- `scenarioId`: identificador do cenário em execução;
+- `taskId`: identificador da task em execução;
+- `config`: `RunConfig` validado, quando disponível;
+- `metadata`: canal controlado para dependências/capabilities injetadas pelo runtime nativo.
+
+O contexto pode ser expandido futuramente com campos como `projectId`, `workspaceRoot`, `artifactDir`, `memoryContext`, `providerContext` e `logger`.
+
+O contexto não deve incluir diretamente:
+
+- `page` do Playwright;
+- `browser context` do Playwright;
+- funções soltas de `click`, `fill`, `press` ou `navigate`;
+- API direta de `PlaywrightHarness`;
+- qualquer execução livre de DOM/script arbitrário.
+
+Quando uma tool precisar acessar capacidades do runtime, isso deve acontecer por meio de `metadata` com dependências controladas e tipadas no ponto de uso, preservando a separação entre orchestration e runtime.
+
 ## Ações Playwright não expostas
 
 Ações diretas de browser/Playwright nunca devem ser tools públicas do `QaToolRegistry`.
