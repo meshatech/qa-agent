@@ -361,9 +361,12 @@ As primeiras tools públicas são macro tools. Elas podem ser chamadas por orque
   - Não aplica patch fora do fluxo do runtime, não executa action solta e não executa Playwright.
 - `qa.plan.execute`
   - Status: implementada como macro tool dependente de `PlanExecutorService` no contexto.
+  - Arquivo: `src/application/tools/built-in/execute_execution_plan.tool.ts`.
   - Executa um `ExecutionPlan` validado.
-  - Respeita preconditions, actions declarativas, quiescence, postconditions e assertions.
-  - Não aceita action solta como input.
+  - Aceita `plan`, `runConfig`/`config`, `scenarioId`, `outputConfig` e `planRef` seguro.
+  - Delega para `PlanExecutorService`, preservando o fluxo `ExecutionPlan -> Preconditions -> LocatorResolver -> ActionHarness interno -> Quiescence -> Postconditions -> BusinessAssertions -> Evidence/Reports`.
+  - Retorna `executionResult`, `scenarioFinalStatus`, `warnings`, `bugs`, `artifacts` e `executionLogPath` quando disponível.
+  - Não aceita action solta como input, não expõe `PlaywrightHarness`, não expõe `page`, não ignora policies e não faz bypass de pre/postconditions.
 - `qa.evidence.record`
   - Status: implementada como macro tool dependente de `EvidenceService` no contexto.
   - Registra evidências da execução, respeitando `runDir` e config de output do runtime.

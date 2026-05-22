@@ -372,7 +372,13 @@ describe('QaToolRegistry', () => {
 
     await expect(registry.execute('qa.plan.execute', { config, plan }, {
       metadata: { planExecutor: { async execute() { return { ok: true, steps: [] }; } } },
-    })).resolves.toMatchObject({ ok: true, result: { ok: true, steps: [] } });
+    })).resolves.toMatchObject({
+      ok: true,
+      result: {
+        executionResult: { ok: true, steps: [] },
+        scenarioFinalStatus: 'PASSED',
+      },
+    });
   });
 
   it('executes internal condition evaluation only when internal access is enabled', async () => {

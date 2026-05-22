@@ -1,37 +1,23 @@
 import { readFile } from 'node:fs/promises';
 
-import type { ExecutionPlan } from '../../../domain/schemas/execution-plan.schema.js';
-import type { RunConfig } from '../../../domain/schemas/config.schema.js';
 import type { QaTool } from '../qa-tool.js';
 import {
   EvidenceRecordInputSchema,
   MemorySearchInputSchema,
-  PlanExecuteInputSchema,
   ReportGenerateInputSchema,
   SpecExportInputSchema,
   ToolResultSchema,
   type EvidenceRecordInput,
   type MemorySearchInput,
-  type PlanExecuteInput,
   type ReportGenerateInput,
   type SpecExportInput,
   type ToolResult,
 } from './contracts.js';
 import { PlanBuildTool } from './build_execution_plan.tool.js';
+import { PlanExecuteTool } from './execute_execution_plan.tool.js';
 import { PlanReplanTool } from './request_replan.tool.js';
 import { ScreenObserveTool } from './observe_screen.tool.js';
-import { configFrom, contextService, ok } from './support.js';
-
-export const PlanExecuteTool: QaTool<PlanExecuteInput, ToolResult> = {
-  name: 'qa.plan.execute',
-  description: 'Execute a validated ExecutionPlan through PlanExecutorService.',
-  inputSchema: PlanExecuteInputSchema,
-  outputSchema: ToolResultSchema,
-  async execute(input, context) {
-    const executor = contextService<{ execute(plan: ExecutionPlan, config: RunConfig): Promise<unknown> }>(context, 'planExecutor');
-    return ok(await executor.execute(input.plan, configFrom(input, context, 'qa.plan.execute')));
-  },
-};
+import { contextService, ok } from './support.js';
 
 export const EvidenceRecordTool: QaTool<EvidenceRecordInput, ToolResult> = {
   name: 'qa.evidence.record',

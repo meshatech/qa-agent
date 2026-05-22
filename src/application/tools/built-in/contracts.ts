@@ -55,7 +55,15 @@ export const PlanReplanInputSchema = z.object({
 
 export const PlanExecuteInputSchema = z.object({
   config: RunConfigSchema.optional(),
+  runConfig: RunConfigSchema.optional(),
   plan: ExecutionPlanSchema,
+  scenarioId: z.string().min(1).optional(),
+  outputConfig: z.unknown().optional(),
+  planRef: z.object({
+    runDir: z.string().min(1).optional(),
+    planPath: z.string().min(1).optional(),
+    planId: z.string().min(1).optional(),
+  }).strict().optional(),
 }).strict();
 
 export const ReportGenerateInputSchema = z.object({
