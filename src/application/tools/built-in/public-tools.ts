@@ -7,32 +7,20 @@ import {
   EvidenceRecordInputSchema,
   MemorySearchInputSchema,
   PlanExecuteInputSchema,
-  PlanReplanInputSchema,
   ReportGenerateInputSchema,
   SpecExportInputSchema,
   ToolResultSchema,
   type EvidenceRecordInput,
   type MemorySearchInput,
   type PlanExecuteInput,
-  type PlanReplanInput,
   type ReportGenerateInput,
   type SpecExportInput,
   type ToolResult,
 } from './contracts.js';
 import { PlanBuildTool } from './build_execution_plan.tool.js';
+import { PlanReplanTool } from './request_replan.tool.js';
 import { ScreenObserveTool } from './observe_screen.tool.js';
 import { configFrom, contextService, ok } from './support.js';
-
-export const PlanReplanTool: QaTool<PlanReplanInput, ToolResult> = {
-  name: 'qa.plan.replan',
-  description: 'Request and validate a PlanPatch for a failed ExecutionPlan step.',
-  inputSchema: PlanReplanInputSchema,
-  outputSchema: ToolResultSchema,
-  async execute(input, context) {
-    const replanner = contextService<{ replan(input: unknown): Promise<unknown> }>(context, 'planReplanner');
-    return ok(await replanner.replan({ ...input, config: configFrom(input, context, 'qa.plan.replan') }));
-  },
-};
 
 export const PlanExecuteTool: QaTool<PlanExecuteInput, ToolResult> = {
   name: 'qa.plan.execute',

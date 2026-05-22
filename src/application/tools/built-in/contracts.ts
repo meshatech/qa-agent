@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { LocatorDescriptorSchema, QaActionSchema, type QaAction } from '../../../domain/schemas/action.schema.js';
-import { ExecutionPlanSchema, PlanConditionSchema, RuntimeStateSnapshotSchema } from '../../../domain/schemas/execution-plan.schema.js';
+import { ExecutionPlanSchema, ExecutionStepSchema, PlanConditionSchema, ReplanReasonSchema, RuntimeStateSnapshotSchema } from '../../../domain/schemas/execution-plan.schema.js';
 import { RunConfigSchema, type RunConfig } from '../../../domain/schemas/config.schema.js';
 import { ScreenObservationSchema } from '../../../domain/schemas/observation.schema.js';
 
@@ -36,14 +36,22 @@ export const PlanBuildInputSchema = z.object({
 
 export const PlanReplanInputSchema = z.object({
   config: RunConfigSchema.optional(),
-  plan: ExecutionPlanSchema,
-  failedStep: z.unknown(),
-  observation: ScreenObservationSchema,
-  reason: z.string().min(1),
-  message: z.string().min(1),
+  plan: ExecutionPlanSchema.optional(),
+  currentPlan: ExecutionPlanSchema.optional(),
+  failedStep: ExecutionStepSchema,
+  failedCondition: PlanConditionSchema.optional(),
+  observation: ScreenObservationSchema.optional(),
+  currentObservation: ScreenObservationSchema.optional(),
+  reason: ReplanReasonSchema.optional(),
+  replanReason: ReplanReasonSchema.optional(),
+  message: z.string().min(1).optional(),
+  executionContext: z.unknown().optional(),
   history: z.array(z.object({ stepId: z.string(), reason: z.string(), message: z.string() }).strict()).default([]),
+  patchHistory: z.array(z.object({ stepId: z.string(), reason: z.string(), message: z.string() }).strict()).optional(),
   runData: z.record(z.string(), z.string()).default({}),
-}).strict();
+}).strict().refine((input) => input.plan || input.currentPlan, 'qa.plan.replan requires plan or currentPlan')
+  .refine((input) => input.observation || input.currentObservation, 'qa.plan.replan requires observation or currentObservation')
+  .refine((input) => input.reason || input.replanReason, 'qa.plan.replan requires reason or replanReason');
 
 export const PlanExecuteInputSchema = z.object({
   config: RunConfigSchema.optional(),

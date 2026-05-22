@@ -353,9 +353,12 @@ As primeiras tools públicas são macro tools. Elas podem ser chamadas por orque
   - Não executa o plano, não aplica patch, não executa Playwright e não aceita `el_*`/`targetElementId` fora do contrato validado.
 - `qa.plan.replan`
   - Status: implementada como macro tool dependente de `PlanReplannerService` no contexto.
+  - Arquivo: `src/application/tools/built-in/request_replan.tool.ts`.
   - Solicita um `PlanPatch` quando uma etapa falhar.
-  - Respeita `basePlanId`, `basePlanVersion`, `PlanPatchSchema` e policy contra weakening via `PlanPatchApplierService`.
-  - Não aplica patch sem validação.
+  - Aceita `replanReason`, `currentPlan`, `failedStep`, `failedCondition`, `currentObservation`, `executionContext` e `patchHistory`, além dos aliases internos `plan`, `observation`, `reason` e `history`.
+  - Delega para `PlanReplannerService`, preservando `PlanPatchSchema`, `basePlanId`, `basePlanVersion` e policy contra weakening via `PlanPatchApplierService`.
+  - Retorna patch validado/status de aplicação ou falha controlada quando o replan é inválido/bloqueado.
+  - Não aplica patch fora do fluxo do runtime, não executa action solta e não executa Playwright.
 - `qa.plan.execute`
   - Status: implementada como macro tool dependente de `PlanExecutorService` no contexto.
   - Executa um `ExecutionPlan` validado.
