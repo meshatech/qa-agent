@@ -24,6 +24,23 @@ describe('QaToolRegistry', () => {
     await expect(registry.execute('qa.echo', { message: 1 }, {})).rejects.toThrow();
   });
 
+  it('validates tool output when outputSchema is defined', async () => {
+    const registry = new QaToolRegistry([{
+      ...echoTool,
+      async execute() {
+        return { echoed: 1 } as unknown as { echoed: string };
+      },
+    }]);
+
+    await expect(registry.execute('qa.echo', { message: 'ok' }, {})).rejects.toThrow();
+  });
+
+  it('requires name, description, and inputSchema for registered tools', () => {
+    expect(() => new QaToolRegistry([{ ...echoTool, name: '   ' }])).toThrow(/name is required/);
+    expect(() => new QaToolRegistry([{ ...echoTool, description: '   ' }])).toThrow(/description is required/);
+    expect(() => new QaToolRegistry([{ ...echoTool, inputSchema: undefined as unknown as QaTool['inputSchema'] }])).toThrow(/inputSchema is required/);
+  });
+
   it('hides internal tools unless explicitly requested', () => {
     const registry = new QaToolRegistry([{
       ...echoTool,
