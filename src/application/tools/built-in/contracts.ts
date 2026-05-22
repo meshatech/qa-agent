@@ -113,7 +113,19 @@ export const QuiescenceWaitInputSchema = z.object({
 
 export const EvidenceRecordInputSchema = z.object({
   runDir: z.string().optional(),
-  evidence: z.unknown(),
+  runId: z.string().min(1).optional(),
+  scenarioId: z.string().min(1).optional(),
+  reason: z.string().min(1),
+  status: z.enum(['PASSED', 'PASSED_WITH_WARNINGS', 'FAILED', 'BLOCKED']).optional(),
+  includeScreenshot: z.boolean().default(true),
+  includeVideo: z.boolean().default(false),
+  includeTrace: z.boolean().default(false),
+  includeDomSnapshot: z.boolean().default(true),
+  includeConsoleLog: z.boolean().default(true),
+  includeNetworkLog: z.boolean().default(true),
+  outputConfig: z.unknown().optional(),
+  config: RunConfigSchema.optional(),
+  evidence: z.record(z.string(), z.unknown()).default({}),
 }).strict();
 
 export type ToolIssue = z.infer<typeof ToolIssueSchema>;

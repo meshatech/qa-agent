@@ -369,8 +369,12 @@ As primeiras tools públicas são macro tools. Elas podem ser chamadas por orque
   - Não aceita action solta como input, não expõe `PlaywrightHarness`, não expõe `page`, não ignora policies e não faz bypass de pre/postconditions.
 - `qa.evidence.record`
   - Status: implementada como macro tool dependente de `EvidenceService` no contexto.
+  - Arquivo: `src/application/tools/built-in/record_evidence.tool.ts`.
   - Registra evidências da execução, respeitando `runDir` e config de output do runtime.
-  - Retorna paths/artifacts gerados pelo serviço de evidência.
+  - Aceita `runId`, `scenarioId`, `reason`, `status`, `includeScreenshot`, `includeVideo`, `includeTrace`, `includeDomSnapshot`, `includeConsoleLog`, `includeNetworkLog`, `outputConfig` e payload `evidence` do runtime.
+  - Delega para `EvidenceService.record`, que encapsula captura/sanitização de screenshot, DOM, console, network, trace, video e reports.
+  - Retorna `evidenceBundle`, `artifactPaths` e `relativePaths`.
+  - Mascara textos sensíveis no motivo recebido e não executa ações diretas de browser, não navega e não expõe `PlaywrightHarness`/`page`.
 - `qa.report.generate`
   - Status: implementada como macro tool dependente de `ReportRunUseCase` no contexto.
   - Gera ou recupera relatório de uma run existente em `md` ou `json`.

@@ -2,12 +2,10 @@ import { readFile } from 'node:fs/promises';
 
 import type { QaTool } from '../qa-tool.js';
 import {
-  EvidenceRecordInputSchema,
   MemorySearchInputSchema,
   ReportGenerateInputSchema,
   SpecExportInputSchema,
   ToolResultSchema,
-  type EvidenceRecordInput,
   type MemorySearchInput,
   type ReportGenerateInput,
   type SpecExportInput,
@@ -15,22 +13,10 @@ import {
 } from './contracts.js';
 import { PlanBuildTool } from './build_execution_plan.tool.js';
 import { PlanExecuteTool } from './execute_execution_plan.tool.js';
+import { EvidenceRecordTool } from './record_evidence.tool.js';
 import { PlanReplanTool } from './request_replan.tool.js';
 import { ScreenObserveTool } from './observe_screen.tool.js';
 import { contextService, ok } from './support.js';
-
-export const EvidenceRecordTool: QaTool<EvidenceRecordInput, ToolResult> = {
-  name: 'qa.evidence.record',
-  description: 'Record runtime evidence through EvidenceService under runtime control.',
-  inputSchema: EvidenceRecordInputSchema,
-  outputSchema: ToolResultSchema,
-  async execute(input, context) {
-    const runDir = input.runDir ?? context.runDir;
-    if (!runDir) throw new Error('qa.evidence.record requires input.runDir or context.runDir');
-    const evidence = contextService<{ record(runDir: string, input: unknown): Promise<unknown> }>(context, 'evidence');
-    return ok(await evidence.record(runDir, input.evidence));
-  },
-};
 
 export const ReportGenerateTool: QaTool<ReportGenerateInput, ToolResult> = {
   name: 'qa.report.generate',
