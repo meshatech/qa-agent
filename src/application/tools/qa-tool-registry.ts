@@ -74,6 +74,7 @@ export class QaToolRegistry {
     if (!tool.name.trim()) throw new Error('QaTool name is required');
     if (!tool.description.trim()) throw new Error(`QaTool description is required: ${tool.name}`);
     if (!tool.inputSchema) throw new Error(`QaTool inputSchema is required: ${tool.name}`);
+    if (typeof tool.execute !== 'function') throw new Error(`QaTool execute is required: ${tool.name}`);
     if (!tool.internalOnly && PUBLIC_PLAYWRIGHT_ACTION_TOOL_NAMES.has(tool.name)) {
       throw new Error(`Direct Playwright action cannot be registered as a public QaTool: ${tool.name}`);
     }
