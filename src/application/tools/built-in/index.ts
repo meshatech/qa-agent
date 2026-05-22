@@ -12,6 +12,7 @@ export {
 export * from './contracts.js';
 export * from './public-tools.js';
 export * from './internal-tools.js';
+export * from './observe_screen.tool.js';
 
 export const PUBLIC_QA_TOOLS = [
   PlanValidationTool,

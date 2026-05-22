@@ -2,7 +2,6 @@ import { readFile } from 'node:fs/promises';
 
 import type { ExecutionPlan } from '../../../domain/schemas/execution-plan.schema.js';
 import type { RunConfig } from '../../../domain/schemas/config.schema.js';
-import { ScreenObservationSchema } from '../../../domain/schemas/observation.schema.js';
 import type { QaTool } from '../qa-tool.js';
 import {
   EvidenceRecordInputSchema,
@@ -11,37 +10,19 @@ import {
   PlanExecuteInputSchema,
   PlanReplanInputSchema,
   ReportGenerateInputSchema,
-  ScreenObserveInputSchema,
   SpecExportInputSchema,
   ToolResultSchema,
-  type BrowserToolService,
   type EvidenceRecordInput,
   type MemorySearchInput,
   type PlanBuildInput,
   type PlanExecuteInput,
   type PlanReplanInput,
   type ReportGenerateInput,
-  type ScreenObserveInput,
   type SpecExportInput,
   type ToolResult,
 } from './contracts.js';
+import { ScreenObserveTool } from './observe_screen.tool.js';
 import { configFrom, contextService, ok } from './support.js';
-
-export const ScreenObserveTool: QaTool<ScreenObserveInput, ToolResult> = {
-  name: 'qa.screen.observe',
-  description: 'Return a controlled ScreenObservation from the current browser session without executing actions.',
-  inputSchema: ScreenObserveInputSchema,
-  outputSchema: ToolResultSchema,
-  async execute(input, context) {
-    const browser = contextService<BrowserToolService>(context, 'browser');
-    const observation = ScreenObservationSchema.parse(await browser.observe());
-    const result: Record<string, unknown> = { observation };
-    if (input.includeDom) result.domSnapshot = await browser.domSnapshot?.();
-    if (input.includeScreenshot) result.screenshotBase64 = (await browser.screenshot?.())?.toString('base64');
-    if (input.includeAccessibilityTree) result.accessibilityTree = observation.elements.map(({ id, role, name, text }) => ({ id, role, name, text }));
-    return ok(result);
-  },
-};
 
 export const PlanBuildTool: QaTool<PlanBuildInput, ToolResult> = {
   name: 'qa.plan.build',

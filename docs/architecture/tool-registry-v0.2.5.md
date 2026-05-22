@@ -339,9 +339,10 @@ As primeiras tools públicas são macro tools. Elas podem ser chamadas por orque
   - Não abre browser, não resolve locator, não executa Playwright e não altera estado da aplicação.
 - `qa.screen.observe`
   - Status: implementada como macro tool dependente de browser no contexto.
+  - Arquivo: `src/application/tools/built-in/observe_screen.tool.ts`.
   - Retorna uma `ScreenObservation` controlada da tela atual.
-  - Opções: `includeDom`, `includeScreenshot`, `includeAccessibilityTree`.
-  - Não executa ação.
+  - Opções: `includeDom`, `includeScreenshot`, `includeAccessibilityTree`, `includeUrl`, `includeConsoleSummary`.
+  - Não executa ação, não navega, não executa script no DOM e não expõe `page` do Playwright.
 - `qa.plan.build`
   - Status: implementada como macro tool dependente de `ExecutionPlanPlannerService` no contexto.
   - Gera ou solicita um `ExecutionPlan` a partir de config, demanda e cenários.

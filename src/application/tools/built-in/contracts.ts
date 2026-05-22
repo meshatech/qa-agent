@@ -21,6 +21,8 @@ export const ScreenObserveInputSchema = z.object({
   includeDom: z.boolean().default(false),
   includeScreenshot: z.boolean().default(false),
   includeAccessibilityTree: z.boolean().default(false),
+  includeUrl: z.boolean().default(true),
+  includeConsoleSummary: z.boolean().default(false),
 }).strict();
 
 export const PlanBuildInputSchema = z.object({
