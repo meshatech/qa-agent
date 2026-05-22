@@ -210,6 +210,55 @@ Listagem e execução de internas:
 - `execute(name, input, context)` bloqueia tool interna por padrão;
 - `execute(name, input, context, { includeInternal: true })` permite execução interna controlada.
 
+## Adapter estrutural para tools
+
+O adapter inicial fica em `src/infra/adapters/structured-tool.adapter.ts`.
+
+Ele converte uma `QaTool` pública para um formato estrutural compatível com orquestradores externos sem acoplar o core diretamente a LangChain, Hermes ou MCP:
+
+```ts
+export interface StructuredToolLike {
+  name: string;
+  description: string;
+  schema: unknown;
+  invoke(input: unknown): Promise<unknown>;
+}
+```
+
+Regras do adapter:
+
+- recebe uma `QaTool`;
+- retorna `undefined` para tools `internalOnly` por padrão;
+- expõe `name`, `description` e `inputSchema` como `schema`;
+- encapsula `execute` por meio de `invoke`;
+- valida input com `inputSchema` antes de executar;
+- valida output com `outputSchema` quando existir;
+- retorna resposta serializável;
+- não importa Playwright;
+- não importa LangChain;
+- fica em `src/infra/adapters`, preservando o core desacoplado.
+
+## Adapter LangChain
+
+O adapter LangChain real fica em `src/infra/adapters/langchain-tool.adapter.ts`.
+
+Ele usa `DynamicStructuredTool` de `@langchain/core/tools` para converter uma `QaTool` pública em uma structured tool real do LangChain, mantendo a dependência restrita à camada de infraestrutura.
+
+Regras do adapter LangChain:
+
+- recebe uma `QaTool`;
+- retorna `undefined` para tools `internalOnly` por padrão;
+- expõe `name` e `description`;
+- usa `inputSchema` como `schema` da `DynamicStructuredTool`;
+- encapsula `execute` por meio de `invoke`;
+- valida input com `inputSchema` antes de executar;
+- valida output com `outputSchema` quando existir;
+- recebe `QaToolContext` de forma controlada por opção;
+- retorna resposta serializável;
+- não importa Playwright;
+- não altera `QaTool`, `QaToolContext` ou `QaToolRegistry`;
+- mantém o core desacoplado de LangChain.
+
 Nomes perigosos bloqueados hoje para registro público:
 
 - `click`
