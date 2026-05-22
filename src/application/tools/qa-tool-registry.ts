@@ -79,6 +79,14 @@ export class QaToolRegistry {
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  listPublic(): QaToolDescriptor[] {
+    return this.list();
+  }
+
+  listAll(): QaToolDescriptor[] {
+    return this.list({ includeInternal: true });
+  }
+
   async execute(name: string, input: unknown, context: QaToolContext, options: ExecuteQaToolOptions = {}): Promise<unknown> {
     const tool = this.require(name, options);
     const parsedInput = tool.inputSchema.parse(input);

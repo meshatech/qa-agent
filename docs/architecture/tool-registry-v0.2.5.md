@@ -171,6 +171,8 @@ Funcionalidades atuais:
 - busca tool por nome com erro explícito usando `getOrThrow`;
 - exige tool por nome com `require`, retornando erro explícito quando ausente ou inacessível;
 - lista tools públicas por padrão com `list`;
+- lista tools públicas explicitamente com `listPublic`;
+- lista todas as tools, incluindo internas, com `listAll`;
 - lista tools internas apenas quando `includeInternal: true`;
 - executa tools com validação de input via `inputSchema`;
 - valida output quando `outputSchema` existe;
@@ -199,6 +201,14 @@ Busca por nome:
 - `getOrThrow(name)` retorna a tool quando ela existe e é acessível;
 - `getOrThrow(name)` lança erro claro quando a tool não existe ou não está acessível;
 - `require(name)` permanece como alias compatível de `getOrThrow(name)`.
+
+Listagem e execução de internas:
+
+- `list()` e `listPublic()` omitem tools internas por padrão;
+- `list({ includeInternal: true })` e `listAll()` incluem tools internas;
+- adapters externos devem usar a listagem pública por padrão;
+- `execute(name, input, context)` bloqueia tool interna por padrão;
+- `execute(name, input, context, { includeInternal: true })` permite execução interna controlada.
 
 Nomes perigosos bloqueados hoje para registro público:
 
