@@ -15,10 +15,18 @@ const PUBLIC_PLAYWRIGHT_ACTION_TOOL_NAMES = new Set([
   'fill',
   'press',
   'navigate',
+  'selectOption',
+  'uploadFile',
+  'dragAndDrop',
+  'evaluate',
   'playwright.click',
   'playwright.fill',
   'playwright.press',
   'playwright.navigate',
+  'playwright.selectOption',
+  'playwright.uploadFile',
+  'playwright.dragAndDrop',
+  'playwright.evaluate',
 ]);
 
 @Injectable()

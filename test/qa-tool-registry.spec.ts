@@ -168,10 +168,18 @@ describe('QaToolRegistry', () => {
       'fill',
       'press',
       'navigate',
+      'selectOption',
+      'uploadFile',
+      'dragAndDrop',
+      'evaluate',
       'playwright.click',
       'playwright.fill',
       'playwright.press',
       'playwright.navigate',
+      'playwright.selectOption',
+      'playwright.uploadFile',
+      'playwright.dragAndDrop',
+      'playwright.evaluate',
     ]) {
       expect(() => new QaToolRegistry([{
         ...echoTool,
