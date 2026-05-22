@@ -90,6 +90,34 @@ LLM / adapter externo
 - O core não deve depender diretamente de LangChain, Hermes ou MCP.
 - Adapters para LangChain/Structured Tools/Hermes/MCP devem ficar em `src/infra/adapters/` ou camada equivalente de infraestrutura.
 
+## Contrato base `QaTool`
+
+A interface `QaTool` em `src/application/tools/qa-tool.ts` é o contrato base para qualquer capacidade registrada no `QaToolRegistry`.
+
+Ela é genérica o suficiente para tools de planejamento, execução, observação, memória, evidência e reporting, mas mantém validação Zod de entrada/saída e separação segura entre tools públicas e capabilities internas.
+
+```ts
+export interface QaTool<I = unknown, O = unknown> {
+  name: string;
+  description: string;
+  inputSchema: z.ZodType<I>;
+  outputSchema?: z.ZodType<O>;
+  internalOnly?: boolean;
+  execute(input: I, context: QaToolContext): Promise<O>;
+}
+```
+
+Campos do contrato:
+
+- `name`: identificador único da tool, por exemplo `qa.plan.validate`;
+- `description`: explicação clara para orquestradores/humanos;
+- `inputSchema`: schema Zod obrigatório para validar entrada;
+- `outputSchema`: schema Zod opcional para validar retorno;
+- `internalOnly`: indica que a tool não pode ser exposta publicamente por padrão;
+- `execute`: função assíncrona que recebe input validado e `QaToolContext`.
+
+Esse contrato fica em `src/application/tools`, não importa Playwright diretamente e não depende diretamente de LangChain, Hermes ou MCP.
+
 ## Ações Playwright não expostas
 
 Ações diretas de browser/Playwright nunca devem ser tools públicas do `QaToolRegistry`.
