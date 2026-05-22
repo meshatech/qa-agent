@@ -175,6 +175,16 @@ Funcionalidades atuais:
 - impede exposição pública de tools internas marcadas com `internalOnly`;
 - bloqueia nomes perigosos já implementados para tools públicas.
 
+O método `register` valida o contrato mínimo antes de inserir a tool no registry:
+
+- `name` obrigatório e não vazio;
+- `description` obrigatória e não vazia;
+- `inputSchema` obrigatório;
+- `execute` obrigatório;
+- nome único no registry;
+- suporte a `internalOnly`;
+- bloqueio de nomes perigosos para tools públicas.
+
 Nomes perigosos bloqueados hoje para registro público:
 
 - `click`

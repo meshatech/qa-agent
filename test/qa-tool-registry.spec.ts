@@ -85,10 +85,11 @@ describe('QaToolRegistry', () => {
     });
   });
 
-  it('requires name, description, and inputSchema for registered tools', () => {
+  it('requires name, description, inputSchema, and execute for registered tools', () => {
     expect(() => new QaToolRegistry([{ ...echoTool, name: '   ' }])).toThrow(/name is required/);
     expect(() => new QaToolRegistry([{ ...echoTool, description: '   ' }])).toThrow(/description is required/);
     expect(() => new QaToolRegistry([{ ...echoTool, inputSchema: undefined as unknown as QaTool['inputSchema'] }])).toThrow(/inputSchema is required/);
+    expect(() => new QaToolRegistry([{ ...echoTool, execute: undefined as unknown as QaTool['execute'] }])).toThrow(/execute is required/);
   });
 
   it('hides internal tools unless explicitly requested', () => {
