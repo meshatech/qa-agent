@@ -1,0 +1,110 @@
+import { describe, expect, it, vi } from 'vitest';
+
+import { PlanBuildTool } from '../src/application/tools/built-in/build_execution_plan.tool.js';
+import { QaToolRegistry } from '../src/application/tools/qa-tool-registry.js';
+import { RunConfigSchema } from '../src/domain/schemas/config.schema.js';
+
+const config = RunConfigSchema.parse({
+  baseUrl: 'https://app.local',
+  appDomains: ['app.local'],
+  demand: { id: 'D1', title: 'Smoke', description: 'Smoke' },
+});
+
+const plan = {
+  schemaVersion: 'execution-plan.v1',
+  planId: 'plan-1',
+  version: 1,
+  goal: 'Smoke',
+  mode: 'HYBRID_GUARDED',
+  runtime: { maxAttemptsPerStep: 2, maxReplansPerScenario: 1, destructiveActionPolicy: 'BLOCK' },
+  steps: [{
+    id: 'S001',
+    description: 'Wait for stable UI',
+    preconditions: [],
+    action: { type: 'waitForStable', reason: 'wait for stable UI' },
+    postconditions: [{ type: 'text_visible', text: 'Inbox' }],
+    assertions: [],
+    onFailure: 'RECOVER',
+  }],
+  assertions: [],
+};
+
+const observation = {
+  observationId: 'obs-1',
+  createdAt: new Date().toISOString(),
+  url: 'https://app.local/inbox',
+  title: 'Inbox',
+  visibleTexts: ['Inbox'],
+  elements: [],
+  pageState: { isLoading: false, hasModal: false, hasToast: false, hasValidationErrors: false },
+  consoleSignals: [],
+  networkSignals: [],
+  meta: { viewport: { width: 1280, height: 720 }, schemaVersion: 'obs.v1' },
+};
+
+describe('qa.plan.build', () => {
+  it('delegates to ExecutionPlanPlannerService and returns plan metadata', async () => {
+    const planner = {
+      build: vi.fn(async () => ({ plan, source: 'llm' })),
+    };
+    const browser = { execute: vi.fn(), observe: vi.fn() };
+    const planExecutor = { execute: vi.fn() };
+    const registry = new QaToolRegistry([PlanBuildTool]);
+
+    await expect(registry.execute('qa.plan.build', {
+      config,
+      scenarios: [],
+      memoryContext: { hints: ['prefer inbox labels'] },
+      demandContext: { source: 'pr' },
+      screenObservation: observation,
+      runtimeMode: 'HYBRID_GUARDED',
+    }, {
+      metadata: { executionPlanPlanner: planner, browser, planExecutor },
+    })).resolves.toEqual({
+      ok: true,
+      issues: [],
+      result: {
+        plan,
+        planSource: 'llm',
+      },
+    });
+    expect(planner.build).toHaveBeenCalledWith(config, []);
+    expect(browser.execute).not.toHaveBeenCalled();
+    expect(browser.observe).not.toHaveBeenCalled();
+    expect(planExecutor.execute).not.toHaveBeenCalled();
+  });
+
+  it('returns fallback metadata when planner falls back to factory', async () => {
+    const planner = {
+      build: vi.fn(async () => ({
+        plan,
+        source: 'factory',
+        fallbackReason: 'LLM buildPlan returned invalid ExecutionPlan (1 schema issues: steps.0.action: Invalid input)',
+      })),
+    };
+    const registry = new QaToolRegistry([PlanBuildTool]);
+
+    await expect(registry.execute('qa.plan.build', { config, scenarios: [] }, {
+      metadata: { executionPlanPlanner: planner },
+    })).resolves.toMatchObject({
+      ok: true,
+      result: {
+        plan,
+        planSource: 'factory',
+        fallbackReason: expect.stringContaining('invalid ExecutionPlan'),
+        fallbackWarning: 'LLM buildPlan failed schema/provider validation; safe factory fallback was used.',
+      },
+    });
+  });
+
+  it('rejects planner output that is not a valid ExecutionPlan', async () => {
+    const planner = {
+      build: vi.fn(async () => ({ plan: { planId: 'bad' }, source: 'llm' })),
+    };
+    const registry = new QaToolRegistry([PlanBuildTool]);
+
+    await expect(registry.execute('qa.plan.build', { config, scenarios: [] }, {
+      metadata: { executionPlanPlanner: planner },
+    })).rejects.toThrow();
+  });
+});

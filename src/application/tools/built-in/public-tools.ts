@@ -6,7 +6,6 @@ import type { QaTool } from '../qa-tool.js';
 import {
   EvidenceRecordInputSchema,
   MemorySearchInputSchema,
-  PlanBuildInputSchema,
   PlanExecuteInputSchema,
   PlanReplanInputSchema,
   ReportGenerateInputSchema,
@@ -14,26 +13,15 @@ import {
   ToolResultSchema,
   type EvidenceRecordInput,
   type MemorySearchInput,
-  type PlanBuildInput,
   type PlanExecuteInput,
   type PlanReplanInput,
   type ReportGenerateInput,
   type SpecExportInput,
   type ToolResult,
 } from './contracts.js';
+import { PlanBuildTool } from './build_execution_plan.tool.js';
 import { ScreenObserveTool } from './observe_screen.tool.js';
 import { configFrom, contextService, ok } from './support.js';
-
-export const PlanBuildTool: QaTool<PlanBuildInput, ToolResult> = {
-  name: 'qa.plan.build',
-  description: 'Build a validated ExecutionPlan from RunConfig and scenarios without executing browser actions.',
-  inputSchema: PlanBuildInputSchema,
-  outputSchema: ToolResultSchema,
-  async execute(input, context) {
-    const planner = contextService<{ build(config: RunConfig, scenarios: unknown[]): Promise<unknown> }>(context, 'executionPlanPlanner');
-    return ok(await planner.build(configFrom(input, context, 'qa.plan.build'), input.scenarios));
-  },
-};
 
 export const PlanReplanTool: QaTool<PlanReplanInput, ToolResult> = {
   name: 'qa.plan.replan',

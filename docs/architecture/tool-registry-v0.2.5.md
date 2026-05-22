@@ -345,9 +345,12 @@ As primeiras tools públicas são macro tools. Elas podem ser chamadas por orque
   - Não executa ação, não navega, não executa script no DOM e não expõe `page` do Playwright.
 - `qa.plan.build`
   - Status: implementada como macro tool dependente de `ExecutionPlanPlannerService` no contexto.
+  - Arquivo: `src/application/tools/built-in/build_execution_plan.tool.ts`.
   - Gera ou solicita um `ExecutionPlan` a partir de config, demanda e cenários.
-  - Usa provider LLM/factory, normalização, Zod e policy.
-  - Não executa o plano.
+  - Aceita `scenarios`, `config`, `memoryContext`, `demandContext`, `screenObservation` e `runtimeMode`.
+  - Delega para `ExecutionPlanPlannerService`, preservando provider LLM/factory, normalização por provider, validação Zod, policy semântica e fallback para factory.
+  - Retorna `plan`, `planSource`, `fallbackReason` e `fallbackWarning` quando aplicável.
+  - Não executa o plano, não aplica patch, não executa Playwright e não aceita `el_*`/`targetElementId` fora do contrato validado.
 - `qa.plan.replan`
   - Status: implementada como macro tool dependente de `PlanReplannerService` no contexto.
   - Solicita um `PlanPatch` quando uma etapa falhar.

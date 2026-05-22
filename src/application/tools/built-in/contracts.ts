@@ -28,6 +28,10 @@ export const ScreenObserveInputSchema = z.object({
 export const PlanBuildInputSchema = z.object({
   config: RunConfigSchema.optional(),
   scenarios: z.array(z.unknown()).default([]),
+  memoryContext: z.unknown().optional(),
+  demandContext: z.unknown().optional(),
+  screenObservation: ScreenObservationSchema.optional(),
+  runtimeMode: z.string().optional(),
 }).strict();
 
 export const PlanReplanInputSchema = z.object({
