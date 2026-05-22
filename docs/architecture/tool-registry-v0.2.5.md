@@ -400,9 +400,12 @@ Tools internas encapsulam capacidades do runtime, ficam marcadas com `internalOn
 
 - `qa.condition.evaluate`
   - Status: implementada como internalOnly.
+  - Arquivo: `src/application/tools/built-in/evaluate_condition.tool.ts`.
   - Avalia `PlanCondition` e gera resultado equivalente a `ConditionEvaluationResult`.
-  - Uso: preconditions, postconditions e business assertions.
-  - Não é pública porque expõe detalhes internos do executor.
+  - Aceita `condition`, `currentObservation`, `beforeState`, `afterState` e `runContext`, mantendo compatibilidade com os aliases internos `observation`, `before` e `after`.
+  - Suporta preconditions, postconditions, business assertions e condições de runtime como `ui_state`, `auth_state`, `menu_state`, `route_state`, `attribute_state` e `storage_state`.
+  - Retorna `conditionId`, `type`, `passed`, `expected`, `actual`, `before`, `after`, `severity` e `reason`.
+  - Não é pública porque expõe detalhes internos do executor e não deve ser exportada para adapters externos por padrão.
 - `qa.element.ensureAvailable`
   - Status: implementada como internalOnly.
   - Usa `ElementAvailabilityResolver` para tentar tornar um elemento disponível sob policy.

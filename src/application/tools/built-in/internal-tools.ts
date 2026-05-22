@@ -1,10 +1,9 @@
 import type { LocatorDescriptor } from '../../../domain/schemas/action.schema.js';
 import type { ScreenObservation } from '../../../domain/schemas/observation.schema.js';
 import type { QaTool } from '../qa-tool.js';
-import { evaluateCondition } from './condition-evaluator.js';
+import { ConditionEvaluateTool } from './evaluate_condition.tool.js';
 import {
   ActionExecuteInternalInputSchema,
-  ConditionEvaluateInputSchema,
   ElementEnsureAvailableInputSchema,
   LocatorResolveInputSchema,
   QuiescenceWaitInputSchema,
@@ -12,24 +11,12 @@ import {
   type ActionExecuteInternalInput,
   type ActionPolicyToolService,
   type BrowserToolService,
-  type ConditionEvaluateInput,
   type ElementEnsureAvailableInput,
   type LocatorResolveInput,
   type QuiescenceWaitInput,
   type ToolResult,
 } from './contracts.js';
 import { configFrom, contextService, failed, ok } from './support.js';
-
-export const ConditionEvaluateTool: QaTool<ConditionEvaluateInput, ToolResult> = {
-  name: 'qa.condition.evaluate',
-  description: 'Evaluate a PlanCondition against observation/runtime snapshots for internal executor use.',
-  internalOnly: true,
-  inputSchema: ConditionEvaluateInputSchema,
-  outputSchema: ToolResultSchema,
-  async execute(input) {
-    return ok(evaluateCondition(input));
-  },
-};
 
 export const ElementEnsureAvailableTool: QaTool<ElementEnsureAvailableInput, ToolResult> = {
   name: 'qa.element.ensureAvailable',

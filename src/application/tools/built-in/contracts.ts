@@ -89,10 +89,14 @@ export const MemorySearchInputSchema = z.object({
 
 export const ConditionEvaluateInputSchema = z.object({
   condition: PlanConditionSchema,
-  observation: ScreenObservationSchema,
+  observation: ScreenObservationSchema.optional(),
+  currentObservation: ScreenObservationSchema.optional(),
   before: RuntimeStateSnapshotSchema.optional(),
+  beforeState: RuntimeStateSnapshotSchema.optional(),
   after: RuntimeStateSnapshotSchema.optional(),
-}).strict();
+  afterState: RuntimeStateSnapshotSchema.optional(),
+  runContext: z.unknown().optional(),
+}).strict().refine((input) => input.observation || input.currentObservation, 'qa.condition.evaluate requires observation or currentObservation');
 
 export const ElementEnsureAvailableInputSchema = z.object({
   target: LocatorDescriptorSchema,
