@@ -273,6 +273,18 @@ describe('QaToolRegistry', () => {
     expect(names).not.toContain('fill');
     expect(names).not.toContain('press');
     expect(names).not.toContain('navigate');
+    expect(names).not.toContain('selectOption');
+    expect(names).not.toContain('uploadFile');
+    expect(names).not.toContain('dragAndDrop');
+    expect(names).not.toContain('evaluate');
+    expect(names).not.toContain('playwright.click');
+    expect(names).not.toContain('playwright.fill');
+    expect(names).not.toContain('playwright.press');
+    expect(names).not.toContain('playwright.navigate');
+    expect(names).not.toContain('playwright.selectOption');
+    expect(names).not.toContain('playwright.uploadFile');
+    expect(names).not.toContain('playwright.dragAndDrop');
+    expect(names).not.toContain('playwright.evaluate');
     expect(PUBLIC_QA_TOOLS.every((tool) => !tool.internalOnly)).toBe(true);
   });
 
