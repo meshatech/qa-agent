@@ -206,20 +206,24 @@ Nomes perigosos bloqueados hoje para registro público:
 - `fill`
 - `press`
 - `navigate`
-- `playwright.click`
-- `playwright.fill`
-- `playwright.press`
-- `playwright.navigate`
-
-Regra arquitetural para demais ações diretas de browser:
-
 - `selectOption`
 - `uploadFile`
 - `dragAndDrop`
 - `evaluate`
+- `playwright.click`
+- `playwright.fill`
+- `playwright.press`
+- `playwright.navigate`
+- `playwright.selectOption`
+- `playwright.uploadFile`
+- `playwright.dragAndDrop`
+- `playwright.evaluate`
+
+Regra arquitetural para demais ações diretas de browser:
+
 - qualquer ação de DOM/script arbitrário
 
-Essas ações também não devem ser expostas como tools públicas. Se forem adicionadas ao runtime no futuro, devem seguir a mesma regra de bloqueio público ou permanecer internas.
+Ações de DOM/script arbitrário também não devem ser expostas como tools públicas. Se forem adicionadas ao runtime no futuro, devem seguir a mesma regra de bloqueio público ou permanecer internas.
 
 ## Ações Playwright não expostas
 
@@ -245,8 +249,12 @@ No projeto atual, o `QaToolRegistry` já bloqueia explicitamente tools públicas
 - `fill`
 - `press`
 - `navigate`
+- `selectOption`
+- `uploadFile`
+- `dragAndDrop`
+- `evaluate`
 
-As demais ações diretas de browser listadas acima devem seguir a mesma regra arquitetural: não podem ser expostas como tools públicas.
+Além disso, variantes com prefixo `playwright.` desses mesmos nomes também são bloqueadas para registro público.
 
 Essas ações só podem existir dentro do runtime guardado:
 
