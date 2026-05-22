@@ -105,6 +105,20 @@ describe('QaToolRegistry', () => {
     expect(registry.get('qa.internal.echo', { includeInternal: true })).toBeDefined();
   });
 
+  it('gets tools by name without exposing internal tools by default', () => {
+    const internalTool: QaTool<{ message: string }, { echoed: string }> = {
+      ...echoTool,
+      name: 'qa.internal.echo',
+      internalOnly: true,
+    };
+    const registry = new QaToolRegistry([echoTool, internalTool]);
+
+    expect(registry.get('qa.echo')).toBe(echoTool);
+    expect(registry.get('qa.missing')).toBeUndefined();
+    expect(registry.get('qa.internal.echo')).toBeUndefined();
+    expect(registry.get('qa.internal.echo', { includeInternal: true })).toBe(internalTool);
+  });
+
   it('requires accessible tools by name with an explicit error', () => {
     const registry = new QaToolRegistry([{
       ...echoTool,

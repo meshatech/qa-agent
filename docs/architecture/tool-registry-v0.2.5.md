@@ -185,6 +185,16 @@ O método `register` valida o contrato mínimo antes de inserir a tool no regist
 - suporte a `internalOnly`;
 - bloqueio de nomes perigosos para tools públicas.
 
+Busca por nome:
+
+- `get(name)` retorna a tool quando ela existe e é pública;
+- `get(name)` retorna `undefined` quando a tool não existe;
+- `get(name)` retorna `undefined` para tool interna quando `includeInternal` não for informado;
+- `get(name, { includeInternal: true })` permite buscar tool interna;
+- `require(name)` retorna a tool quando ela existe e é acessível;
+- `require(name)` lança erro claro quando a tool não existe ou não está acessível;
+- não existe método `has(name)` no projeto atual; para manter a API enxuta, a presença de uma tool deve ser verificada com `get(name) !== undefined`.
+
 Nomes perigosos bloqueados hoje para registro público:
 
 - `click`
