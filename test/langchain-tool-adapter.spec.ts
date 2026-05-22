@@ -45,4 +45,17 @@ describe('LangChain tool adapter', () => {
 
     await expect(tool?.invoke({ message: 1 })).rejects.toThrow();
   });
+
+  it('validates output after invoking the QaTool', async () => {
+    const invalidOutputTool: QaTool<{ message: string }, { echoed: string }> = {
+      ...publicTool,
+      outputSchema: z.object({ echoed: z.string() }),
+      async execute() {
+        return { echoed: 1 } as unknown as { echoed: string };
+      },
+    };
+    const tool = toLangChainTool(invalidOutputTool);
+
+    await expect(tool?.invoke({ message: 'ok' })).rejects.toThrow();
+  });
 });
