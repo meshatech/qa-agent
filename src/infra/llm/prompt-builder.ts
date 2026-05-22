@@ -57,7 +57,7 @@ export const EXECUTION_PLAN_SYSTEM_PROMPT = [
   'Postconditions MUST be an array named "postconditions". Never use singular "postcondition".',
   'Use condition fields exactly: text_visible uses {"type":"text_visible","text":"..."}, text_any_visible uses {"type":"text_any_visible","texts":["..."]}, ui_state uses {"type":"ui_state","semanticKey":"appearance_mode","expected":"changed","source":"dom"}, auth_state uses {"type":"auth_state","expected":"anonymous"}.',
   'For mutable labels, use semantic or text_any instead of hardcoded single text.',
-  'For state changes, prefer RuntimeCondition types ui_state, attribute_state, storage_state, route_state, auth_state, or menu_state.',
+  'For state changes, prefer PlanCondition runtime-state types ui_state, attribute_state, storage_state, route_state, auth_state, or menu_state.',
   'Every step needs strong postconditions. no_console_errors cannot complete functional tasks.',
   'Causality rule: postconditions must be caused by the action in the same step.',
   'Passive actions waitForStable and assertVisible can only validate existing state. They MUST NOT use expected "changed" in ui_state, attribute_state, storage_state, menu_state, auth_state, or route_state.',
