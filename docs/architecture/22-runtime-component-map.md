@@ -209,6 +209,46 @@ Isso significa:
 
 Essa fronteira e coerente com `QaToolRegistry`, que bloqueia registro publico de actions Playwright diretas como `click`, `fill`, `press` e `navigate`.
 
+### Ações Playwright não expostas
+
+Acoes diretas de browser/Playwright nunca devem ser tools publicas do `QaToolRegistry`.
+
+Essa regra preserva a seguranca da v0.2-stable/v0.2.5, evitando que a LLM volte a operar como gerador/executor direto de acoes no browser.
+
+As acoes abaixo sao proibidas como tools publicas:
+
+- `click`
+- `fill`
+- `press`
+- `navigate`
+- `selectOption`
+- `uploadFile`
+- `dragAndDrop`
+- `evaluate`
+- qualquer acao de DOM/script arbitrario
+
+No projeto atual, o `QaToolRegistry` ja bloqueia explicitamente tools publicas com os nomes:
+
+- `click`
+- `fill`
+- `press`
+- `navigate`
+
+As demais acoes diretas de browser listadas acima devem seguir a mesma regra arquitetural: nao podem ser expostas como tools publicas.
+
+Essas acoes so podem existir dentro do runtime guardado:
+
+```txt
+ExecutionPlan
+-> Zod/schema
+-> semantic policy
+-> PlanExecutorService
+-> BrowserHarnessPort / PlaywrightHarness
+-> Evidence/Reports
+```
+
+A LLM so pode sugerir `ExecutionPlan` ou `PlanPatch`. O plano/patch passa por validacao, a execucao real e do `PlanExecutorService`, e o `PlaywrightHarness` e infraestrutura, nao ferramenta publica.
+
 ## 7. Tool Registry Impact
 
 A v0.2.5 deve evoluir a camada de tools sem reescrever o runtime. O fluxo permitido continua:
@@ -247,6 +287,11 @@ Nao expor como tools publicas:
 - `fill`
 - `press`
 - `navigate`
+- `selectOption`
+- `uploadFile`
+- `dragAndDrop`
+- `evaluate`
+- qualquer acao de DOM/script arbitrario
 
 Essas actions permanecem como detalhes internos do executor/harness, sempre mediadas por plano, policy e validacao.
 

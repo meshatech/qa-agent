@@ -90,6 +90,46 @@ LLM / adapter externo
 - O core não deve depender diretamente de LangChain, Hermes ou MCP.
 - Adapters para LangChain/Structured Tools/Hermes/MCP devem ficar em `src/infra/adapters/` ou camada equivalente de infraestrutura.
 
+## Ações Playwright não expostas
+
+Ações diretas de browser/Playwright nunca devem ser tools públicas do `QaToolRegistry`.
+
+Essa regra preserva a segurança da v0.2-stable/v0.2.5, evitando que a LLM volte a operar como gerador/executor direto de ações no browser.
+
+As ações abaixo são proibidas como tools públicas:
+
+- `click`
+- `fill`
+- `press`
+- `navigate`
+- `selectOption`
+- `uploadFile`
+- `dragAndDrop`
+- `evaluate`
+- qualquer ação de DOM/script arbitrário
+
+No projeto atual, o `QaToolRegistry` já bloqueia explicitamente tools públicas com os nomes:
+
+- `click`
+- `fill`
+- `press`
+- `navigate`
+
+As demais ações diretas de browser listadas acima devem seguir a mesma regra arquitetural: não podem ser expostas como tools públicas.
+
+Essas ações só podem existir dentro do runtime guardado:
+
+```txt
+ExecutionPlan
+-> Zod/schema
+-> semantic policy
+-> PlanExecutorService
+-> BrowserHarnessPort / PlaywrightHarness
+-> Evidence/Reports
+```
+
+A LLM só pode sugerir `ExecutionPlan` ou `PlanPatch`. O plano/patch passa por validação, a execução real é do `PlanExecutorService`, e o `PlaywrightHarness` é infraestrutura, não ferramenta pública.
+
 ## Tools Públicas Iniciais
 
 As primeiras tools públicas são macro tools. Elas podem ser chamadas por orquestrador, LangChain, Hermes, MCP ou fluxo nativo, mas nunca representam ações atômicas de browser.
