@@ -156,6 +156,46 @@ O contexto não deve incluir diretamente:
 
 Quando uma tool precisar acessar capacidades do runtime, isso deve acontecer por meio de `metadata` com dependências controladas e tipadas no ponto de uso, preservando a separação entre orchestration e runtime.
 
+## Registry central `QaToolRegistry`
+
+O `QaToolRegistry` em `src/application/tools/qa-tool-registry.ts` é o registry central das tools do Agent QA.
+
+Ele registra, busca, lista e executa tools de forma controlada, servindo como fundação para integrações futuras com LangChain, Hermes, MCP, orquestrador nativo e pipeline de PR.
+
+Funcionalidades atuais:
+
+- registra uma tool com `register`;
+- registra várias tools com `registerMany`;
+- busca tool por nome com `get`;
+- exige tool por nome com `require`, retornando erro explícito quando ausente ou inacessível;
+- lista tools públicas por padrão com `list`;
+- lista tools internas apenas quando `includeInternal: true`;
+- executa tools com validação de input via `inputSchema`;
+- valida output quando `outputSchema` existe;
+- impede exposição pública de tools internas marcadas com `internalOnly`;
+- bloqueia nomes perigosos já implementados para tools públicas.
+
+Nomes perigosos bloqueados hoje para registro público:
+
+- `click`
+- `fill`
+- `press`
+- `navigate`
+- `playwright.click`
+- `playwright.fill`
+- `playwright.press`
+- `playwright.navigate`
+
+Regra arquitetural para demais ações diretas de browser:
+
+- `selectOption`
+- `uploadFile`
+- `dragAndDrop`
+- `evaluate`
+- qualquer ação de DOM/script arbitrário
+
+Essas ações também não devem ser expostas como tools públicas. Se forem adicionadas ao runtime no futuro, devem seguir a mesma regra de bloqueio público ou permanecer internas.
+
 ## Ações Playwright não expostas
 
 Ações diretas de browser/Playwright nunca devem ser tools públicas do `QaToolRegistry`.
