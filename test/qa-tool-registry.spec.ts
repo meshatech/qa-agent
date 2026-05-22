@@ -104,18 +104,41 @@ describe('QaToolRegistry', () => {
     expect(registry.get('qa.internal.echo', { includeInternal: true })).toBeDefined();
   });
 
+  it('requires accessible tools by name with an explicit error', () => {
+    const registry = new QaToolRegistry([{
+      ...echoTool,
+      name: 'qa.internal.echo',
+      internalOnly: true,
+    }]);
+
+    expect(() => registry.require('qa.missing')).toThrow(/not found or not accessible/);
+    expect(() => registry.require('qa.internal.echo')).toThrow(/not found or not accessible/);
+    expect(registry.require('qa.internal.echo', { includeInternal: true })).toBeDefined();
+  });
+
   it('rejects duplicate tool names', () => {
     const registry = new QaToolRegistry([echoTool]);
 
     expect(() => registry.register(echoTool)).toThrow(/already registered/);
   });
 
-  it('rejects public direct Playwright action tools', () => {
-    expect(() => new QaToolRegistry([{
-      ...echoTool,
-      name: 'click',
-      description: 'Unsafe public click',
-    }])).toThrow(/Direct Playwright action/);
+  it('rejects public direct Playwright action tool names', () => {
+    for (const name of [
+      'click',
+      'fill',
+      'press',
+      'navigate',
+      'playwright.click',
+      'playwright.fill',
+      'playwright.press',
+      'playwright.navigate',
+    ]) {
+      expect(() => new QaToolRegistry([{
+        ...echoTool,
+        name,
+        description: `Unsafe public ${name}`,
+      }])).toThrow(/Direct Playwright action/);
+    }
   });
 
   it('allows direct action names only when internal', () => {
