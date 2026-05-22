@@ -591,3 +591,8 @@ npm run lint
 ## Documentacao Tecnica
 
 As specs e ADRs do projeto estao em [doc/README.md](file:///c:/dev/apps/agent-qa/doc/README.md).
+
+Arquitetura atual:
+
+- [Runtime Core e Componentes](docs/architecture/22-runtime-component-map.md)
+- [Tool Registry & Harness Tools](docs/architecture/tool-registry-v0.2.5.md)
