@@ -113,4 +113,68 @@ describe('qa.plan.execute', () => {
     expect(playwrightHarness.execute).not.toHaveBeenCalled();
     expect(JSON.stringify(result)).not.toContain('page');
   });
+
+  it('does not run a parallel execution loop for conditions, quiescence, policies, or replan', async () => {
+    const executionResult = {
+      ok: true,
+      steps: [{
+        stepId: 'S001',
+        action: plan.steps[0]?.action,
+        resolvedAction: plan.steps[0]?.action,
+        boundExpected: { type: 'text_visible', text: 'Inbox' },
+        validation: { ok: true, type: 'text_visible', durationMs: 0 },
+      }],
+      attempts: [{ actionType: 'waitForStable', result: 'PASSED', ts: '2026-05-22T00:00:00.000Z' }],
+      warnings: [{ stepId: 'S001', message: 'QUIESCENCE_TIMEOUT' }],
+      finalPlan: plan,
+      patchHistory: [{ status: 'BLOCKED', reason: 'no safe patch' }],
+      evaluations: [
+        { conditionId: 'S001:precondition:1', stepId: 'S001', phase: 'precondition', type: 'text_visible', passed: true, severity: 'INFO', reason: 'condition passed' },
+        { conditionId: 'S001:postcondition:1', stepId: 'S001', phase: 'postcondition', type: 'text_visible', passed: true, severity: 'INFO', reason: 'condition passed' },
+        { conditionId: 'S001:businessAssertion:1', stepId: 'S001', phase: 'businessAssertion', type: 'no_console_errors', passed: true, severity: 'INFO', reason: 'condition passed' },
+      ],
+    };
+    const planExecutor = { execute: vi.fn(async () => executionResult) };
+    const browser = {
+      observe: vi.fn(),
+      execute: vi.fn(),
+      waitForQuiescence: vi.fn(),
+      validate: vi.fn(),
+    };
+    const locatorResolver = { findByLocator: vi.fn(), rebuild: vi.fn() };
+    const actionPolicy = { validate: vi.fn(), validateDestructiveText: vi.fn() };
+    const replanner = { replan: vi.fn() };
+    const evidence = { record: vi.fn() };
+    const registry = new QaToolRegistry([PlanExecuteTool]);
+
+    await expect(registry.execute('qa.plan.execute', {
+      plan,
+      config,
+      scenarioId: 'scenario-001',
+    }, {
+      metadata: { planExecutor, browser, locatorResolver, actionPolicy, replanner, evidence },
+    })).resolves.toMatchObject({
+      ok: true,
+      result: {
+        executionResult: {
+          warnings: executionResult.warnings,
+          patchHistory: executionResult.patchHistory,
+          evaluations: executionResult.evaluations,
+        },
+        scenarioFinalStatus: 'PASSED',
+        warnings: executionResult.warnings,
+      },
+    });
+    expect(planExecutor.execute).toHaveBeenCalledWith(plan, config);
+    expect(browser.observe).not.toHaveBeenCalled();
+    expect(browser.execute).not.toHaveBeenCalled();
+    expect(browser.waitForQuiescence).not.toHaveBeenCalled();
+    expect(browser.validate).not.toHaveBeenCalled();
+    expect(locatorResolver.findByLocator).not.toHaveBeenCalled();
+    expect(locatorResolver.rebuild).not.toHaveBeenCalled();
+    expect(actionPolicy.validate).not.toHaveBeenCalled();
+    expect(actionPolicy.validateDestructiveText).not.toHaveBeenCalled();
+    expect(replanner.replan).not.toHaveBeenCalled();
+    expect(evidence.record).not.toHaveBeenCalled();
+  });
 });
