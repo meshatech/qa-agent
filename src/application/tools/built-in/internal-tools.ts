@@ -2,33 +2,20 @@ import type { LocatorDescriptor } from '../../../domain/schemas/action.schema.js
 import type { ScreenObservation } from '../../../domain/schemas/observation.schema.js';
 import type { QaTool } from '../qa-tool.js';
 import { ConditionEvaluateTool } from './evaluate_condition.tool.js';
+import { ElementEnsureAvailableTool } from './ensure_element_available.tool.js';
 import {
   ActionExecuteInternalInputSchema,
-  ElementEnsureAvailableInputSchema,
   LocatorResolveInputSchema,
   QuiescenceWaitInputSchema,
   ToolResultSchema,
   type ActionExecuteInternalInput,
   type ActionPolicyToolService,
   type BrowserToolService,
-  type ElementEnsureAvailableInput,
   type LocatorResolveInput,
   type QuiescenceWaitInput,
   type ToolResult,
 } from './contracts.js';
 import { configFrom, contextService, failed, ok } from './support.js';
-
-export const ElementEnsureAvailableTool: QaTool<ElementEnsureAvailableInput, ToolResult> = {
-  name: 'qa.element.ensureAvailable',
-  description: 'Ensure a locator target is available using ElementAvailabilityResolver under runtime policy.',
-  internalOnly: true,
-  inputSchema: ElementEnsureAvailableInputSchema,
-  outputSchema: ToolResultSchema,
-  async execute(input, context) {
-    const availability = contextService<{ ensureAvailable(input: unknown): Promise<unknown> }>(context, 'elementAvailability');
-    return ok(await availability.ensureAvailable({ ...input, config: configFrom(input, context, 'qa.element.ensureAvailable') }));
-  },
-};
 
 export const LocatorResolveTool: QaTool<LocatorResolveInput, ToolResult> = {
   name: 'qa.locator.resolve',

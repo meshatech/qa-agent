@@ -19,6 +19,7 @@ export * from './execute_execution_plan.tool.js';
 export * from './record_evidence.tool.js';
 export * from './export_playwright_spec.tool.js';
 export * from './evaluate_condition.tool.js';
+export * from './ensure_element_available.tool.js';
 
 export const PUBLIC_QA_TOOLS = [
   PlanValidationTool,

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { LocatorDescriptorSchema, QaActionSchema, type QaAction } from '../../../domain/schemas/action.schema.js';
-import { ExecutionPlanSchema, ExecutionStepSchema, PlanConditionSchema, ReplanReasonSchema, RuntimeStateSnapshotSchema } from '../../../domain/schemas/execution-plan.schema.js';
+import { ExecutionPlanSchema, ExecutionStepSchema, PlanActionSchema, PlanConditionSchema, ReplanReasonSchema, RuntimeStateSnapshotSchema } from '../../../domain/schemas/execution-plan.schema.js';
 import { RunConfigSchema, type RunConfig } from '../../../domain/schemas/config.schema.js';
 import { ScreenObservationSchema } from '../../../domain/schemas/observation.schema.js';
 
@@ -100,10 +100,24 @@ export const ConditionEvaluateInputSchema = z.object({
 
 export const ElementEnsureAvailableInputSchema = z.object({
   target: LocatorDescriptorSchema,
-  observation: ScreenObservationSchema,
-  policy: z.unknown(),
+  observation: ScreenObservationSchema.optional(),
+  currentObservation: ScreenObservationSchema.optional(),
+  policy: z.unknown().optional(),
+  availabilityPolicy: z.object({
+    enabled: z.boolean(),
+    maxOpenAttempts: z.number().int().nonnegative(),
+    allowedContainers: z.array(z.object({
+      semanticKey: z.string().min(1),
+      openAction: PlanActionSchema,
+      expectedState: PlanConditionSchema.optional(),
+    }).strict()),
+    allowGlobalEscape: z.boolean().optional(),
+    allowClickOutside: z.boolean().optional(),
+  }).strict().optional(),
+  runContext: z.unknown().optional(),
   config: RunConfigSchema.optional(),
-}).strict();
+}).strict().refine((input) => input.observation || input.currentObservation, 'qa.element.ensureAvailable requires observation or currentObservation')
+  .refine((input) => input.policy || input.availabilityPolicy, 'qa.element.ensureAvailable requires policy or availabilityPolicy');
 
 export const LocatorResolveInputSchema = z.object({
   observation: ScreenObservationSchema,

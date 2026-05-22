@@ -408,8 +408,13 @@ Tools internas encapsulam capacidades do runtime, ficam marcadas com `internalOn
   - Não é pública porque expõe detalhes internos do executor e não deve ser exportada para adapters externos por padrão.
 - `qa.element.ensureAvailable`
   - Status: implementada como internalOnly.
+  - Arquivo: `src/application/tools/built-in/ensure_element_available.tool.ts`.
   - Usa `ElementAvailabilityResolver` para tentar tornar um elemento disponível sob policy.
-  - Não é pública porque poderia induzir exploração indevida da UI.
+  - Aceita `target`, `currentObservation`, `availabilityPolicy` e `runContext`, mantendo compatibilidade com os aliases internos `observation` e `policy`.
+  - Preserva o fluxo: resolver locator direto, verificar policy, abrir somente container permitido, aguardar quiescence no resolver, reobservar e tentar resolver novamente.
+  - Retorna o resultado estruturado do resolver com motivos como `FOUND_DIRECTLY`, `FOUND_AFTER_OPEN_CONTAINER`, `NOT_FOUND`, `POLICY_DISABLED` e `MAX_ATTEMPTS_EXCEEDED`.
+  - Bloqueia policies com ações genéricas/arbitrárias de abertura como `clickOutside`, `clickAtCoordinates`, `navigate` e `fill`.
+  - Não é pública porque poderia induzir exploração indevida da UI e não deve ser exportada para adapters externos por padrão.
 - `qa.locator.resolve`
   - Status: implementada como internalOnly.
   - Resolve `LocatorDescriptor` contra a `ScreenObservation` atual.
