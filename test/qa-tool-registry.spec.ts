@@ -100,8 +100,10 @@ describe('QaToolRegistry', () => {
     }]);
 
     expect(registry.list()).toEqual([]);
+    expect(registry.listPublic()).toEqual([]);
     expect(registry.get('qa.internal.echo')).toBeUndefined();
     expect(registry.list({ includeInternal: true })).toEqual([{ name: 'qa.internal.echo', description: 'Echo test tool', internalOnly: true }]);
+    expect(registry.listAll()).toEqual([{ name: 'qa.internal.echo', description: 'Echo test tool', internalOnly: true }]);
     expect(registry.get('qa.internal.echo', { includeInternal: true })).toBeDefined();
   });
 
@@ -280,7 +282,9 @@ describe('QaToolRegistry', () => {
 
     expect(INTERNAL_QA_TOOLS.every((tool) => tool.internalOnly)).toBe(true);
     expect(registry.list().some((tool) => internalNames.includes(tool.name))).toBe(false);
+    expect(registry.listPublic().some((tool) => internalNames.includes(tool.name))).toBe(false);
     expect(registry.list({ includeInternal: true }).filter((tool) => tool.internalOnly).map((tool) => tool.name).sort()).toEqual(internalNames);
+    expect(registry.listAll().filter((tool) => tool.internalOnly).map((tool) => tool.name).sort()).toEqual(internalNames);
   });
 
   it('delegates qa.plan.build to ExecutionPlanPlannerService from context', async () => {
