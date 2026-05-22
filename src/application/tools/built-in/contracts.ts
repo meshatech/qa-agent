@@ -73,8 +73,13 @@ export const ReportGenerateInputSchema = z.object({
 }).strict();
 
 export const SpecExportInputSchema = z.object({
-  result: z.unknown(),
-}).strict();
+  executionLogPath: z.string().min(1).optional(),
+  runId: z.string().min(1).optional(),
+  scenarioId: z.string().min(1).optional(),
+  sanitizeSensitiveData: z.boolean().default(true),
+  outputPath: z.string().min(1).optional(),
+  result: z.unknown().optional(),
+}).strict().refine((input) => input.executionLogPath || input.result, 'qa.spec.export requires executionLogPath or result');
 
 export const MemorySearchInputSchema = z.object({
   query: z.string().min(1),

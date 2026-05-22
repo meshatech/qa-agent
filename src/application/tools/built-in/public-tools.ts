@@ -4,13 +4,12 @@ import type { QaTool } from '../qa-tool.js';
 import {
   MemorySearchInputSchema,
   ReportGenerateInputSchema,
-  SpecExportInputSchema,
   ToolResultSchema,
   type MemorySearchInput,
   type ReportGenerateInput,
-  type SpecExportInput,
   type ToolResult,
 } from './contracts.js';
+import { SpecExportTool } from './export_playwright_spec.tool.js';
 import { PlanBuildTool } from './build_execution_plan.tool.js';
 import { PlanExecuteTool } from './execute_execution_plan.tool.js';
 import { EvidenceRecordTool } from './record_evidence.tool.js';
@@ -28,17 +27,6 @@ export const ReportGenerateTool: QaTool<ReportGenerateInput, ToolResult> = {
     if (!runsDir) throw new Error('qa.report.generate requires input.runsDir or context.runDir');
     const report = contextService<{ execute(runsDir: string, runId: string | undefined, format: 'md' | 'json'): Promise<unknown> }>(context, 'reportRun');
     return ok({ format: input.format, report: await report.execute(runsDir, input.runId, input.format) });
-  },
-};
-
-export const SpecExportTool: QaTool<SpecExportInput, ToolResult> = {
-  name: 'qa.spec.export',
-  description: 'Export a Playwright spec from a completed QaRunResult without participating in runtime execution.',
-  inputSchema: SpecExportInputSchema,
-  outputSchema: ToolResultSchema,
-  async execute(input, context) {
-    const exporter = contextService<{ export(result: unknown): string }>(context, 'specExporter');
-    return ok({ spec: exporter.export(input.result) });
   },
 };
 

@@ -381,8 +381,12 @@ As primeiras tools públicas são macro tools. Elas podem ser chamadas por orque
   - Não executa browser.
 - `qa.spec.export`
   - Status: implementada como macro tool dependente de `PlaywrightSpecExporter` no contexto.
-  - Exporta `.spec.ts` pós-execução a partir de `QaRunResult`/execution log.
-  - Não participa do runtime e não executa browser.
+  - Arquivo: `src/application/tools/built-in/export_playwright_spec.tool.ts`.
+  - Exporta `.spec.ts` pós-execução a partir de `executionLogPath` ou `QaRunResult`.
+  - Aceita `executionLogPath`, `runId`, `scenarioId`, `sanitizeSensitiveData` e `outputPath`.
+  - Retorna `generatedSpecPath` e `warnings`.
+  - Marca o export como experimental, sanitiza dados sensíveis quando configurado e não participa do runtime.
+  - Não executa browser, não reexecuta o spec gerado e não expõe `PlaywrightHarness`/`page`.
 - `qa.memory.search`
   - Status: implementada como busca textual simples.
   - Busca memória/contexto do projeto em arquivo versionado, por padrão `.agent-qa/memory.md`.
