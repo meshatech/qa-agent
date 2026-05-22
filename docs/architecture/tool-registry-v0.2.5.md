@@ -167,6 +167,8 @@ Funcionalidades atuais:
 - registra uma tool com `register`;
 - registra várias tools com `registerMany`;
 - busca tool por nome com `get`;
+- verifica a existência acessível de uma tool com `has`;
+- busca tool por nome com erro explícito usando `getOrThrow`;
 - exige tool por nome com `require`, retornando erro explícito quando ausente ou inacessível;
 - lista tools públicas por padrão com `list`;
 - lista tools internas apenas quando `includeInternal: true`;
@@ -191,9 +193,12 @@ Busca por nome:
 - `get(name)` retorna `undefined` quando a tool não existe;
 - `get(name)` retorna `undefined` para tool interna quando `includeInternal` não for informado;
 - `get(name, { includeInternal: true })` permite buscar tool interna;
-- `require(name)` retorna a tool quando ela existe e é acessível;
-- `require(name)` lança erro claro quando a tool não existe ou não está acessível;
-- não existe método `has(name)` no projeto atual; para manter a API enxuta, a presença de uma tool deve ser verificada com `get(name) !== undefined`.
+- `has(name)` retorna `true` quando a tool existe e é acessível;
+- `has(name)` retorna `false` quando a tool não existe ou é interna sem `includeInternal`;
+- `has(name, { includeInternal: true })` permite verificar tool interna;
+- `getOrThrow(name)` retorna a tool quando ela existe e é acessível;
+- `getOrThrow(name)` lança erro claro quando a tool não existe ou não está acessível;
+- `require(name)` permanece como alias compatível de `getOrThrow(name)`.
 
 Nomes perigosos bloqueados hoje para registro público:
 

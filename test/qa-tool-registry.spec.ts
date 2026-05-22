@@ -119,7 +119,32 @@ describe('QaToolRegistry', () => {
     expect(registry.get('qa.internal.echo', { includeInternal: true })).toBe(internalTool);
   });
 
-  it('requires accessible tools by name with an explicit error', () => {
+  it('checks tool presence without exposing internal tools by default', () => {
+    const registry = new QaToolRegistry([echoTool, {
+      ...echoTool,
+      name: 'qa.internal.echo',
+      internalOnly: true,
+    }]);
+
+    expect(registry.has('qa.echo')).toBe(true);
+    expect(registry.has('qa.missing')).toBe(false);
+    expect(registry.has('qa.internal.echo')).toBe(false);
+    expect(registry.has('qa.internal.echo', { includeInternal: true })).toBe(true);
+  });
+
+  it('gets or throws accessible tools by name with an explicit error', () => {
+    const registry = new QaToolRegistry([{
+      ...echoTool,
+      name: 'qa.internal.echo',
+      internalOnly: true,
+    }]);
+
+    expect(() => registry.getOrThrow('qa.missing')).toThrow(/not found or not accessible/);
+    expect(() => registry.getOrThrow('qa.internal.echo')).toThrow(/not found or not accessible/);
+    expect(registry.getOrThrow('qa.internal.echo', { includeInternal: true })).toBeDefined();
+  });
+
+  it('keeps require as an alias for getOrThrow', () => {
     const registry = new QaToolRegistry([{
       ...echoTool,
       name: 'qa.internal.echo',

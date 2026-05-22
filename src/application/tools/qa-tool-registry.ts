@@ -46,10 +46,18 @@ export class QaToolRegistry {
     return tool;
   }
 
-  require(name: string, options: ListQaToolsOptions = {}): QaTool {
+  has(name: string, options: ListQaToolsOptions = {}): boolean {
+    return this.get(name, options) !== undefined;
+  }
+
+  getOrThrow(name: string, options: ListQaToolsOptions = {}): QaTool {
     const tool = this.get(name, options);
     if (!tool) throw new Error(`QaTool not found or not accessible: ${name}`);
     return tool;
+  }
+
+  require(name: string, options: ListQaToolsOptions = {}): QaTool {
+    return this.getOrThrow(name, options);
   }
 
   list(options: ListQaToolsOptions = {}): QaToolDescriptor[] {
