@@ -17,6 +17,12 @@ import { PlanPatchApplierService } from './services/plan-patch-applier.service.j
 import { PlanExecutorService } from './services/plan-executor.service.js';
 import { PlanReplannerService } from './services/plan-replanner.service.js';
 import { PlaywrightSpecExporter } from './services/playwright-spec-exporter.service.js';
+import { MemoryChunker } from './services/memory-chunker.service.js';
+import { BM25MemoryIndex } from './services/bm25-memory-index.service.js';
+import { MemoryMarkdownLoader } from './services/memory-markdown-loader.service.js';
+import { MemorySearchService } from './services/memory-search.service.js';
+import { AgentQaLayoutService } from './services/agent-qa-layout.service.js';
+import { RunHistoryService } from './services/run-history.service.js';
 import { QaToolRegistry } from './tools/qa-tool-registry.js';
 import { ALL_QA_TOOLS } from './tools/built-in/index.js';
 import { CaptureAuthUseCase } from './use-cases/capture-auth.usecase.js';
@@ -29,7 +35,7 @@ import { InfraModule } from '../infra/infra.module.js';
 export const APPLICATION_PROVIDERS = [
   AgentService, RunAgentUseCase, ValidateConfigUseCase, InspectRunUseCase, ReportRunUseCase, CaptureAuthUseCase,
   DataHarnessService, LocatorResolverService, ValidationBinderService, ActionPolicyService, RecoveryPolicyService,
-  SanitizerService, BugClassifierService, EvidenceService, ScenarioPlannerService, TaskMemoryService, ExecutionPlanFactoryService, ExecutionPlanPlannerService, ElementAvailabilityResolver, PlanPatchApplierService, PlanExecutorService, PlanReplannerService, PlaywrightSpecExporter,
+  SanitizerService, BugClassifierService, EvidenceService, ScenarioPlannerService, TaskMemoryService, ExecutionPlanFactoryService, ExecutionPlanPlannerService, ElementAvailabilityResolver, PlanPatchApplierService, PlanExecutorService, PlanReplannerService, PlaywrightSpecExporter, AgentQaLayoutService, MemoryMarkdownLoader, MemoryChunker, BM25MemoryIndex, MemorySearchService, RunHistoryService,
   { provide: QaToolRegistry, useFactory: () => new QaToolRegistry(ALL_QA_TOOLS) },
 ];
 

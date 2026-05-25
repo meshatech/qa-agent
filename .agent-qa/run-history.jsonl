@@ -1,0 +1,2 @@
+# run-history.jsonl — one JSON object per line. Lines starting with # are comments.
+# Example: {"runId":"run-abc","ts":"2026-05-25T12:00:00Z","status":"passed","demandId":"DEM-001","summary":"Fixture smoke OK"}

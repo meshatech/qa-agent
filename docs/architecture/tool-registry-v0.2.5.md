@@ -389,9 +389,9 @@ As primeiras tools públicas são macro tools. Elas podem ser chamadas por orque
   - Marca o export como experimental, sanitiza dados sensíveis quando configurado e não participa do runtime.
   - Não executa browser, não reexecuta o spec gerado e não expõe `PlaywrightHarness`/`page`.
 - `qa.memory.search`
-  - Status: implementada como busca textual simples.
-  - Busca memória/contexto do projeto em arquivo versionado, por padrão `.agent-qa/memory.md`.
-  - Pode evoluir para chunks BM25 sem mudar a fronteira de segurança.
+  - Status: implementada com chunks Markdown tipados e ranking BM25.
+  - Busca memória/contexto do projeto em `.agent-qa/memory.md` (ou `memoryPath` explícito).
+  - Aceita `projectPath`, `query`, `limit`, `types` e retorna `chunks[]` com `relevanceScore` e `warnings[]`.
 
 Essas tools podem ser expostas para LLMs/adapters porque operam em nível macro ou leitura controlada. Nenhuma delas expõe `click`, `fill`, `press` ou `navigate`.
 

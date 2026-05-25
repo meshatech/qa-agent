@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { LocatorDescriptorSchema, QaActionSchema, type QaAction } from '../../../domain/schemas/action.schema.js';
 import { ExecutionPlanSchema, ExecutionStepSchema, PlanActionSchema, PlanConditionSchema, ReplanReasonSchema, RuntimeStateSnapshotSchema } from '../../../domain/schemas/execution-plan.schema.js';
 import { RunConfigSchema, type RunConfig } from '../../../domain/schemas/config.schema.js';
+import { MemoryChunkTypeSchema, MemorySearchResponseSchema } from '../../../domain/schemas/memory.schema.js';
 import { ScreenObservationSchema } from '../../../domain/schemas/observation.schema.js';
 
 export const ToolIssueSchema = z.object({
@@ -83,9 +84,13 @@ export const SpecExportInputSchema = z.object({
 
 export const MemorySearchInputSchema = z.object({
   query: z.string().min(1),
-  memoryPath: z.string().default('.agent-qa/memory.md'),
+  projectPath: z.string().default('.'),
+  memoryPath: z.string().optional(),
   limit: z.number().int().positive().max(20).default(5),
+  types: z.array(MemoryChunkTypeSchema).optional(),
 }).strict();
+
+export const MemorySearchOutputSchema = MemorySearchResponseSchema;
 
 export const ConditionEvaluateInputSchema = z.object({
   condition: PlanConditionSchema,
@@ -160,6 +165,7 @@ export type PlanExecuteInput = z.infer<typeof PlanExecuteInputSchema>;
 export type ReportGenerateInput = z.infer<typeof ReportGenerateInputSchema>;
 export type SpecExportInput = z.infer<typeof SpecExportInputSchema>;
 export type MemorySearchInput = z.infer<typeof MemorySearchInputSchema>;
+export type MemorySearchOutput = z.infer<typeof MemorySearchOutputSchema>;
 export type ConditionEvaluateInput = z.infer<typeof ConditionEvaluateInputSchema>;
 export type ElementEnsureAvailableInput = z.infer<typeof ElementEnsureAvailableInputSchema>;
 export type LocatorResolveInput = z.infer<typeof LocatorResolveInputSchema>;

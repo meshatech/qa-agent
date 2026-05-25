@@ -268,6 +268,7 @@ describe('QaToolRegistry', () => {
       'qa.report.generate',
       'qa.screen.observe',
       'qa.spec.export',
+      'search_project_memory',
     ]);
     expect(names).not.toContain('click');
     expect(names).not.toContain('fill');

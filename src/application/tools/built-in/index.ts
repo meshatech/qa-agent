@@ -18,6 +18,7 @@ export * from './request_replan.tool.js';
 export * from './execute_execution_plan.tool.js';
 export * from './record_evidence.tool.js';
 export * from './export_playwright_spec.tool.js';
+export * from './memory-search.tool.js';
 export * from './evaluate_condition.tool.js';
 export * from './ensure_element_available.tool.js';
 
