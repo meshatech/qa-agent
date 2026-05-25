@@ -3,7 +3,11 @@ import type { ScreenObservation } from '../../../domain/schemas/observation.sche
 import type { ConditionEvaluateInput } from './contracts.js';
 
 export function evaluateCondition(input: ConditionEvaluateInput): Record<string, unknown> {
-  const { condition, observation, before, after } = input;
+  const condition = input.condition;
+  const observation = input.observation ?? input.currentObservation;
+  if (!observation) throw new Error('qa.condition.evaluate requires observation or currentObservation');
+  const before = input.before ?? input.beforeState;
+  const after = input.after ?? input.afterState;
   const evaluation = conditionEvaluation(condition, observation, before, after);
   return {
     conditionId: 'tool:condition',

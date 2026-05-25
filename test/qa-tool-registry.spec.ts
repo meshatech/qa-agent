@@ -310,13 +310,33 @@ describe('QaToolRegistry', () => {
       metadata: {
         executionPlanPlanner: {
           async build() {
-            return { source: 'factory', plan: { planId: 'plan-D1' } };
+            return {
+              source: 'factory',
+              plan: {
+                schemaVersion: 'execution-plan.v1',
+                planId: 'plan-D1',
+                version: 1,
+                goal: 'Smoke',
+                mode: 'HYBRID_GUARDED',
+                runtime: { maxAttemptsPerStep: 1, maxReplansPerScenario: 0, destructiveActionPolicy: 'BLOCK' },
+                steps: [{
+                  id: 'S001',
+                  description: 'Wait',
+                  preconditions: [],
+                  action: { type: 'waitForStable', reason: 'wait for stable UI' },
+                  postconditions: [{ type: 'text_visible', text: 'Inbox' }],
+                  assertions: [],
+                  onFailure: 'RECOVER',
+                }],
+                assertions: [],
+              },
+            };
           },
         },
       },
     });
 
-    expect(result).toMatchObject({ ok: true, result: { source: 'factory', plan: { planId: 'plan-D1' } } });
+    expect(result).toMatchObject({ ok: true, result: { planSource: 'factory', plan: { planId: 'plan-D1' } } });
   });
 
   it('delegates qa.plan.execute to PlanExecutorService and rejects action-only input', async () => {
@@ -352,7 +372,13 @@ describe('QaToolRegistry', () => {
 
     await expect(registry.execute('qa.plan.execute', { config, plan }, {
       metadata: { planExecutor: { async execute() { return { ok: true, steps: [] }; } } },
-    })).resolves.toMatchObject({ ok: true, result: { ok: true, steps: [] } });
+    })).resolves.toMatchObject({
+      ok: true,
+      result: {
+        executionResult: { ok: true, steps: [] },
+        scenarioFinalStatus: 'PASSED',
+      },
+    });
   });
 
   it('executes internal condition evaluation only when internal access is enabled', async () => {

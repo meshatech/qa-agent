@@ -1,47 +1,21 @@
 import type { LocatorDescriptor } from '../../../domain/schemas/action.schema.js';
 import type { ScreenObservation } from '../../../domain/schemas/observation.schema.js';
 import type { QaTool } from '../qa-tool.js';
-import { evaluateCondition } from './condition-evaluator.js';
+import { ConditionEvaluateTool } from './evaluate_condition.tool.js';
+import { ElementEnsureAvailableTool } from './ensure_element_available.tool.js';
 import {
   ActionExecuteInternalInputSchema,
-  ConditionEvaluateInputSchema,
-  ElementEnsureAvailableInputSchema,
   LocatorResolveInputSchema,
   QuiescenceWaitInputSchema,
   ToolResultSchema,
   type ActionExecuteInternalInput,
   type ActionPolicyToolService,
   type BrowserToolService,
-  type ConditionEvaluateInput,
-  type ElementEnsureAvailableInput,
   type LocatorResolveInput,
   type QuiescenceWaitInput,
   type ToolResult,
 } from './contracts.js';
 import { configFrom, contextService, failed, ok } from './support.js';
-
-export const ConditionEvaluateTool: QaTool<ConditionEvaluateInput, ToolResult> = {
-  name: 'qa.condition.evaluate',
-  description: 'Evaluate a PlanCondition against observation/runtime snapshots for internal executor use.',
-  internalOnly: true,
-  inputSchema: ConditionEvaluateInputSchema,
-  outputSchema: ToolResultSchema,
-  async execute(input) {
-    return ok(evaluateCondition(input));
-  },
-};
-
-export const ElementEnsureAvailableTool: QaTool<ElementEnsureAvailableInput, ToolResult> = {
-  name: 'qa.element.ensureAvailable',
-  description: 'Ensure a locator target is available using ElementAvailabilityResolver under runtime policy.',
-  internalOnly: true,
-  inputSchema: ElementEnsureAvailableInputSchema,
-  outputSchema: ToolResultSchema,
-  async execute(input, context) {
-    const availability = contextService<{ ensureAvailable(input: unknown): Promise<unknown> }>(context, 'elementAvailability');
-    return ok(await availability.ensureAvailable({ ...input, config: configFrom(input, context, 'qa.element.ensureAvailable') }));
-  },
-};
 
 export const LocatorResolveTool: QaTool<LocatorResolveInput, ToolResult> = {
   name: 'qa.locator.resolve',

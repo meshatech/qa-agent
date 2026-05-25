@@ -339,36 +339,55 @@ As primeiras tools públicas são macro tools. Elas podem ser chamadas por orque
   - Não abre browser, não resolve locator, não executa Playwright e não altera estado da aplicação.
 - `qa.screen.observe`
   - Status: implementada como macro tool dependente de browser no contexto.
+  - Arquivo: `src/application/tools/built-in/observe_screen.tool.ts`.
   - Retorna uma `ScreenObservation` controlada da tela atual.
-  - Opções: `includeDom`, `includeScreenshot`, `includeAccessibilityTree`.
-  - Não executa ação.
+  - Opções: `includeDom`, `includeScreenshot`, `includeAccessibilityTree`, `includeUrl`, `includeConsoleSummary`.
+  - Não executa ação, não navega, não executa script no DOM e não expõe `page` do Playwright.
 - `qa.plan.build`
   - Status: implementada como macro tool dependente de `ExecutionPlanPlannerService` no contexto.
+  - Arquivo: `src/application/tools/built-in/build_execution_plan.tool.ts`.
   - Gera ou solicita um `ExecutionPlan` a partir de config, demanda e cenários.
-  - Usa provider LLM/factory, normalização, Zod e policy.
-  - Não executa o plano.
+  - Aceita `scenarios`, `config`, `memoryContext`, `demandContext`, `screenObservation` e `runtimeMode`.
+  - Delega para `ExecutionPlanPlannerService`, preservando provider LLM/factory, normalização por provider, validação Zod, policy semântica e fallback para factory.
+  - Retorna `plan`, `planSource`, `fallbackReason` e `fallbackWarning` quando aplicável.
+  - Não executa o plano, não aplica patch, não executa Playwright e não aceita `el_*`/`targetElementId` fora do contrato validado.
 - `qa.plan.replan`
   - Status: implementada como macro tool dependente de `PlanReplannerService` no contexto.
+  - Arquivo: `src/application/tools/built-in/request_replan.tool.ts`.
   - Solicita um `PlanPatch` quando uma etapa falhar.
-  - Respeita `basePlanId`, `basePlanVersion`, `PlanPatchSchema` e policy contra weakening via `PlanPatchApplierService`.
-  - Não aplica patch sem validação.
+  - Aceita `replanReason`, `currentPlan`, `failedStep`, `failedCondition`, `currentObservation`, `executionContext` e `patchHistory`, além dos aliases internos `plan`, `observation`, `reason` e `history`.
+  - Delega para `PlanReplannerService`, preservando `PlanPatchSchema`, `basePlanId`, `basePlanVersion` e policy contra weakening via `PlanPatchApplierService`.
+  - Retorna patch validado/status de aplicação ou falha controlada quando o replan é inválido/bloqueado.
+  - Não aplica patch fora do fluxo do runtime, não executa action solta e não executa Playwright.
 - `qa.plan.execute`
   - Status: implementada como macro tool dependente de `PlanExecutorService` no contexto.
+  - Arquivo: `src/application/tools/built-in/execute_execution_plan.tool.ts`.
   - Executa um `ExecutionPlan` validado.
-  - Respeita preconditions, actions declarativas, quiescence, postconditions e assertions.
-  - Não aceita action solta como input.
+  - Aceita `plan`, `runConfig`/`config`, `scenarioId`, `outputConfig` e `planRef` seguro.
+  - Delega para `PlanExecutorService`, preservando o fluxo `ExecutionPlan -> Preconditions -> LocatorResolver -> ActionHarness interno -> Quiescence -> Postconditions -> BusinessAssertions -> Evidence/Reports`.
+  - Retorna `executionResult`, `scenarioFinalStatus`, `warnings`, `bugs`, `artifacts` e `executionLogPath` quando disponível.
+  - Não aceita action solta como input; payloads top-level como `{ "action": "click", "target": "button Salvar" }`, `{ "type": "fill", "selector": "#email", "value": "teste" }`, `{ "press": "Enter" }` e `{ "navigate": "https://..." }` devem ser rejeitados.
+  - Actions diretas de browser só podem existir dentro de `ExecutionStep -> QaActionSchema -> ExecutionPlanSchema -> PlanExecutorService`; a tool pública não expõe `PlaywrightHarness`, não expõe `page`, não ignora policies e não faz bypass de pre/postconditions.
 - `qa.evidence.record`
   - Status: implementada como macro tool dependente de `EvidenceService` no contexto.
+  - Arquivo: `src/application/tools/built-in/record_evidence.tool.ts`.
   - Registra evidências da execução, respeitando `runDir` e config de output do runtime.
-  - Retorna paths/artifacts gerados pelo serviço de evidência.
+  - Aceita `runId`, `scenarioId`, `reason`, `status`, `includeScreenshot`, `includeVideo`, `includeTrace`, `includeDomSnapshot`, `includeConsoleLog`, `includeNetworkLog`, `outputConfig` e payload `evidence` do runtime.
+  - Delega para `EvidenceService.record`, que encapsula captura/sanitização de screenshot, DOM, console, network, trace, video e reports.
+  - Retorna `evidenceBundle`, `artifactPaths` e `relativePaths`.
+  - Mascara textos sensíveis no motivo recebido e não executa ações diretas de browser, não navega e não expõe `PlaywrightHarness`/`page`.
 - `qa.report.generate`
   - Status: implementada como macro tool dependente de `ReportRunUseCase` no contexto.
   - Gera ou recupera relatório de uma run existente em `md` ou `json`.
   - Não executa browser.
 - `qa.spec.export`
   - Status: implementada como macro tool dependente de `PlaywrightSpecExporter` no contexto.
-  - Exporta `.spec.ts` pós-execução a partir de `QaRunResult`/execution log.
-  - Não participa do runtime e não executa browser.
+  - Arquivo: `src/application/tools/built-in/export_playwright_spec.tool.ts`.
+  - Exporta `.spec.ts` pós-execução a partir de `executionLogPath` ou `QaRunResult`.
+  - Aceita `executionLogPath`, `runId`, `scenarioId`, `sanitizeSensitiveData` e `outputPath`.
+  - Retorna `generatedSpecPath` e `warnings`.
+  - Marca o export como experimental, sanitiza dados sensíveis quando configurado e não participa do runtime.
+  - Não executa browser, não reexecuta o spec gerado e não expõe `PlaywrightHarness`/`page`.
 - `qa.memory.search`
   - Status: implementada como busca textual simples.
   - Busca memória/contexto do projeto em arquivo versionado, por padrão `.agent-qa/memory.md`.
@@ -382,13 +401,21 @@ Tools internas encapsulam capacidades do runtime, ficam marcadas com `internalOn
 
 - `qa.condition.evaluate`
   - Status: implementada como internalOnly.
+  - Arquivo: `src/application/tools/built-in/evaluate_condition.tool.ts`.
   - Avalia `PlanCondition` e gera resultado equivalente a `ConditionEvaluationResult`.
-  - Uso: preconditions, postconditions e business assertions.
-  - Não é pública porque expõe detalhes internos do executor.
+  - Aceita `condition`, `currentObservation`, `beforeState`, `afterState` e `runContext`, mantendo compatibilidade com os aliases internos `observation`, `before` e `after`.
+  - Suporta preconditions, postconditions, business assertions e condições de runtime como `ui_state`, `auth_state`, `menu_state`, `route_state`, `attribute_state` e `storage_state`.
+  - Retorna `conditionId`, `type`, `passed`, `expected`, `actual`, `before`, `after`, `severity` e `reason`.
+  - Não é pública porque expõe detalhes internos do executor e não deve ser exportada para adapters externos por padrão.
 - `qa.element.ensureAvailable`
   - Status: implementada como internalOnly.
+  - Arquivo: `src/application/tools/built-in/ensure_element_available.tool.ts`.
   - Usa `ElementAvailabilityResolver` para tentar tornar um elemento disponível sob policy.
-  - Não é pública porque poderia induzir exploração indevida da UI.
+  - Aceita `target`, `currentObservation`, `availabilityPolicy` e `runContext`, mantendo compatibilidade com os aliases internos `observation` e `policy`.
+  - Preserva o fluxo: resolver locator direto, verificar policy, abrir somente container permitido, aguardar quiescence no resolver, reobservar e tentar resolver novamente.
+  - Retorna o resultado estruturado do resolver com motivos como `FOUND_DIRECTLY`, `FOUND_AFTER_OPEN_CONTAINER`, `NOT_FOUND`, `POLICY_DISABLED` e `MAX_ATTEMPTS_EXCEEDED`.
+  - Bloqueia policies com ações genéricas/arbitrárias de abertura como `clickOutside`, `clickAtCoordinates`, `navigate` e `fill`.
+  - Não é pública porque poderia induzir exploração indevida da UI e não deve ser exportada para adapters externos por padrão.
 - `qa.locator.resolve`
   - Status: implementada como internalOnly.
   - Resolve `LocatorDescriptor` contra a `ScreenObservation` atual.
@@ -438,6 +465,19 @@ Tools implementadas:
 - `qa.locator.resolve` (`internalOnly`)
 - `qa.action.executeInternal` (`internalOnly`)
 - `qa.quiescence.wait` (`internalOnly`)
+
+## Status da Entrega
+
+Checklist consolidado da entrega no estado atual do projeto:
+
+- tools macro seguras registradas no `QaToolRegistry`;
+- tools internas registradas com `internalOnly`;
+- `list()` e `listPublic()` ocultam tools internas por padrão;
+- adapters externos também ocultam tools `internalOnly` por padrão;
+- actions Playwright diretas como `click`, `fill`, `press`, `navigate` e equivalentes não aparecem no catálogo público;
+- `qa.plan.build`, `qa.plan.replan` e `qa.plan.execute` reutilizam `ExecutionPlanPlannerService`, `PlanReplannerService` e `PlanExecutorService`;
+- `qa.plan.execute` não aceita action solta e só executa `ExecutionPlan` validado;
+- o runtime `v0.2-stable` permanece funcional com `typecheck`, `test`, `lint` e `build` passando no estado atual validado.
 
 ## Critério de Evolução
 
