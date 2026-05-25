@@ -1,6 +1,4 @@
-import type { PlanExecutionResult } from '../../services/plan-executor.service.js';
-import { ExecutionPlanSchema, type ExecutionPlan } from '../../../domain/schemas/execution-plan.schema.js';
-import type { RunConfig } from '../../../domain/schemas/config.schema.js';
+import type { PlanExecutorService } from '../../services/plan-executor.service.js';
 import type { QaTool } from '../qa-tool.js';
 import {
   PlanExecuteInputSchema,
@@ -10,22 +8,17 @@ import {
 } from './contracts.js';
 import { contextService, ok } from './support.js';
 
-type PlanExecutorToolService = {
-  execute(plan: ExecutionPlan, config: RunConfig): Promise<PlanExecutionResult>;
-};
-
 export const PlanExecuteTool: QaTool<PlanExecuteInput, ToolResult> = {
   name: 'qa.plan.execute',
   description: 'Execute a validated ExecutionPlan through PlanExecutorService.',
   inputSchema: PlanExecuteInputSchema,
   outputSchema: ToolResultSchema,
   async execute(input, context) {
-    const executor = contextService<PlanExecutorToolService>(context, 'planExecutor');
-    const plan = ExecutionPlanSchema.parse(input.plan);
+    const executor = contextService<Pick<PlanExecutorService, 'execute'>>(context, 'planExecutor');
     const config = input.runConfig ?? input.config ?? context.config;
     if (!config) throw new Error('qa.plan.execute requires input.runConfig, input.config, or context.config');
 
-    const execution = await executor.execute(plan, config);
+    const execution = await executor.execute(input.plan, config);
 
     return ok({
       executionResult: execution,

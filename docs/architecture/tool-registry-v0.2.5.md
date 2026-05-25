@@ -366,7 +366,8 @@ As primeiras tools públicas são macro tools. Elas podem ser chamadas por orque
   - Aceita `plan`, `runConfig`/`config`, `scenarioId`, `outputConfig` e `planRef` seguro.
   - Delega para `PlanExecutorService`, preservando o fluxo `ExecutionPlan -> Preconditions -> LocatorResolver -> ActionHarness interno -> Quiescence -> Postconditions -> BusinessAssertions -> Evidence/Reports`.
   - Retorna `executionResult`, `scenarioFinalStatus`, `warnings`, `bugs`, `artifacts` e `executionLogPath` quando disponível.
-  - Não aceita action solta como input, não expõe `PlaywrightHarness`, não expõe `page`, não ignora policies e não faz bypass de pre/postconditions.
+  - Não aceita action solta como input; payloads top-level como `{ "action": "click", "target": "button Salvar" }`, `{ "type": "fill", "selector": "#email", "value": "teste" }`, `{ "press": "Enter" }` e `{ "navigate": "https://..." }` devem ser rejeitados.
+  - Actions diretas de browser só podem existir dentro de `ExecutionStep -> QaActionSchema -> ExecutionPlanSchema -> PlanExecutorService`; a tool pública não expõe `PlaywrightHarness`, não expõe `page`, não ignora policies e não faz bypass de pre/postconditions.
 - `qa.evidence.record`
   - Status: implementada como macro tool dependente de `EvidenceService` no contexto.
   - Arquivo: `src/application/tools/built-in/record_evidence.tool.ts`.
@@ -464,6 +465,19 @@ Tools implementadas:
 - `qa.locator.resolve` (`internalOnly`)
 - `qa.action.executeInternal` (`internalOnly`)
 - `qa.quiescence.wait` (`internalOnly`)
+
+## Status da Entrega
+
+Checklist consolidado da entrega no estado atual do projeto:
+
+- tools macro seguras registradas no `QaToolRegistry`;
+- tools internas registradas com `internalOnly`;
+- `list()` e `listPublic()` ocultam tools internas por padrão;
+- adapters externos também ocultam tools `internalOnly` por padrão;
+- actions Playwright diretas como `click`, `fill`, `press`, `navigate` e equivalentes não aparecem no catálogo público;
+- `qa.plan.build`, `qa.plan.replan` e `qa.plan.execute` reutilizam `ExecutionPlanPlannerService`, `PlanReplannerService` e `PlanExecutorService`;
+- `qa.plan.execute` não aceita action solta e só executa `ExecutionPlan` validado;
+- o runtime `v0.2-stable` permanece funcional com `typecheck`, `test`, `lint` e `build` passando no estado atual validado.
 
 ## Critério de Evolução
 

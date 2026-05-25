@@ -84,6 +84,25 @@ describe('qa.plan.execute', () => {
     expect(planExecutor.execute).not.toHaveBeenCalled();
   });
 
+  it('rejects top-level click, fill, press, and navigate payloads before reaching PlanExecutorService', async () => {
+    const planExecutor = { execute: vi.fn() };
+    const registry = new QaToolRegistry([PlanExecuteTool]);
+    const invalidPayloads = [
+      { action: 'click', target: 'button Salvar' },
+      { type: 'fill', selector: '#email', value: 'teste' },
+      { press: 'Enter' },
+      { navigate: 'https://app.local/inbox' },
+    ];
+
+    for (const payload of invalidPayloads) {
+      await expect(registry.execute('qa.plan.execute', payload, {
+        metadata: { planExecutor },
+      })).rejects.toThrow();
+    }
+
+    expect(planExecutor.execute).not.toHaveBeenCalled();
+  });
+
   it('does not expose or call PlaywrightHarness/page directly', async () => {
     const planExecutor = {
       execute: vi.fn(async () => ({
