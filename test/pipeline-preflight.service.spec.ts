@@ -45,6 +45,7 @@ describe('PipelinePreflightService', () => {
     const result = await service.run(outputDir);
 
     expect(result.status).toBe('PASS');
+    expect(result.checks.clickupToken.ok).toBe(true);
     expect(result.checks.secrets.ok).toBe(true);
     expect(result.checks.prContext.ok).toBe(true);
     expect(result.checks.config.ok).toBe(true);
@@ -57,8 +58,8 @@ describe('PipelinePreflightService', () => {
     const result = await service.run(outputDir);
 
     expect(result.status).toBe('BLOCKED');
+    expect(result.checks.clickupToken.ok).toBe(false);
     expect(result.checks.secrets.ok).toBe(false);
-    expect(result.checks.secrets.missing).toContain('CLICKUP_TOKEN');
     expect(result.checks.secrets.missing).toContain('GITHUB_TOKEN');
     expect(result.checks.secrets.missing).toContain('CLICKUP_TASK_ID');
   });
@@ -94,6 +95,82 @@ describe('PipelinePreflightService', () => {
 
     expect(result.status).toBe('BLOCKED');
     expect(result.checks.secrets.ok).toBe(false);
+    expect(result.checks.clickupToken.ok).toBe(false);
+  });
+
+  describe('PRJ-11349 — CLICKUP_TOKEN validation', () => {
+    function setFullEnvExceptClickUpToken(): void {
+      delete process.env.CLICKUP_TOKEN;
+      process.env.GITHUB_TOKEN = 'ghp_xxx';
+      process.env.CLICKUP_TASK_ID = '12345';
+      process.env.GITHUB_REPOSITORY = 'owner/repo';
+      process.env.GITHUB_REF_NAME = 'feature/test';
+      process.env.GITHUB_SHA = 'abc123';
+    }
+
+    it('clickupToken check passes when CLICKUP_TOKEN is set', async () => {
+      process.env.CLICKUP_TOKEN = 'pk_live_valid_token';
+      process.env.GITHUB_TOKEN = 'ghp_xxx';
+      process.env.CLICKUP_TASK_ID = '12345';
+      process.env.GITHUB_REPOSITORY = 'owner/repo';
+      process.env.GITHUB_REF_NAME = 'feature/test';
+      process.env.GITHUB_SHA = 'abc123';
+
+      const outputDir = await tempDir();
+      const result = await makeService().run(outputDir);
+
+      expect(result.checks.clickupToken.ok).toBe(true);
+    });
+
+    it('clickupToken check fails when CLICKUP_TOKEN is missing', async () => {
+      setFullEnvExceptClickUpToken();
+
+      const outputDir = await tempDir();
+      const result = await makeService().run(outputDir);
+
+      expect(result.checks.clickupToken.ok).toBe(false);
+      expect(result.status).toBe('BLOCKED');
+    });
+
+    it('clickupToken check fails when CLICKUP_TOKEN is whitespace', async () => {
+      setFullEnvExceptClickUpToken();
+      process.env.CLICKUP_TOKEN = '   ';
+
+      const outputDir = await tempDir();
+      const result = await makeService().run(outputDir);
+
+      expect(result.checks.clickupToken.ok).toBe(false);
+      expect(result.status).toBe('BLOCKED');
+    });
+
+    it('status is BLOCKED when only CLICKUP_TOKEN is missing', async () => {
+      setFullEnvExceptClickUpToken();
+
+      const outputDir = await tempDir();
+      const result = await makeService().run(outputDir);
+
+      expect(result.status).toBe('BLOCKED');
+      expect(result.checks.clickupToken.ok).toBe(false);
+      expect(result.checks.secrets.ok).toBe(true);
+      expect(result.checks.prContext.ok).toBe(true);
+    });
+
+    it('preflight-report.json does not contain CLICKUP_TOKEN value', async () => {
+      const secret = 'pk_test_super_secret_12345';
+      process.env.CLICKUP_TOKEN = secret;
+      process.env.GITHUB_TOKEN = 'ghp_xxx';
+      process.env.CLICKUP_TASK_ID = '12345';
+      process.env.GITHUB_REPOSITORY = 'owner/repo';
+      process.env.GITHUB_REF_NAME = 'feature/test';
+      process.env.GITHUB_SHA = 'abc123';
+
+      const outputDir = await tempDir();
+      await makeService().run(outputDir);
+
+      const raw = await readFile(join(outputDir, 'preflight-report.json'), 'utf8');
+      expect(raw).not.toContain(secret);
+      expect(JSON.parse(raw).checks.clickupToken.ok).toBe(true);
+    });
   });
 
   it('writes preflight-report.json to outputDir', async () => {

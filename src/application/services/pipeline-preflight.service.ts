@@ -6,6 +6,7 @@ export interface PreflightReport {
   status: 'PASS' | 'BLOCKED';
   timestamp: string;
   checks: {
+    clickupToken: { ok: boolean };
     secrets: { ok: boolean; missing: string[] };
     prContext: { ok: boolean; missing: string[] };
     config: { ok: boolean; errors: string[] };
@@ -19,16 +20,18 @@ export interface PreflightReport {
 @Injectable()
 export class PipelinePreflightService {
   async run(outputDir: string): Promise<PreflightReport> {
+    const clickupTokenCheck = this.validateClickUpToken();
     const secretsCheck = this.validateSecrets();
     const prCheck = this.validatePrContext();
     const configCheck = this.validateConfig();
 
-    const allOk = secretsCheck.ok && prCheck.ok && configCheck.ok;
+    const allOk = clickupTokenCheck.ok && secretsCheck.ok && prCheck.ok && configCheck.ok;
 
     const report: PreflightReport = {
       status: allOk ? 'PASS' : 'BLOCKED',
       timestamp: new Date().toISOString(),
       checks: {
+        clickupToken: clickupTokenCheck,
         secrets: secretsCheck,
         prContext: prCheck,
         config: configCheck,
@@ -39,8 +42,13 @@ export class PipelinePreflightService {
     return report;
   }
 
+  private validateClickUpToken(): { ok: boolean } {
+    const value = process.env.CLICKUP_TOKEN;
+    return { ok: Boolean(value && value.trim().length > 0) };
+  }
+
   private validateSecrets(): { ok: boolean; missing: string[] } {
-    const required = ['CLICKUP_TOKEN', 'GITHUB_TOKEN', 'CLICKUP_TASK_ID'];
+    const required = ['GITHUB_TOKEN', 'CLICKUP_TASK_ID'];
     const missing = required.filter((key) => !process.env[key] || process.env[key]!.trim().length === 0);
     return { ok: missing.length === 0, missing };
   }
