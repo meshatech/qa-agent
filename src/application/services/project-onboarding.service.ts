@@ -76,7 +76,7 @@ export class ProjectOnboardingService {
       baselineReportPath = await this.writeBaselineReport(outputDir, config, smokePlan, smokeResult, readiness, warnings, startedAt, accessibleRoutes, blockedRoutes);
     }
 
-    await this.persistResult(projectPath, outputDir, readiness, warnings, startedAt);
+    await this.persistResult(projectPath, outputDir, readiness, warnings, startedAt, accessibleRoutes, blockedRoutes);
     return { readiness, baselineReportPath, warnings };
   }
 
@@ -241,6 +241,8 @@ export class ProjectOnboardingService {
     readiness: ProjectReadinessStatus,
     warnings: string[],
     startedAt: string,
+    accessibleRoutes: string[],
+    blockedRoutes: string[],
   ): Promise<void> {
     await this.runHistory.append(projectPath, {
       runId: `onboarding-${Date.now()}`,
@@ -250,6 +252,9 @@ export class ProjectOnboardingService {
       summary: `Onboarding completed with readiness=${readiness}`,
       warnings,
       outputDir,
+      readiness,
+      accessibleRoutes,
+      blockedRoutes,
     });
   }
 }

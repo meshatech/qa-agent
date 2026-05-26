@@ -154,7 +154,9 @@ describe('ProjectOnboardingService', () => {
 
     const historyLines = await new RunHistoryService(new SanitizerService()).readLines(projectPath);
     expect(historyLines.length).toBeGreaterThan(0);
-    expect(historyLines[historyLines.length - 1]?.status).toBe('passed');
+    const entry = historyLines[historyLines.length - 1];
+    expect(entry?.status).toBe('passed');
+    expect(entry?.readiness).toBe('READY');
   });
 
   it('returns ONBOARDING_BLOCKED when smoke fails, never as a product bug', async () => {
@@ -198,7 +200,9 @@ describe('ProjectOnboardingService', () => {
     expect(report).not.toContain('BUG');
 
     const historyLines = await new RunHistoryService(new SanitizerService()).readLines(projectPath);
-    expect(historyLines[historyLines.length - 1]?.status).toBe('blocked');
+    const entry = historyLines[historyLines.length - 1];
+    expect(entry?.status).toBe('blocked');
+    expect(entry?.readiness).toBe('ONBOARDING_BLOCKED');
   });
 
   it('returns ONBOARDING_BLOCKED when browser fails to open', async () => {
@@ -679,5 +683,99 @@ describe('ProjectOnboardingService', () => {
 
     delete process.env.TEST_USER;
     delete process.env.TEST_PASS;
+  });
+
+  it('appends onboarding entry to run-history.jsonl with timestamp and readiness', async () => {
+    const outputDir = await tempDir();
+    const projectPath = await tempDir();
+    const config = RunConfigSchema.parse({
+      baseUrl: 'https://app.local',
+      appDomains: ['app.local'],
+      demand: { id: 'D', title: 'T', description: 'D' },
+    });
+
+    const service = makeService();
+    const result = await service.execute(config, outputDir, projectPath);
+
+    const historyLines = await new RunHistoryService(new SanitizerService()).readLines(projectPath);
+    expect(historyLines.length).toBeGreaterThan(0);
+
+    const entry = historyLines[historyLines.length - 1];
+    expect(entry?.ts).toBeTruthy();
+    expect(entry?.readiness).toBe(result.readiness);
+    expect(entry?.demandId).toBe('onboarding');
+  });
+
+  it('records accessibleRoutes and blockedRoutes in run-history entry', async () => {
+    const outputDir = await tempDir();
+    const projectPath = await tempDir();
+    const config = RunConfigSchema.parse({
+      baseUrl: 'https://app.local',
+      appDomains: ['app.local'],
+      demand: { id: 'D', title: 'T', description: 'D' },
+      allowedRoutes: ['/good', '/bad'],
+    });
+
+    let callCount = 0;
+    const browser: BrowserHarnessPort = {
+      ...makeBrowser(),
+      async observe() {
+        callCount++;
+        if (callCount === 1) {
+          return makeObservation('https://app.local/', [], {
+            networkSignals: [{ method: 'GET', url: 'https://app.local/', status: 200, isAppOrigin: true, timestamp: new Date().toISOString() }],
+            elements: [{ id: 'el_001', role: 'heading', name: 'App', inViewport: true, locator: { strategy: 'text', text: 'App' } }],
+          });
+        }
+        if (callCount === 2) {
+          // /good
+          return makeObservation('https://app.local/good', [], {
+            networkSignals: [{ method: 'GET', url: 'https://app.local/good', status: 200, isAppOrigin: true, timestamp: new Date().toISOString() }],
+            elements: [{ id: 'el_001', role: 'heading', name: 'Good', inViewport: true, locator: { strategy: 'text', text: 'Good' } }],
+          });
+        }
+        // /bad
+        return makeObservation('https://app.local/bad', [], {
+          networkSignals: [{ method: 'GET', url: 'https://app.local/bad', status: 500, isAppOrigin: true, timestamp: new Date().toISOString() }],
+          elements: [{ id: 'el_001', role: 'heading', name: 'Bad', inViewport: true, locator: { strategy: 'text', text: 'Bad' } }],
+        });
+      },
+    };
+
+    const service = makeService({ browser });
+    await service.execute(config, outputDir, projectPath);
+
+    const historyLines = await new RunHistoryService(new SanitizerService()).readLines(projectPath);
+    const entry = historyLines[historyLines.length - 1];
+
+    expect(entry?.accessibleRoutes).toEqual(['/good']);
+    expect(entry?.blockedRoutes).toEqual(['/bad']);
+  });
+
+  it('does not overwrite existing run-history entries', async () => {
+    const outputDir = await tempDir();
+    const projectPath = await tempDir();
+    const config = RunConfigSchema.parse({
+      baseUrl: 'https://app.local',
+      appDomains: ['app.local'],
+      demand: { id: 'D', title: 'T', description: 'D' },
+    });
+
+    const history = new RunHistoryService(new SanitizerService());
+    // Pre-seed an existing entry
+    await history.append(projectPath, {
+      runId: 'prev-run',
+      ts: '2025-01-01T00:00:00Z',
+      status: 'passed',
+      demandId: 'previous',
+    });
+
+    const service = makeService();
+    await service.execute(config, outputDir, projectPath);
+
+    const historyLines = await history.readLines(projectPath);
+    expect(historyLines.length).toBe(2);
+    expect(historyLines[0]?.runId).toBe('prev-run');
+    expect(historyLines[1]?.demandId).toBe('onboarding');
   });
 });
