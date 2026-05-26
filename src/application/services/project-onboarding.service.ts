@@ -1,0 +1,240 @@
+import { Inject, Injectable } from '@nestjs/common';
+import { writeFile, mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
+
+import type { RunConfig } from '../../domain/schemas/config.schema.js';
+import type { ExecutionPlan } from '../../domain/schemas/execution-plan.schema.js';
+import type { OnboardingResult, ProjectReadinessStatus } from '../../domain/models/readiness.model.js';
+import type { BrowserHarnessPort } from '../ports/browser-harness.port.js';
+import { PlanExecutorService } from './plan-executor.service.js';
+import { RunHistoryService } from './run-history.service.js';
+import { DataHarnessService } from './data-harness.service.js';
+import { ReadinessEvaluatorService } from './readiness-evaluator.service.js';
+import { BaselineSmokeBuilderService } from './baseline-smoke-builder.service.js';
+
+@Injectable()
+export class ProjectOnboardingService {
+  constructor(
+    @Inject('BrowserHarnessPort') private readonly browser: BrowserHarnessPort,
+    @Inject(PlanExecutorService) private readonly planExecutor: PlanExecutorService,
+    @Inject(RunHistoryService) private readonly runHistory: RunHistoryService,
+    @Inject(DataHarnessService) private readonly data: DataHarnessService,
+    @Inject(ReadinessEvaluatorService) private readonly readinessEvaluator: ReadinessEvaluatorService,
+    @Inject(BaselineSmokeBuilderService) private readonly smokeBuilder: BaselineSmokeBuilderService,
+  ) {}
+
+  async execute(config: RunConfig, outputDir: string, projectPath: string): Promise<OnboardingResult> {
+    const startedAt = new Date().toISOString();
+    const warnings: string[] = this.validateConfig(config);
+    let readiness: ProjectReadinessStatus = 'UNKNOWN';
+    let baselineReportPath: string | null = null;
+
+    let browserOpenOk = false;
+    let smokePlan: ExecutionPlan | null = null;
+    let smokeResult: import('./plan-executor.service.js').PlanExecutionResult | null = null;
+    let executionError = false;
+
+    try {
+      await this.browser.open(config);
+      browserOpenOk = true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      warnings.push(`Browser open failed: ${message}`);
+    }
+
+    if (browserOpenOk) {
+      const minimalSmoke = await this.verifyMinimalSmoke(config);
+      warnings.push(...minimalSmoke.warnings);
+
+      const routeCheck = await this.verifyAllowedRoutes(config);
+      warnings.push(...routeCheck.warnings);
+
+      try {
+        smokePlan = this.smokeBuilder.build(config);
+        smokeResult = await this.planExecutor.execute(smokePlan, config);
+
+        warnings.push(...smokeResult.warnings.map((w) => `${w.stepId}: ${w.message}`));
+        if (!smokeResult.ok && smokeResult.failedMessage) {
+          warnings.push(`Onboarding failed: ${smokeResult.failedMessage}`);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        executionError = true;
+        warnings.push(`Smoke execution error: ${message}`);
+      } finally {
+        await this.browser.close().catch(() => undefined);
+      }
+    }
+
+    readiness = this.readinessEvaluator.evaluate({ browserOpenOk, smokeResult, executionError });
+
+    if (smokePlan && smokeResult) {
+      baselineReportPath = await this.writeBaselineReport(outputDir, config, smokePlan, smokeResult, readiness, warnings, startedAt);
+    }
+
+    await this.persistResult(projectPath, outputDir, readiness, warnings, startedAt);
+    return { readiness, baselineReportPath, warnings };
+  }
+
+  private async verifyMinimalSmoke(config: RunConfig): Promise<{ ok: boolean; warnings: string[] }> {
+    const warnings: string[] = [];
+    let ok = true;
+
+    try {
+      const observation = await this.browser.observe();
+
+      // Verify HTTP 200 status for baseUrl navigation
+      const baseUrlSignal = observation.networkSignals.find(
+        (s) => s.url === config.baseUrl || s.url.startsWith(config.baseUrl),
+      );
+      if (!baseUrlSignal) {
+        warnings.push(`No network signal found for baseUrl ${config.baseUrl}`);
+        ok = false;
+      } else if (baseUrlSignal.status !== 200) {
+        warnings.push(`baseUrl returned HTTP ${baseUrlSignal.status} (expected 200)`);
+        ok = false;
+      }
+
+      // Verify DOM is loaded (has elements)
+      if (observation.elements.length === 0) {
+        warnings.push('DOM appears empty: no elements detected after navigation');
+        ok = false;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      warnings.push(`Minimal smoke verification failed: ${message}`);
+      ok = false;
+    }
+
+    return { ok, warnings };
+  }
+
+  private async verifyAllowedRoutes(config: RunConfig): Promise<{ accessibleRoutes: string[]; blockedRoutes: string[]; warnings: string[] }> {
+    const accessibleRoutes: string[] = [];
+    const blockedRoutes: string[] = [];
+    const warnings: string[] = [];
+
+    if (!config.allowedRoutes || config.allowedRoutes.length === 0) {
+      return { accessibleRoutes, blockedRoutes, warnings };
+    }
+
+    for (const route of config.allowedRoutes) {
+      try {
+        const fullUrl = new URL(route, config.baseUrl).toString();
+        await this.browser.execute({ type: 'navigate', to: fullUrl, reason: `Onboarding: verify allowed route ${route}` });
+        const observation = await this.browser.observe();
+
+        const routeSignal = observation.networkSignals.find(
+          (s) => s.url === fullUrl || s.url.startsWith(fullUrl),
+        );
+        if (!routeSignal) {
+          warnings.push(`Route ${route}: no network signal found`);
+          blockedRoutes.push(route);
+        } else if (routeSignal.status !== 200) {
+          warnings.push(`Route ${route} returned HTTP ${routeSignal.status} (expected 200)`);
+          blockedRoutes.push(route);
+        } else if (observation.elements.length === 0) {
+          warnings.push(`Route ${route}: DOM empty after navigation`);
+          blockedRoutes.push(route);
+        } else {
+          accessibleRoutes.push(route);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        warnings.push(`Route ${route} verification failed: ${message}`);
+        blockedRoutes.push(route);
+      }
+    }
+
+    return { accessibleRoutes, blockedRoutes, warnings };
+  }
+
+  private validateConfig(config: RunConfig): string[] {
+    const warnings: string[] = [];
+
+    // baseUrl must be a valid, non-empty URL
+    try {
+      const url = new URL(config.baseUrl);
+      if (!url.protocol.startsWith('http')) {
+        warnings.push(`baseUrl uses non-HTTP protocol: ${url.protocol}`);
+      }
+    } catch {
+      warnings.push(`baseUrl is not a valid URL: ${config.baseUrl}`);
+    }
+
+    // appDomains should contain at least one domain
+    if (config.appDomains.length === 0) {
+      warnings.push('appDomains is empty; no domains configured for scope');
+    }
+
+    // Auth verification
+    if (config.auth.kind === 'formLogin') {
+      const username = process.env[config.auth.usernameEnv] ?? '';
+      const password = process.env[config.auth.passwordEnv] ?? '';
+      if (!username || !password) {
+        warnings.push(`formLogin auth configured but credentials missing (env: ${config.auth.usernameEnv}, ${config.auth.passwordEnv})`);
+      }
+    }
+
+    return warnings;
+  }
+
+  private async writeBaselineReport(
+    outputDir: string,
+    config: RunConfig,
+    plan: ExecutionPlan,
+    planResult: import('./plan-executor.service.js').PlanExecutionResult,
+    readiness: ProjectReadinessStatus,
+    warnings: string[],
+    startedAt: string,
+  ): Promise<string> {
+    await mkdir(outputDir, { recursive: true });
+    const path = join(outputDir, 'baseline-report.md');
+    const lines: string[] = [
+      '# Baseline Smoke Report',
+      '',
+      `**Project:** ${config.baseUrl}`,
+      `**Readiness:** ${readiness}`,
+      `**Started At:** ${startedAt}`,
+      `**Finished At:** ${new Date().toISOString()}`,
+      '',
+      '## Smoke Plan',
+      '',
+      ...plan.steps.map((s) => `- ${s.id}: ${s.description}`),
+      '',
+      '## Execution Result',
+      '',
+      `- **OK:** ${planResult.ok}`,
+      `- **Steps executed:** ${planResult.steps.length}`,
+      `- **Warnings:** ${planResult.warnings.length}`,
+      '',
+      '## Warnings',
+      ...(warnings.length ? warnings.map((w) => `- ${w}`) : ['- None']),
+      '',
+      '## Notes',
+      '- Onboarding failures are classified as ONBOARDING_BLOCKED, not product bugs.',
+      '- No destructive actions were attempted.',
+    ];
+
+    await writeFile(path, lines.join('\n'), 'utf8');
+    return path;
+  }
+
+  private async persistResult(
+    projectPath: string,
+    outputDir: string,
+    readiness: ProjectReadinessStatus,
+    warnings: string[],
+    startedAt: string,
+  ): Promise<void> {
+    await this.runHistory.append(projectPath, {
+      runId: `onboarding-${Date.now()}`,
+      ts: startedAt,
+      status: this.readinessEvaluator.toRunHistoryStatus(readiness),
+      demandId: 'onboarding',
+      summary: `Onboarding completed with readiness=${readiness}`,
+      warnings,
+      outputDir,
+    });
+  }
+}
