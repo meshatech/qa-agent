@@ -13,6 +13,7 @@ export interface PreflightReport {
     clickupTaskId: { ok: boolean };
     githubToken: { ok: boolean; warning?: string };
     prContext: { ok: boolean; missing: string[]; eventName?: string };
+    branchHead: { ok: boolean; branchHead?: string; missing: string[] };
     config: { ok: boolean; errors: string[]; configPath?: string };
   };
 }
@@ -30,9 +31,15 @@ export class PipelinePreflightService {
     const clickupTaskIdCheck = this.validateClickUpTaskId();
     const githubTokenCheck = this.validateGitHubToken();
     const prCheck = this.validatePrContext();
+    const branchHeadCheck = this.readBranchHead();
     const configCheck = await this.validateConfig();
 
-    const allOk = clickupTokenCheck.ok && clickupTaskIdCheck.ok && prCheck.ok && configCheck.ok;
+    const allOk =
+      clickupTokenCheck.ok &&
+      clickupTaskIdCheck.ok &&
+      prCheck.ok &&
+      branchHeadCheck.ok &&
+      configCheck.ok;
 
     const report: PreflightReport = {
       status: allOk ? 'PASS' : 'BLOCKED',
@@ -42,6 +49,7 @@ export class PipelinePreflightService {
         clickupTaskId: clickupTaskIdCheck,
         githubToken: githubTokenCheck,
         prContext: prCheck,
+        branchHead: branchHeadCheck,
         config: configCheck,
       },
     };
@@ -85,6 +93,14 @@ export class PipelinePreflightService {
     }
 
     return { ok: missing.length === 0, missing, eventName: eventName || undefined };
+  }
+
+  private readBranchHead(): { ok: boolean; branchHead?: string; missing: string[] } {
+    const branchHead = process.env.GITHUB_HEAD_REF?.trim() ?? '';
+    if (!branchHead) {
+      return { ok: false, missing: ['GITHUB_HEAD_REF'] };
+    }
+    return { ok: true, branchHead, missing: [] };
   }
 
   private async validateConfig(): Promise<{ ok: boolean; errors: string[]; configPath?: string }> {

@@ -81,6 +81,8 @@ describe('PipelinePreflightService', () => {
     expect(result.checks.clickupTaskId.ok).toBe(true);
     expect(result.checks.githubToken.ok).toBe(true);
     expect(result.checks.prContext.ok).toBe(true);
+    expect(result.checks.branchHead.ok).toBe(true);
+    expect(result.checks.branchHead.branchHead).toBe('feature/test');
     expect(result.checks.config.ok).toBe(true);
   });
 
@@ -417,6 +419,8 @@ describe('PipelinePreflightService', () => {
 
       expect(result.checks.prContext.ok).toBe(false);
       expect(result.checks.prContext.missing).toContain('GITHUB_HEAD_REF');
+      expect(result.checks.branchHead.ok).toBe(false);
+      expect(result.checks.branchHead.missing).toContain('GITHUB_HEAD_REF');
       expect(result.status).toBe('BLOCKED');
     });
 
@@ -505,6 +509,82 @@ describe('PipelinePreflightService', () => {
       expect(result.checks.clickupTaskId.ok).toBe(true);
       expect(result.checks.githubToken.ok).toBe(true);
       expect(result.checks.prContext.ok).toBe(true);
+    });
+  });
+
+  describe('PRJ-11355 — branch head validation', () => {
+    async function setFullEnvExceptBranchHead(): Promise<void> {
+      setFullPreflightEnv();
+      delete process.env.GITHUB_HEAD_REF;
+      await attachValidConfig();
+    }
+
+    it('branchHead passes and returns branch name when GITHUB_HEAD_REF is set', async () => {
+      const outputDir = await setupPreflightPassEnv();
+      process.env.GITHUB_HEAD_REF = 'feature/my-branch';
+
+      const result = await makeService().run(outputDir);
+
+      expect(result.checks.branchHead.ok).toBe(true);
+      expect(result.checks.branchHead.branchHead).toBe('feature/my-branch');
+      expect(result.checks.branchHead.missing).toEqual([]);
+    });
+
+    it('branchHead fails when GITHUB_HEAD_REF is missing', async () => {
+      await setFullEnvExceptBranchHead();
+
+      const outputDir = await tempDir();
+      const result = await makeService().run(outputDir);
+
+      expect(result.checks.branchHead.ok).toBe(false);
+      expect(result.checks.branchHead.missing).toContain('GITHUB_HEAD_REF');
+      expect(result.checks.branchHead.branchHead).toBeUndefined();
+      expect(result.status).toBe('BLOCKED');
+    });
+
+    it('branchHead fails when GITHUB_HEAD_REF is whitespace', async () => {
+      await setFullEnvExceptBranchHead();
+      process.env.GITHUB_HEAD_REF = '   ';
+
+      const outputDir = await tempDir();
+      const result = await makeService().run(outputDir);
+
+      expect(result.checks.branchHead.ok).toBe(false);
+      expect(result.checks.branchHead.missing).toContain('GITHUB_HEAD_REF');
+      expect(result.status).toBe('BLOCKED');
+    });
+
+    it('preflight-report.json includes branchHead value', async () => {
+      const outputDir = await setupPreflightPassEnv();
+      process.env.GITHUB_HEAD_REF = 'feature/report-branch';
+
+      await makeService().run(outputDir);
+
+      const raw = await readFile(join(outputDir, 'preflight-report.json'), 'utf8');
+      const parsed = JSON.parse(raw);
+      expect(parsed.checks.branchHead.ok).toBe(true);
+      expect(parsed.checks.branchHead.branchHead).toBe('feature/report-branch');
+    });
+
+    it('status is BLOCKED when GITHUB_HEAD_REF is missing', async () => {
+      process.env.CLICKUP_TOKEN = 'pk_live_valid_token';
+      process.env.GITHUB_TOKEN = 'ghp_xxx';
+      process.env.CLICKUP_TASK_ID = '86ahmgfc0';
+      process.env.GITHUB_EVENT_NAME = 'pull_request';
+      process.env.GITHUB_REF = 'refs/pull/42/merge';
+      process.env.GITHUB_BASE_REF = 'main';
+      delete process.env.GITHUB_HEAD_REF;
+      await attachValidConfig();
+
+      const outputDir = await tempDir();
+      const result = await makeService().run(outputDir);
+
+      expect(result.status).toBe('BLOCKED');
+      expect(result.checks.branchHead.ok).toBe(false);
+      expect(result.checks.clickupToken.ok).toBe(true);
+      expect(result.checks.clickupTaskId.ok).toBe(true);
+      expect(result.checks.githubToken.ok).toBe(true);
+      expect(result.checks.config.ok).toBe(true);
     });
   });
 });
