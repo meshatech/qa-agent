@@ -5,7 +5,7 @@ import { NestFactory } from '@nestjs/core';
 import { Command } from 'commander';
 import { AppModule } from './app.module.js';
 import { AgentController } from './interfaces/cli/agent.controller.js';
-import { ExitCodes as EXIT, classifyError, classifyResult } from './interfaces/cli/exit-codes.js';
+import { ExitCodes as EXIT, classifyError, classifyResult, classifyOnboardingResult } from './interfaces/cli/exit-codes.js';
 
 async function withApp<T>(fn: (controller: AgentController) => Promise<T>): Promise<T> {
   const app = await NestFactory.createApplicationContext(AppModule, { logger: false });
@@ -79,6 +79,24 @@ program
     } catch (err) {
       console.error(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2));
       process.exitCode = classifyError(err);
+    }
+  });
+
+program
+  .command('onboard')
+  .description('Run project onboarding with baseline smoke test')
+  .option('-c, --config <path>', 'config path', './agent-qa.config.json')
+  .option('--project-dir <path>', 'project directory override')
+  .option('--output-dir <path>', 'output directory override')
+  .option('--headed', 'headed browser')
+  .action(async (opts) => {
+    try {
+      const result = await withApp((c) => c.onboard(opts.config, opts.projectDir, opts.outputDir, Boolean(opts.headed)));
+      console.log(JSON.stringify(result, null, 2));
+      process.exitCode = classifyOnboardingResult(result);
+    } catch (err) {
+      console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err), kind: err instanceof Error ? err.constructor.name : 'Error' }, null, 2));
+      process.exitCode = EXIT.BUGS_FOUND;
     }
   });
 

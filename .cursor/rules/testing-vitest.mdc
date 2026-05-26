@@ -1,0 +1,33 @@
+---
+description: Vitest testing conventions for the test/ directory
+globs: test/**
+alwaysApply: false
+---
+
+# Testing (Vitest)
+
+## Layout
+
+Tests live in `test/` mirroring `src/` structure. Run: `npm test`.
+
+## Before commit
+
+```bash
+npm test && npm run typecheck && npm run lint
+```
+
+## Patterns
+
+- Use `FakeDecisionProvider` for LLM-free unit tests
+- HTML fixtures in @test/fixtures/; local server: `node ./test/fixtures/server.mjs` (port 4173)
+- Fixture config: @agent-qa.fixture.config.json with `llm.provider: fake`
+
+## Coverage expectations
+
+- Schema changes → parse/validation tests
+- New actions/tools → execution + rejection paths
+- Recovery/bug classifier → severity and run-stop behavior
+
+## Avoid
+
+Trivial assertions that only restate TypeScript types. Test observable behavior and contracts.

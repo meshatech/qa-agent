@@ -1,0 +1,37 @@
+---
+description: Runtime law for agent-qa — quiescence, ephemeral IDs, validation, auth, sanitization
+alwaysApply: false
+---
+
+# Runtime Invariants
+
+Source of truth: @doc/README.md and @doc/07-runtime-flow.md.
+
+## Runtime law (never break)
+
+1. No action without a current `observationId`.
+2. No reuse of stale element IDs — invalidate locator map before reobserve.
+3. No validation with unresolved dynamic data — call `DataHarness.resolveObject` first.
+4. No new LLM decision before page quiescence.
+5. No floating state without a recovery escape route.
+
+## After every action
+
+```
+execute → quiescence → invalidate IDs → reobserve → validate (resolved data) → next LLM decision
+```
+
+## Auth and demand
+
+- Login is a **pre-runtime** precondition when `auth.kind !== 'none'`.
+- Never put login steps in `demand`.
+- Logout tasks must prove unauthenticated state (login URL or visible login text).
+
+## Validation quality
+
+- Visibility-only checks are weak — prove state change.
+- Menu/dropdown flows often need two-step decisions.
+
+## Privacy
+
+Sanitize emails, JWTs, cookies before prompts, logs, and evidence persistence.

@@ -3,3 +3,8 @@ dist
 qa-agent-runs
 .agent-qa-video
 .env
+.git
+*.md
+doc/
+docs/
+tasks-clickup/

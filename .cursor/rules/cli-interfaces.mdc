@@ -1,0 +1,33 @@
+---
+description: CLI controller, Commander commands, and exit codes
+globs: src/interfaces/**
+alwaysApply: false
+---
+
+# CLI Interfaces
+
+Thin layer only — delegate to use cases in `src/application/use-cases/`.
+
+## Entry
+
+@src/interfaces/cli/agent.controller.ts — Commander commands: `validate-config`, `run`, `inspect`, `report`, `capture-auth`.
+
+## Exit codes
+
+@src/interfaces/cli/exit-codes.ts:
+
+| Code | Meaning |
+|------|---------|
+| 0 | OK |
+| 1 | Bugs found (HIGH/CRITICAL or FAILED/BLOCKED) |
+| 2 | Config error |
+| 3 | Harness fatal |
+| 4 | Timeout |
+
+Use `classifyError()` and `classifyResult()` — do not invent new exit codes without updating docs.
+
+## Rules
+
+- No business logic in controller — inject use cases via NestJS DI.
+- New command → new use case + register in `APPLICATION_PROVIDERS` and controller.
+- Update @doc/17-configuration-and-cli.md when CLI surface changes.

@@ -1,0 +1,27 @@
+---
+description: Specs and documentation as source of truth before changing runtime behavior
+globs: doc/**,docs/**,tasks-clickup/**
+alwaysApply: false
+---
+
+# Specs and Documentation
+
+## Before changing runtime behavior
+
+1. Read relevant spec in `doc/` (index: @doc/README.md)
+2. Check implementation map in `docs/architecture/` for v0.2 components
+3. Align with ADRs: @doc/20-adr-typescript-nest-langchain.md, @doc/09-adr-reactive-loop.md
+
+## `tasks-clickup/`
+
+Future pipeline specs (ClickUp, GitHub PR, BM25 memory, correlation). **Do not** merge into MVP runtime without explicit intent — many services are not implemented yet.
+
+## When updating docs
+
+- Runtime law changes → update `doc/README.md` and affected numbered specs
+- New tool/action → update @doc/14-action-catalog.md if public contract changes
+- Release milestones → add note under `doc/release-notes/`
+
+## Prefer references over duplication
+
+In rules and memory files, link to spec paths instead of copying full contracts (keeps docs single source of truth).

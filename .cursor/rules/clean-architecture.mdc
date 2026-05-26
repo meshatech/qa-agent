@@ -1,0 +1,42 @@
+---
+description: Clean Architecture and NestJS DI conventions for src/
+globs: src/**/*.ts
+alwaysApply: false
+---
+
+# Clean Architecture
+
+## Layers (inward dependencies only)
+
+```
+domain/ → application/ → infra/ + interfaces/
+```
+
+- `src/domain/` — models, Zod schemas, errors; **no infra imports**
+- `src/application/` — services, use cases, ports, QA tools
+- `src/infra/` — Playwright, LLM, observation, persistence, config
+- `src/interfaces/` — CLI controller
+
+Module chain: `AppModule` → `InterfacesModule` → `ApplicationModule` → `InfraModule`.
+
+## DI registration
+
+- New service → `APPLICATION_PROVIDERS` in @src/application/application.module.ts
+- New infra adapter → `INFRA_PROVIDERS` in @src/infra/infra.module.ts
+- Inject ports via `@Inject('PortTokenName')`
+
+## LangChain boundary
+
+LangChain lives **only** in `src/infra/llm/`. It must not call Playwright, persist runtime state, or bypass Zod.
+
+## ESM imports
+
+Use `.js` suffix on relative imports (NodeNext):
+
+```typescript
+import { RunConfigSchema } from '../../domain/schemas/config.schema.js';
+```
+
+## Naming
+
+kebab-case files; suffixes: `.service.ts`, `.usecase.ts`, `.provider.ts`, `.port.ts`, `.schema.ts`. Ports end with `Port`; no `any`.

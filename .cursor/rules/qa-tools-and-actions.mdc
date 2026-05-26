@@ -1,0 +1,30 @@
+---
+description: Checklist for adding QA tools and LLM actions
+globs: src/application/tools/**,src/domain/schemas/action.schema.ts
+alwaysApply: false
+---
+
+# QA Tools and Actions
+
+## New LLM action
+
+1. Add type + Zod schema in @src/domain/schemas/action.schema.ts
+2. Implement handler in `src/application/tools/built-in/` (or extend registry)
+3. Update `ActionPolicyService` if destructive or policy-sensitive
+4. Update LLM provider prompts if the action is user-facing
+5. Add Vitest coverage in `test/`
+
+## New QA tool
+
+1. Create `src/application/tools/built-in/<name>.tool.ts` implementing `QaTool` (`execute`)
+2. Export in @src/application/tools/built-in/index.ts
+3. `QaToolRegistry` loads via `ALL_QA_TOOLS` in `ApplicationModule`
+4. Distinguish public vs internal tools (@src/application/tools/built-in/public-tools.ts)
+
+## Validation
+
+Never trust raw LLM output — always `safeParse` with `QaActionEnvelopeSchema` and respect `llm.maxSchemaRetries`.
+
+## Execution modes
+
+Respect `runtime.mode`: `FULL_REACTIVE` vs Hybrid Guarded (`HYBRID_GUARDED`, `PLAN_AND_EXECUTE`). See @doc/release-notes/v0.2-stable.md.
