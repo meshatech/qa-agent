@@ -53,6 +53,7 @@ function createPassingGitRepo(): GitRepositoryPort {
   return {
     isShallowRepository: async () => false,
     hasRemoteBranch: async () => true,
+    diffPullRequest: async () => '',
   };
 }
 
