@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { FileConfigLoader } from './config/file-config.loader.js';
 import { FilePreflightReportWriterAdapter } from './persistence/file-preflight-report-writer.adapter.js';
 import { FetchClickUpApiAdapter } from './clickup/fetch-clickup-api.adapter.js';
+import { ClickUpHttpReaderAdapter } from './clickup/clickup-http-reader.adapter.js';
+import { FakeClickUpReaderAdapter } from './clickup/fake-clickup-reader.adapter.js';
 import { FetchGitHubApiAdapter } from './github/fetch-github-api.adapter.js';
 import { FileGitHubEventContextAdapter } from './github/file-github-event-context.adapter.js';
 import { ExecGitRepositoryAdapter } from './git/exec-git-repository.adapter.js';
@@ -46,6 +48,8 @@ export const INFRA_PROVIDERS = [
   FilePreflightReportWriterAdapter,
   ExecGitRepositoryAdapter,
   FetchClickUpApiAdapter,
+  ClickUpHttpReaderAdapter,
+  FakeClickUpReaderAdapter,
   FetchGitHubApiAdapter,
   FileGitHubEventContextAdapter,
   { provide: 'BrowserHarnessPort', useExisting: PlaywrightHarness },
@@ -55,6 +59,7 @@ export const INFRA_PROVIDERS = [
   { provide: 'PreflightReportWriterPort', useExisting: FilePreflightReportWriterAdapter },
   { provide: 'GitRepositoryPort', useExisting: ExecGitRepositoryAdapter },
   { provide: 'ClickUpApiPort', useExisting: FetchClickUpApiAdapter },
+  { provide: 'ClickUpReaderPort', useExisting: ClickUpHttpReaderAdapter },
   { provide: 'GitHubApiPort', useExisting: FetchGitHubApiAdapter },
   { provide: 'GitHubEventContextPort', useExisting: FileGitHubEventContextAdapter },
 ];

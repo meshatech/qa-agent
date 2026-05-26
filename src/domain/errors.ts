@@ -30,3 +30,14 @@ export class PreflightBlockedError extends Error {
     super('Pipeline preflight blocked');
   }
 }
+
+export class ClickUpReaderError extends Error {
+  readonly name = 'ClickUpReaderError';
+  constructor(
+    message: string,
+    public readonly statusCode?: number,
+    public readonly cause?: unknown,
+  ) {
+    super(message);
+  }
+}
