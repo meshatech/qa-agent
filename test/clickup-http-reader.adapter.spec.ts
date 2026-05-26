@@ -311,7 +311,8 @@ Tela em branco`,
       'https://api.clickup.com/api/v2/task/PRJ-11364?custom_task_ids=true&team_id=459806',
       { headers: { Authorization: 'pk_test_token' } },
     );
-    expect(fetchMock.mock.calls.some(([calledUrl]) => calledUrl === 'https://example.com/spec.pdf')).toBe(
+    const fetchCalls = fetchMock.mock.calls as unknown as Array<[string, RequestInit?]>;
+    expect(fetchCalls.some(([calledUrl]) => calledUrl === 'https://example.com/spec.pdf')).toBe(
       false,
     );
   });
@@ -341,20 +342,103 @@ Tela em branco`,
   });
 
   it.each([
-    [401, 'ClickUp read access denied (401)'],
-    [403, 'ClickUp read access denied (403)'],
-    [404, 'ClickUp task not found (PRJ-404)'],
-    [429, 'ClickUp rate limit exceeded (429)'],
-  ] as const)('throws ClickUpReaderError on HTTP %i', async (status, message) => {
-    mockFetch(status);
+    [401, 'AUTH_FAILED', 'ClickUp authentication failed (401)'],
+    [403, 'PERMISSION_DENIED', 'ClickUp permission denied (403)'],
+    [404, 'TASK_NOT_FOUND', 'ClickUp task not found (PRJ-404)'],
+  ] as const)(
+    'throws ClickUpReaderError with code on HTTP %i',
+    async (status, code, message) => {
+      mockFetch(status);
+      const reader = new ClickUpHttpReaderAdapter();
+
+      await expect(
+        reader.readTask('PRJ-404', 'pk_test_token', { configTeamId: '459806' }),
+      ).rejects.toMatchObject({
+        name: 'ClickUpReaderError',
+        message,
+        statusCode: status,
+        code,
+      });
+    },
+  );
+
+  it('retries on 429 and succeeds after backoff', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        headers: new Headers({ 'retry-after': '1' }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        headers: new Headers({ 'retry-after': '1' }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => SAMPLE_TASK,
+      } as unknown as Response);
+    vi.stubGlobal('fetch', fetchMock);
+    const reader = new ClickUpHttpReaderAdapter();
+
+    const resultPromise = reader.readTask('PRJ-11364', 'pk_test_token', {
+      configTeamId: '459806',
+    });
+    await vi.runAllTimersAsync();
+    const result = await resultPromise;
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(result.demand.taskId).toBe('PRJ-11364');
+    vi.useRealTimers();
+  });
+
+  it('throws RATE_LIMIT_EXCEEDED after exhausting 429 retries', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 429,
+      headers: new Headers({ 'retry-after': '0' }),
+    })) as unknown as typeof fetch;
+    vi.stubGlobal('fetch', fetchMock);
+    const reader = new ClickUpHttpReaderAdapter();
+
+    const resultPromise = reader.readTask('PRJ-404', 'pk_test_token', {
+      configTeamId: '459806',
+    });
+    const assertion = expect(resultPromise).rejects.toMatchObject({
+      name: 'ClickUpReaderError',
+      code: 'RATE_LIMIT_EXCEEDED',
+      statusCode: 429,
+      message: 'ClickUp rate limit exceeded (429)',
+    });
+    await vi.runAllTimersAsync();
+    await assertion;
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    vi.useRealTimers();
+  });
+
+  it('does not expose token in network failure messages', async () => {
+    const leakedToken = 'pk_leaked_token_12345678';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error(`Authorization ${leakedToken} failed`);
+      }),
+    );
     const reader = new ClickUpHttpReaderAdapter();
 
     await expect(
-      reader.readTask('PRJ-404', 'pk_test_token', { configTeamId: '459806' }),
-    ).rejects.toMatchObject({
-      name: 'ClickUpReaderError',
-      message,
-      statusCode: status,
+      reader.readTask('PRJ-11364', leakedToken, { configTeamId: '459806' }),
+    ).rejects.toSatisfy((error: unknown) => {
+      expect(error).toBeInstanceOf(ClickUpReaderError);
+      const readerError = error as ClickUpReaderError;
+      expect(readerError.code).toBe('REQUEST_FAILED');
+      expect(readerError.message).not.toContain(leakedToken);
+      expect(readerError.message).toContain('***REDACTED***');
+      return true;
     });
   });
 

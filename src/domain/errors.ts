@@ -31,12 +31,21 @@ export class PreflightBlockedError extends Error {
   }
 }
 
+export type ClickUpReaderErrorCode =
+  | 'AUTH_FAILED'
+  | 'PERMISSION_DENIED'
+  | 'TASK_NOT_FOUND'
+  | 'RATE_LIMIT_EXCEEDED'
+  | 'API_ERROR'
+  | 'REQUEST_FAILED';
+
 export class ClickUpReaderError extends Error {
   readonly name = 'ClickUpReaderError';
   constructor(
     message: string,
     public readonly statusCode?: number,
     public readonly cause?: unknown,
+    public readonly code?: ClickUpReaderErrorCode,
   ) {
     super(message);
   }

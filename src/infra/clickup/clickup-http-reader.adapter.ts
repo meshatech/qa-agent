@@ -7,6 +7,14 @@ import type {
 import { ClickUpReaderError } from '../../domain/errors.js';
 import { BugContextSchema } from '../../domain/schemas/bug-context.schema.js';
 import { DemandContextSchema } from '../../domain/schemas/demand-context.schema.js';
+import {
+  CLICKUP_RATE_LIMIT_MAX_WAIT_MS,
+  CLICKUP_RATE_LIMIT_RETRIES,
+  computeClickUpRetryWaitMs,
+  mapClickUpHttpError,
+  sanitizeClickUpErrorMessage,
+  sleep,
+} from './clickup-http-error.handler.js';
 import { extractClickUpAcceptanceCriteria } from './clickup-acceptance-criteria.parser.js';
 import { extractClickUpBugResults } from './clickup-bug-results.parser.js';
 import { extractClickUpReproductionSteps } from './clickup-reproduction-steps.parser.js';
@@ -105,37 +113,43 @@ export class ClickUpHttpReaderAdapter implements ClickUpReaderPort {
         ? resolveClickUpTeamId({ configTeamId, required: true })
         : resolveClickUpTeamId({ configTeamId });
       const url = buildClickUpTaskUrl(taskId, { teamId });
-      const response = await fetch(url, {
-        headers: { Authorization: token },
-      });
 
-      if (response.status === 401 || response.status === 403) {
-        throw new ClickUpReaderError(
-          `ClickUp read access denied (${response.status})`,
-          response.status,
-        );
+      for (let attempt = 0; attempt <= CLICKUP_RATE_LIMIT_RETRIES; attempt += 1) {
+        const response = await fetch(url, {
+          headers: { Authorization: token },
+        });
+
+        if (response.status === 429 && attempt < CLICKUP_RATE_LIMIT_RETRIES) {
+          await sleep(
+            computeClickUpRetryWaitMs(
+              response.headers,
+              attempt,
+              CLICKUP_RATE_LIMIT_MAX_WAIT_MS,
+            ),
+          );
+          continue;
+        }
+
+        if (!response.ok) {
+          throw mapClickUpHttpError(response.status, taskId, token);
+        }
+
+        return response;
       }
 
-      if (response.status === 404) {
-        throw new ClickUpReaderError(`ClickUp task not found (${taskId})`, response.status);
-      }
-
-      if (response.status === 429) {
-        throw new ClickUpReaderError('ClickUp rate limit exceeded (429)', response.status);
-      }
-
-      if (!response.ok) {
-        throw new ClickUpReaderError(`ClickUp API error (${response.status})`, response.status);
-      }
-
-      return response;
+      throw mapClickUpHttpError(429, taskId, token);
     } catch (error) {
       if (error instanceof ClickUpReaderError) {
         throw error;
       }
 
       const message = error instanceof Error ? error.message : String(error);
-      throw new ClickUpReaderError(`ClickUp API request failed: ${message}`, undefined, error);
+      throw new ClickUpReaderError(
+        sanitizeClickUpErrorMessage(`ClickUp API request failed: ${message}`, token),
+        undefined,
+        error,
+        'REQUEST_FAILED',
+      );
     }
   }
 }
