@@ -229,6 +229,93 @@ Tela em branco`,
     });
   });
 
+  it('maps multiple attachments and skips deleted entries', async () => {
+    mockFetch(200, {
+      ...SAMPLE_TASK,
+      attachments: [
+        {
+          title: 'spec.pdf',
+          url: 'https://example.com/spec.pdf',
+          mimetype: 'application/pdf',
+        },
+        {
+          title: 'removed.png',
+          url: 'https://example.com/removed.png',
+          mimetype: 'image/png',
+          deleted: true,
+        },
+        {
+          url: 'https://example.com/logs.txt',
+          extension: 'txt',
+        },
+      ],
+    });
+    const reader = new ClickUpHttpReaderAdapter();
+
+    const result = await reader.readTask('PRJ-11364', 'pk_test_token', {
+      configTeamId: '459806',
+    });
+
+    expect(result.demand.attachments).toEqual([
+      {
+        name: 'spec.pdf',
+        url: 'https://example.com/spec.pdf',
+        type: 'application/pdf',
+      },
+      {
+        name: 'logs.txt',
+        url: 'https://example.com/logs.txt',
+        type: 'text/plain',
+      },
+    ]);
+  });
+
+  it('returns empty attachments when task has none', async () => {
+    mockFetch(200, {
+      ...SAMPLE_TASK,
+      attachments: [],
+    });
+    const reader = new ClickUpHttpReaderAdapter();
+
+    const result = await reader.readTask('PRJ-11364', 'pk_test_token', {
+      configTeamId: '459806',
+    });
+
+    expect(result.demand.attachments).toEqual([]);
+  });
+
+  it('does not download attachment content (single task GET only)', async () => {
+    const fetchMock = vi.fn(async () =>
+      ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          ...SAMPLE_TASK,
+          attachments: [
+            {
+              title: 'spec.pdf',
+              url: 'https://example.com/spec.pdf',
+              mimetype: 'application/pdf',
+            },
+          ],
+        }),
+      }) as unknown as Response,
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const reader = new ClickUpHttpReaderAdapter();
+
+    await reader.readTask('PRJ-11364', 'pk_test_token', { configTeamId: '459806' });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.clickup.com/api/v2/task/PRJ-11364?custom_task_ids=true&team_id=459806',
+      { headers: { Authorization: 'pk_test_token' } },
+    );
+    expect(fetchMock.mock.calls.some(([calledUrl]) => calledUrl === 'https://example.com/spec.pdf')).toBe(
+      false,
+    );
+  });
+
   it('includes bug context with results and reproduction steps together', async () => {
     mockFetch(200, {
       ...SAMPLE_TASK,

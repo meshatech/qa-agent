@@ -25,5 +25,6 @@ describe.runIf(hasClickUpEnv)('ClickUpHttpReaderAdapter real API', () => {
     expect(result.demand.title.length).toBeGreaterThan(0);
     expect(result.demand.title).toBe(result.demand.title.trim());
     expect(result.demand.description).not.toMatch(/<[^>]+>/);
+    expect(Array.isArray(result.demand.attachments)).toBe(true);
   });
 });

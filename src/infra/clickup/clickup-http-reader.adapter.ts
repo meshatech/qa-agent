@@ -14,6 +14,10 @@ import {
   extractClickUpDescription,
   extractClickUpTitle,
 } from './clickup-task-content.mapper.js';
+import {
+  mapClickUpTaskAttachments,
+  type ClickUpTaskAttachmentSource,
+} from './clickup-task-attachments.mapper.js';
 import { resolveClickUpTaskId } from './clickup-task-id.resolver.js';
 import { resolveClickUpTeamId } from './clickup-team-id.resolver.js';
 import { buildClickUpTaskUrl, isCustomClickUpTaskId } from './clickup-task-url.builder.js';
@@ -35,7 +39,7 @@ interface ClickUpTaskResponse {
   assignees?: Array<{ username?: string | null }>;
   priority?: { id?: string | number | null; priority?: string | null } | null;
   due_date?: string | number | null;
-  attachments?: Array<{ title?: string; url?: string; mimetype?: string }>;
+  attachments?: ClickUpTaskAttachmentSource[];
 }
 
 @Injectable()
@@ -55,13 +59,7 @@ export class ClickUpHttpReaderAdapter implements ClickUpReaderPort {
       title: extractClickUpTitle(payload.name),
       description,
       acceptanceCriteria: extractClickUpAcceptanceCriteria(description),
-      attachments: (payload.attachments ?? [])
-        .filter((attachment) => attachment.url && (attachment.title || attachment.mimetype))
-        .map((attachment) => ({
-          name: attachment.title?.trim() || 'attachment',
-          url: attachment.url!,
-          type: attachment.mimetype?.trim() || 'application/octet-stream',
-        })),
+      attachments: mapClickUpTaskAttachments(payload.attachments),
       status: payload.status?.status?.trim() || 'unknown',
       assignees: (payload.assignees ?? [])
         .map((assignee) => assignee.username?.trim())
