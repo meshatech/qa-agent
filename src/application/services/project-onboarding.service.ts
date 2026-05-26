@@ -71,6 +71,7 @@ export class ProjectOnboardingService {
     }
 
     readiness = this.readinessEvaluator.evaluate({ browserOpenOk, smokeResult, executionError });
+    await this.writeReadinessStatus(projectPath, readiness);
 
     if (smokePlan && smokeResult) {
       baselineReportPath = await this.writeBaselineReport(outputDir, config, smokePlan, smokeResult, readiness, warnings, startedAt, accessibleRoutes, blockedRoutes);
@@ -256,5 +257,28 @@ export class ProjectOnboardingService {
       accessibleRoutes,
       blockedRoutes,
     });
+  }
+
+  private async writeReadinessStatus(projectPath: string, readiness: ProjectReadinessStatus): Promise<void> {
+    const dir = join(projectPath, '.agent-qa');
+    await mkdir(dir, { recursive: true });
+    const path = join(dir, 'readiness.json');
+    const payload = {
+      readiness,
+      updatedAt: new Date().toISOString(),
+    };
+    await writeFile(path, JSON.stringify(payload, null, 2), 'utf8');
+  }
+
+  async getReadinessStatus(projectPath: string): Promise<ProjectReadinessStatus | null> {
+    try {
+      const { readFile } = await import('node:fs/promises');
+      const path = join(projectPath, '.agent-qa', 'readiness.json');
+      const raw = await readFile(path, 'utf8');
+      const parsed = JSON.parse(raw) as { readiness: ProjectReadinessStatus };
+      return parsed.readiness;
+    } catch {
+      return null;
+    }
   }
 }

@@ -778,4 +778,67 @@ describe('ProjectOnboardingService', () => {
     expect(historyLines[0]?.runId).toBe('prev-run');
     expect(historyLines[1]?.demandId).toBe('onboarding');
   });
+
+  it('persists readiness status to .agent-qa/readiness.json', async () => {
+    const outputDir = await tempDir();
+    const projectPath = await tempDir();
+    const config = RunConfigSchema.parse({
+      baseUrl: 'https://app.local',
+      appDomains: ['app.local'],
+      demand: { id: 'D', title: 'T', description: 'D' },
+    });
+
+    const service = makeService();
+    const result = await service.execute(config, outputDir, projectPath);
+
+    const readinessPath = join(projectPath, '.agent-qa', 'readiness.json');
+    const raw = await readFile(readinessPath, 'utf8');
+    const parsed = JSON.parse(raw);
+
+    expect(parsed.readiness).toBe(result.readiness);
+    expect(parsed.updatedAt).toBeTruthy();
+  });
+
+  it('getReadinessStatus returns persisted readiness', async () => {
+    const outputDir = await tempDir();
+    const projectPath = await tempDir();
+    const config = RunConfigSchema.parse({
+      baseUrl: 'https://app.local',
+      appDomains: ['app.local'],
+      demand: { id: 'D', title: 'T', description: 'D' },
+    });
+
+    const service = makeService();
+    await service.execute(config, outputDir, projectPath);
+
+    const persisted = await service.getReadinessStatus(projectPath);
+    expect(persisted).toBe('READY');
+  });
+
+  it('getReadinessStatus returns null when no readiness file exists', async () => {
+    const projectPath = await tempDir();
+    const service = makeService();
+
+    const persisted = await service.getReadinessStatus(projectPath);
+    expect(persisted).toBeNull();
+  });
+
+  it('blocks QA when readiness is ONBOARDING_BLOCKED', async () => {
+    const outputDir = await tempDir();
+    const projectPath = await tempDir();
+    const config = RunConfigSchema.parse({
+      baseUrl: 'https://app.local',
+      appDomains: ['app.local'],
+      demand: { id: 'D', title: 'T', description: 'D' },
+    });
+
+    const executor = makePlanExecutor({ ok: false, failedMessage: 'Navigation timeout' });
+    const service = makeService({ executor });
+    const result = await service.execute(config, outputDir, projectPath);
+
+    expect(result.readiness).toBe('ONBOARDING_BLOCKED');
+
+    const persisted = await service.getReadinessStatus(projectPath);
+    expect(persisted).toBe('ONBOARDING_BLOCKED');
+  });
 });
