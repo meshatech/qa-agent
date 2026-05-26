@@ -37,6 +37,52 @@ async function initRepoWithOriginMain(): Promise<string> {
   return dir;
 }
 
+async function initBareRepoWithMain(): Promise<string> {
+  const bareDir = await mkdtemp(join(tmpdir(), 'agent-qa-git-bare-'));
+  tempDirs.push(bareDir);
+  await execFileAsync('git', ['init', '--bare'], { cwd: bareDir });
+
+  const seedDir = await mkdtemp(join(tmpdir(), 'agent-qa-git-seed-'));
+  tempDirs.push(seedDir);
+  await execFileAsync('git', ['init'], { cwd: seedDir });
+  await execFileAsync('git', ['config', 'user.email', 'test@example.com'], { cwd: seedDir });
+  await execFileAsync('git', ['config', 'user.name', 'Test User'], { cwd: seedDir });
+  await writeFile(join(seedDir, 'README.md'), 'base\n', 'utf8');
+  await execFileAsync('git', ['add', 'README.md'], { cwd: seedDir });
+  await execFileAsync('git', ['commit', '-m', 'base'], { cwd: seedDir });
+  await execFileAsync('git', ['branch', '-M', 'main'], { cwd: seedDir });
+  await execFileAsync('git', ['remote', 'add', 'origin', bareDir], { cwd: seedDir });
+  await execFileAsync('git', ['push', '-u', 'origin', 'main'], { cwd: seedDir });
+
+  return bareDir;
+}
+
+async function cloneFromBare(bareDir: string, options?: { depth?: number }): Promise<string> {
+  const cloneDir = await mkdtemp(join(tmpdir(), 'agent-qa-git-clone-'));
+  tempDirs.push(cloneDir);
+
+  const args = ['clone'];
+  if (options?.depth !== undefined) {
+    args.push('--depth', String(options.depth));
+  }
+  args.push(bareDir, cloneDir);
+
+  await execFileAsync('git', args);
+  return cloneDir;
+}
+
+async function deleteOriginMainRef(cwd: string): Promise<void> {
+  await execFileAsync('git', ['update-ref', '-d', 'refs/remotes/origin/main'], { cwd });
+}
+
+async function markRepositoryShallow(cwd: string): Promise<void> {
+  const { stdout } = await execFileAsync('git', ['rev-parse', 'HEAD'], {
+    cwd,
+    encoding: 'utf8',
+  });
+  await writeFile(join(cwd, '.git/shallow'), `${stdout.trim()}\n`, 'utf8');
+}
+
 describe('ExecGitRepositoryAdapter', () => {
   let adapter: ExecGitRepositoryAdapter;
 
@@ -72,6 +118,30 @@ describe('ExecGitRepositoryAdapter', () => {
     await expect(adapter.ensureBaseBranchAvailable('main', dir)).rejects.toBeInstanceOf(
       PrContextReaderError,
     );
+  });
+
+  it('fetches origin/main when remote tracking ref was removed', async () => {
+    const bareDir = await initBareRepoWithMain();
+    const cloneDir = await cloneFromBare(bareDir);
+    await deleteOriginMainRef(cloneDir);
+
+    expect(await adapter.hasRemoteBranch('main', cloneDir)).toBe(false);
+    await expect(adapter.ensureBaseBranchAvailable('main', cloneDir)).resolves.toBeUndefined();
+    expect(await adapter.hasRemoteBranch('main', cloneDir)).toBe(true);
+  });
+
+  it('throws BASE_BRANCH_UNAVAILABLE on shallow checkout without attempting fetch', async () => {
+    const cloneDir = await initRepoWithOriginMain();
+    await deleteOriginMainRef(cloneDir);
+    await markRepositoryShallow(cloneDir);
+
+    expect(await adapter.isShallowRepository(cloneDir)).toBe(true);
+    await expect(adapter.ensureBaseBranchAvailable('main', cloneDir)).rejects.toMatchObject({
+      name: 'PrContextReaderError',
+      code: 'BASE_BRANCH_UNAVAILABLE',
+      message: 'Base branch is unavailable in a shallow checkout',
+    });
+    expect(await adapter.hasRemoteBranch('main', cloneDir)).toBe(false);
   });
 
   it('throws PrContextReaderError when origin base branch is missing for diff', async () => {
