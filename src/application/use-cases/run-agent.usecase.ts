@@ -1,6 +1,6 @@
 import { RunConfigSchema, type RunConfig } from '../../domain/schemas/config.schema.js';
 import { RunAgentDtoSchema, type RunAgentDto } from '../dto/run-agent.dto.js';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { readFile } from 'node:fs/promises';
 import { ZodError } from 'zod';
 
@@ -30,6 +30,9 @@ import type { ExecutionPlan } from '../../domain/schemas/execution-plan.schema.j
 import { QaToolRegistry } from '../tools/qa-tool-registry.js';
 import type { QaToolContext } from '../tools/qa-tool-context.js';
 import { MemorySearchService } from '../services/memory-search.service.js';
+import { DemandContextPersistenceService } from '../services/demand-context-persistence.service.js';
+
+const logger = new Logger('RunAgentUseCase');
 
 @Injectable()
 export class RunAgentUseCase {
@@ -54,6 +57,8 @@ export class RunAgentUseCase {
     @Inject(PlaywrightSpecExporter) private readonly specExporter: PlaywrightSpecExporter,
     @Inject(MemorySearchService) private readonly memorySearch: MemorySearchService,
     @Inject(QaToolRegistry) private readonly toolRegistry: QaToolRegistry,
+    @Inject(DemandContextPersistenceService)
+    private readonly demandContextPersistence: DemandContextPersistenceService,
   ) { }
 
   async execute(rawDto: RunAgentDto): Promise<QaRunResult> {
@@ -68,6 +73,15 @@ export class RunAgentUseCase {
     this.memory.reset();
     const runDir = await this.repo.createRunDir(config);
     const runId = runDir.split(/[\\/]/).pop()!;
+    try {
+      await this.persistClickUpDemandContext(runDir, config);
+    } catch (error) {
+      logger.warn(
+        `ClickUp demand context persistence failed: ${error instanceof Error ? error.message : String(error)}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      // fallback: execução sem contexto ClickUp
+    }
 
     const scenarios = await this.planner.plan(config);
     const filtered = dto.scenarioId ? scenarios.filter((s) => s.id === dto.scenarioId) : scenarios.slice(0, dto.maxScenarios ?? scenarios.length);
@@ -123,6 +137,20 @@ export class RunAgentUseCase {
   private applyOverrides(config: RunConfig, dto: RunAgentDto): void {
     if (dto.headed !== undefined) config.browser.headed = dto.headed;
     if (dto.outputDir) config.output.runsDir = dto.outputDir;
+  }
+
+  private async persistClickUpDemandContext(runDir: string, config: RunConfig): Promise<void> {
+    const token = process.env.CLICKUP_TOKEN?.trim();
+    if (!token) return;
+
+    const configTaskId = config.clickup?.taskId;
+    const hasTaskId = Boolean(process.env.CLICKUP_TASK_ID?.trim() || configTaskId?.trim());
+    if (!hasTaskId) return;
+
+    await this.demandContextPersistence.persistFromClickUpTask(runDir, token, {
+      configTaskId,
+      configTeamId: config.clickup?.teamId,
+    });
   }
 
   private plannerFallbackWarning(reason: string): string {
