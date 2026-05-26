@@ -8,5 +8,14 @@ export interface ClickUpTaskReadResult {
 }
 
 export interface ClickUpReaderPort {
-  readTask(taskId: string, token: string): Promise<ClickUpTaskReadResult>;
+  readTask(
+    taskId: string,
+    token: string,
+    options?: { configTeamId?: string },
+  ): Promise<ClickUpTaskReadResult>;
+  readConfiguredTask(
+    token: string,
+    configTaskId?: string,
+    configTeamId?: string,
+  ): Promise<ClickUpTaskReadResult>;
 }

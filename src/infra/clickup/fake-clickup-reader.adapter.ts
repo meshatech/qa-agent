@@ -17,7 +17,19 @@ export class FakeClickUpReaderAdapter implements ClickUpReaderPort {
     this.result = result;
   }
 
-  async readTask(_taskId: string, _token: string): Promise<ClickUpTaskReadResult> {
+  async readTask(
+    _taskId: string,
+    _token: string,
+    _options?: { configTeamId?: string },
+  ): Promise<ClickUpTaskReadResult> {
+    return this.result;
+  }
+
+  async readConfiguredTask(
+    _token: string,
+    _configTaskId?: string,
+    _configTeamId?: string,
+  ): Promise<ClickUpTaskReadResult> {
     return this.result;
   }
 
