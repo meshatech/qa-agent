@@ -7,29 +7,19 @@ import type { ClickUpApiPort, ClickUpReadAccessResult } from '../ports/clickup-a
 import type { GitHubApiPort, GitHubPrCommentPermissionResult } from '../ports/github-api.port.js';
 import type { GitRepositoryPort } from '../ports/git-repository.port.js';
 import { RunConfigSchema } from '../../domain/schemas/config.schema.js';
+import {
+  PREFLIGHT_CHECK_NAMES,
+  PreflightReportSchema,
+  type PreflightCheckItem,
+  type PreflightCheckName,
+  type PreflightChecksDetail,
+  type PreflightReport,
+} from '../../domain/schemas/preflight-report.schema.js';
 import { SanitizerService } from './sanitizer.service.js';
 
-export interface PreflightReport {
-  status: 'PASS' | 'BLOCKED';
-  timestamp: string;
-  checks: {
-    clickupToken: { ok: boolean };
-    clickupReadAccess: { ok: boolean; statusCode?: number; error?: string };
-    clickupTaskId: { ok: boolean };
-    githubToken: { ok: boolean; warning?: string };
-    prCommentPermission: {
-      ok: boolean;
-      statusCode?: number;
-      warning?: string;
-      repository?: string;
-      pullNumber?: number;
-    };
-    prContext: { ok: boolean; missing: string[]; eventName?: string };
-    branchHead: { ok: boolean; branchHead?: string; missing: string[] };
-    checkoutHistory: { ok: boolean; errors: string[]; baseRef?: string; shallow?: boolean };
-    config: { ok: boolean; errors: string[]; configPath?: string };
-  };
-}
+export type { PreflightReport };
+
+type PreflightCheckStatus = PreflightCheckItem['status'];
 
 /**
  * Validates the pipeline environment before execution.
@@ -46,44 +36,92 @@ export class PipelinePreflightService {
   ) {}
 
   async run(outputDir: string): Promise<PreflightReport> {
-    const clickupTokenCheck = this.validateClickUpToken();
-    const clickupReadAccessCheck = await this.validateClickUpReadAccess();
-    const clickupTaskIdCheck = this.validateClickUpTaskId();
-    const githubTokenCheck = this.validateGitHubToken();
-    const prCommentPermissionCheck = await this.validatePrCommentPermission();
-    const prCheck = this.validatePrContext();
-    const branchHeadCheck = this.readBranchHead();
-    const checkoutHistoryCheck = await this.validateCheckoutHistory();
-    const configCheck = await this.validateConfig();
+    const checks = await this.runChecks();
+    const allOk = this.isBlockingChecksOk(checks);
+    const report = this.buildPreflightReport(checks, allOk);
+    const safeReport = this.sanitizeReport(report);
+    const validated = PreflightReportSchema.parse(safeReport);
+    await this.writeReport(outputDir, validated);
+    return validated;
+  }
 
-    const allOk =
-      clickupTokenCheck.ok &&
-      clickupReadAccessCheck.ok &&
-      clickupTaskIdCheck.ok &&
-      prCheck.ok &&
-      branchHeadCheck.ok &&
-      checkoutHistoryCheck.ok &&
-      configCheck.ok;
+  private async runChecks(): Promise<PreflightChecksDetail> {
+    return {
+      clickupToken: this.validateClickUpToken(),
+      clickupReadAccess: await this.validateClickUpReadAccess(),
+      clickupTaskId: this.validateClickUpTaskId(),
+      githubToken: this.validateGitHubToken(),
+      prCommentPermission: await this.validatePrCommentPermission(),
+      prContext: this.validatePrContext(),
+      branchHead: this.readBranchHead(),
+      checkoutHistory: await this.validateCheckoutHistory(),
+      config: await this.validateConfig(),
+    };
+  }
 
-    const report: PreflightReport = {
+  private isBlockingChecksOk(checks: PreflightChecksDetail): boolean {
+    return (
+      checks.clickupToken.ok &&
+      checks.clickupReadAccess.ok &&
+      checks.clickupTaskId.ok &&
+      checks.prContext.ok &&
+      checks.branchHead.ok &&
+      checks.checkoutHistory.ok &&
+      checks.config.ok
+    );
+  }
+
+  private buildPreflightReport(checks: PreflightChecksDetail, allOk: boolean): PreflightReport {
+    return {
+      schemaVersion: 'preflight-report.v1',
       status: allOk ? 'PASS' : 'BLOCKED',
       timestamp: new Date().toISOString(),
-      checks: {
-        clickupToken: clickupTokenCheck,
-        clickupReadAccess: clickupReadAccessCheck,
-        clickupTaskId: clickupTaskIdCheck,
-        githubToken: githubTokenCheck,
-        prCommentPermission: prCommentPermissionCheck,
-        prContext: prCheck,
-        branchHead: branchHeadCheck,
-        checkoutHistory: checkoutHistoryCheck,
-        config: configCheck,
-      },
+      tokensMasked: true,
+      checkItems: PREFLIGHT_CHECK_NAMES.map((name) => this.buildCheckItem(name, checks)),
+      checks,
     };
+  }
 
-    const safeReport = this.sanitizeReport(report);
-    await this.writeReport(outputDir, safeReport);
-    return safeReport;
+  private buildCheckItem(name: PreflightCheckName, checks: PreflightChecksDetail): PreflightCheckItem {
+    const warningChecks: PreflightCheckName[] = ['githubToken', 'prCommentPermission'];
+    const raw = checks[name];
+    const status: PreflightCheckStatus = raw.ok ? 'PASS' : warningChecks.includes(name) ? 'WARN' : 'FAIL';
+    return { name, status, message: this.messageForCheck(name, checks) };
+  }
+
+  private messageForCheck(name: PreflightCheckName, checks: PreflightChecksDetail): string {
+    switch (name) {
+      case 'clickupToken':
+        return checks.clickupToken.ok ? 'CLICKUP_TOKEN is configured' : 'CLICKUP_TOKEN is missing';
+      case 'clickupReadAccess':
+        return checks.clickupReadAccess.ok
+          ? 'ClickUp read access verified'
+          : (checks.clickupReadAccess.error ?? 'ClickUp read access check failed');
+      case 'clickupTaskId':
+        return checks.clickupTaskId.ok ? 'CLICKUP_TASK_ID is configured' : 'CLICKUP_TASK_ID is missing';
+      case 'githubToken':
+        return checks.githubToken.ok
+          ? 'GITHUB_TOKEN is configured'
+          : (checks.githubToken.warning ?? 'GITHUB_TOKEN is missing');
+      case 'prCommentPermission':
+        return checks.prCommentPermission.ok
+          ? 'GitHub PR comment permission verified'
+          : (checks.prCommentPermission.warning ?? 'GitHub PR comment permission check failed');
+      case 'prContext':
+        return checks.prContext.ok
+          ? 'GitHub Actions pull_request context is complete'
+          : `Missing PR context: ${checks.prContext.missing.join(', ')}`;
+      case 'branchHead':
+        return checks.branchHead.ok
+          ? `Branch head resolved: ${checks.branchHead.branchHead}`
+          : `Missing branch head: ${checks.branchHead.missing.join(', ')}`;
+      case 'checkoutHistory':
+        return checks.checkoutHistory.ok
+          ? 'Checkout history is sufficient for git diff'
+          : checks.checkoutHistory.errors.join('; ');
+      case 'config':
+        return checks.config.ok ? 'Project config is valid' : checks.config.errors.join('; ');
+    }
   }
 
   private validateClickUpToken(): { ok: boolean } {
@@ -234,7 +272,8 @@ export class PipelinePreflightService {
   }
 
   private sanitizeReport(report: PreflightReport): PreflightReport {
-    return this.sanitizer.sanitizeForOutput(report, this.collectKnownSecrets());
+    const sanitized = this.sanitizer.sanitizeForOutput(report, this.collectKnownSecrets());
+    return { ...sanitized, tokensMasked: true as const };
   }
 
   private logPreflight(message: string): void {

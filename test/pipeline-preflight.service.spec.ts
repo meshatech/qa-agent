@@ -5,6 +5,10 @@ import { tmpdir } from 'node:os';
 
 import { PipelinePreflightService } from '../src/application/services/pipeline-preflight.service.js';
 import { SanitizerService } from '../src/application/services/sanitizer.service.js';
+import {
+  PREFLIGHT_CHECK_NAMES,
+  PreflightReportSchema,
+} from '../src/domain/schemas/preflight-report.schema.js';
 import type { ClickUpApiPort } from '../src/application/ports/clickup-api.port.js';
 import type { GitHubApiPort } from '../src/application/ports/github-api.port.js';
 import type { GitRepositoryPort } from '../src/application/ports/git-repository.port.js';
@@ -973,6 +977,91 @@ describe('PipelinePreflightService', () => {
       } finally {
         console.log = originalLog;
       }
+    });
+  });
+
+  describe('PRJ-11359 — preflight-report.json', () => {
+    it('generates preflight-report.json after run()', async () => {
+      const outputDir = await setupPreflightPassEnv();
+      await makeService().run(outputDir);
+
+      const raw = await readFile(join(outputDir, 'preflight-report.json'), 'utf8');
+      expect(raw.length).toBeGreaterThan(0);
+    });
+
+    it('PreflightReportSchema.parse passes for PASS and BLOCKED scenarios', async () => {
+      const passDir = await setupPreflightPassEnv();
+      await makeService().run(passDir);
+      const passRaw = await readFile(join(passDir, 'preflight-report.json'), 'utf8');
+      expect(PreflightReportSchema.parse(JSON.parse(passRaw)).status).toBe('PASS');
+
+      Object.keys(process.env).forEach((key) => delete process.env[key]);
+      const blockedDir = await tempDir();
+      await makeService().run(blockedDir);
+      const blockedRaw = await readFile(join(blockedDir, 'preflight-report.json'), 'utf8');
+      expect(PreflightReportSchema.parse(JSON.parse(blockedRaw)).status).toBe('BLOCKED');
+    });
+
+    it('checkItems contains all checks with name, status and message', async () => {
+      const outputDir = await setupPreflightPassEnv();
+      const result = await makeService().run(outputDir);
+
+      expect(result.checkItems).toHaveLength(PREFLIGHT_CHECK_NAMES.length);
+      expect(result.checkItems.map((item) => item.name)).toEqual([...PREFLIGHT_CHECK_NAMES]);
+      for (const item of result.checkItems) {
+        expect(item.status).toMatch(/^(PASS|FAIL|WARN)$/);
+        expect(item.message.length).toBeGreaterThan(0);
+      }
+    });
+
+    it('global status is PASS when all blocking checks pass', async () => {
+      const outputDir = await setupPreflightPassEnv();
+      const result = await makeService().run(outputDir);
+
+      expect(result.status).toBe('PASS');
+      expect(result.schemaVersion).toBe('preflight-report.v1');
+      expect(result.tokensMasked).toBe(true);
+    });
+
+    it('global status is BLOCKED when CLICKUP_TOKEN is missing', async () => {
+      const outputDir = await setupPreflightPassEnv();
+      delete process.env.CLICKUP_TOKEN;
+
+      const result = await makeService().run(outputDir);
+
+      expect(result.status).toBe('BLOCKED');
+      const clickupTokenItem = result.checkItems.find((item) => item.name === 'clickupToken');
+      expect(clickupTokenItem?.status).toBe('FAIL');
+    });
+
+    it('global status stays PASS when only GITHUB_TOKEN is missing', async () => {
+      const outputDir = await setupPreflightPassEnv();
+      delete process.env.GITHUB_TOKEN;
+
+      const result = await makeService().run(outputDir);
+
+      expect(result.status).toBe('PASS');
+      const githubTokenItem = result.checkItems.find((item) => item.name === 'githubToken');
+      expect(githubTokenItem?.status).toBe('WARN');
+    });
+
+    it('report includes tokensMasked and masks leaked token literals', async () => {
+      const secret = 'pk_test_preflight_report_leak_999';
+      const clickUpApi = createClickUpApi({
+        verifyReadAccess: async () => ({
+          ok: false,
+          error: `Auth failed for token ${secret}`,
+        }),
+      });
+      const outputDir = await setupPreflightPassEnv();
+      process.env.CLICKUP_TOKEN = secret;
+
+      const result = await makeService(createPassingGitRepo(), clickUpApi).run(outputDir);
+      const raw = await readFile(join(outputDir, 'preflight-report.json'), 'utf8');
+
+      expect(result.tokensMasked).toBe(true);
+      expect(raw).not.toContain(secret);
+      expect(raw).toContain('***REDACTED***');
     });
   });
 });
