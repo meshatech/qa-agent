@@ -58,7 +58,10 @@ describe('ClickUpHttpReaderAdapter', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       'https://api.clickup.com/api/v2/task/PRJ-11366?custom_task_ids=true&team_id=459806',
-      { headers: { Authorization: 'pk_test_token' } },
+      expect.objectContaining({
+        headers: { Authorization: 'pk_test_token' },
+        signal: expect.any(AbortSignal),
+      }),
     );
   });
 
@@ -77,7 +80,10 @@ describe('ClickUpHttpReaderAdapter', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       'https://api.clickup.com/api/v2/task/PRJ-11365?custom_task_ids=true&team_id=459806',
-      { headers: { Authorization: 'pk_test_token' } },
+      expect.objectContaining({
+        headers: { Authorization: 'pk_test_token' },
+        signal: expect.any(AbortSignal),
+      }),
     );
   });
 
@@ -94,9 +100,13 @@ describe('ClickUpHttpReaderAdapter', () => {
 
     await reader.readTask('86ahmgh5e', 'pk_test_token');
 
-    expect(fetchMock).toHaveBeenCalledWith('https://api.clickup.com/api/v2/task/86ahmgh5e', {
-      headers: { Authorization: 'pk_test_token' },
-    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.clickup.com/api/v2/task/86ahmgh5e',
+      expect.objectContaining({
+        headers: { Authorization: 'pk_test_token' },
+        signal: expect.any(AbortSignal),
+      }),
+    );
   });
 
   it('maps a ClickUp task response to DemandContext', async () => {
@@ -310,7 +320,10 @@ Tela em branco`,
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith(
       'https://api.clickup.com/api/v2/task/PRJ-11364?custom_task_ids=true&team_id=459806',
-      { headers: { Authorization: 'pk_test_token' } },
+      expect.objectContaining({
+        headers: { Authorization: 'pk_test_token' },
+        signal: expect.any(AbortSignal),
+      }),
     );
     const fetchCalls = fetchMock.mock.calls as unknown as Array<[string, RequestInit?]>;
     expect(fetchCalls.some(([calledUrl]) => calledUrl === 'https://example.com/spec.pdf')).toBe(
@@ -423,6 +436,7 @@ Tela em branco`,
     const result = await resultPromise;
 
     expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls.every(([, init]) => init?.signal instanceof AbortSignal)).toBe(true);
     expect(result.demand.taskId).toBe('PRJ-11364');
     vi.useRealTimers();
   });
@@ -449,6 +463,37 @@ Tela em branco`,
     await vi.runAllTimersAsync();
     await assertion;
     expect(fetchMock).toHaveBeenCalledTimes(4);
+    vi.useRealTimers();
+  });
+
+  it('throws REQUEST_FAILED when ClickUp API request times out', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn((_url, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          const error = new Error('The operation was aborted.');
+          error.name = 'AbortError';
+          reject(error);
+        });
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const reader = new ClickUpHttpReaderAdapter();
+
+    const resultPromise = reader.readTask('PRJ-11364', 'pk_test_token', {
+      configTeamId: '459806',
+    });
+    const assertion = expect(resultPromise).rejects.toMatchObject({
+      name: 'ClickUpReaderError',
+      code: 'REQUEST_FAILED',
+      message: 'ClickUp API request timed out',
+    });
+    await vi.advanceTimersByTimeAsync(30_000);
+    await assertion;
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
     vi.useRealTimers();
   });
 

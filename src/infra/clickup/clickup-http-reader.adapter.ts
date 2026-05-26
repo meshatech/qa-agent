@@ -21,6 +21,12 @@ import { resolveClickUpTaskId } from './clickup-task-id.resolver.js';
 import { resolveClickUpTeamId } from './clickup-team-id.resolver.js';
 import { buildClickUpTaskUrl, isCustomClickUpTaskId } from './clickup-task-url.builder.js';
 
+const CLICKUP_REQUEST_TIMEOUT_MS = 30_000;
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
+}
+
 @Injectable()
 export class ClickUpHttpReaderAdapter implements ClickUpReaderPort {
   async readTask(
@@ -63,6 +69,9 @@ export class ClickUpHttpReaderAdapter implements ClickUpReaderPort {
     token: string,
     configTeamId?: string,
   ): Promise<Response> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), CLICKUP_REQUEST_TIMEOUT_MS);
+
     try {
       const teamId = isCustomClickUpTaskId(taskId)
         ? resolveClickUpTeamId({ configTeamId, required: true })
@@ -72,6 +81,7 @@ export class ClickUpHttpReaderAdapter implements ClickUpReaderPort {
       for (let attempt = 0; attempt <= CLICKUP_RATE_LIMIT_RETRIES; attempt += 1) {
         const response = await fetch(url, {
           headers: { Authorization: token },
+          signal: controller.signal,
         });
 
         if (response.status === 429 && attempt < CLICKUP_RATE_LIMIT_RETRIES) {
@@ -98,6 +108,15 @@ export class ClickUpHttpReaderAdapter implements ClickUpReaderPort {
         throw error;
       }
 
+      if (isAbortError(error)) {
+        throw new ClickUpReaderError(
+          sanitizeClickUpErrorMessage('ClickUp API request timed out', token),
+          undefined,
+          sanitizeClickUpErrorCause(new Error('ClickUp API request timed out'), token),
+          'REQUEST_FAILED',
+        );
+      }
+
       const message = error instanceof Error ? error.message : String(error);
       throw new ClickUpReaderError(
         sanitizeClickUpErrorMessage(`ClickUp API request failed: ${message}`, token),
@@ -105,6 +124,8 @@ export class ClickUpHttpReaderAdapter implements ClickUpReaderPort {
         sanitizeClickUpErrorCause(error, token),
         'REQUEST_FAILED',
       );
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 }
