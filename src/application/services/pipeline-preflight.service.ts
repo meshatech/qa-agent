@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import type { ConfigLoaderPort } from '../ports/config-loader.port.js';
 import type { ClickUpApiPort, ClickUpReadAccessResult } from '../ports/clickup-api.port.js';
+import type { GitHubApiPort, GitHubPrCommentPermissionResult } from '../ports/github-api.port.js';
 import type { GitRepositoryPort } from '../ports/git-repository.port.js';
 import { RunConfigSchema } from '../../domain/schemas/config.schema.js';
 
@@ -15,6 +16,13 @@ export interface PreflightReport {
     clickupReadAccess: { ok: boolean; statusCode?: number; error?: string };
     clickupTaskId: { ok: boolean };
     githubToken: { ok: boolean; warning?: string };
+    prCommentPermission: {
+      ok: boolean;
+      statusCode?: number;
+      warning?: string;
+      repository?: string;
+      pullNumber?: number;
+    };
     prContext: { ok: boolean; missing: string[]; eventName?: string };
     branchHead: { ok: boolean; branchHead?: string; missing: string[] };
     checkoutHistory: { ok: boolean; errors: string[]; baseRef?: string; shallow?: boolean };
@@ -32,6 +40,7 @@ export class PipelinePreflightService {
     @Inject('ConfigLoaderPort') private readonly configLoader: ConfigLoaderPort,
     @Inject('GitRepositoryPort') private readonly gitRepository: GitRepositoryPort,
     @Inject('ClickUpApiPort') private readonly clickUpApi: ClickUpApiPort,
+    @Inject('GitHubApiPort') private readonly githubApi: GitHubApiPort,
   ) {}
 
   async run(outputDir: string): Promise<PreflightReport> {
@@ -39,6 +48,7 @@ export class PipelinePreflightService {
     const clickupReadAccessCheck = await this.validateClickUpReadAccess();
     const clickupTaskIdCheck = this.validateClickUpTaskId();
     const githubTokenCheck = this.validateGitHubToken();
+    const prCommentPermissionCheck = await this.validatePrCommentPermission();
     const prCheck = this.validatePrContext();
     const branchHeadCheck = this.readBranchHead();
     const checkoutHistoryCheck = await this.validateCheckoutHistory();
@@ -61,6 +71,7 @@ export class PipelinePreflightService {
         clickupReadAccess: clickupReadAccessCheck,
         clickupTaskId: clickupTaskIdCheck,
         githubToken: githubTokenCheck,
+        prCommentPermission: prCommentPermissionCheck,
         prContext: prCheck,
         branchHead: branchHeadCheck,
         checkoutHistory: checkoutHistoryCheck,
@@ -98,6 +109,35 @@ export class PipelinePreflightService {
       ok: false,
       warning: 'GITHUB_TOKEN is missing; PR read/publish may be unavailable.',
     };
+  }
+
+  private resolvePullNumber(): number | undefined {
+    const match = process.env.GITHUB_REF?.trim().match(/^refs\/pull\/(\d+)\//);
+    return match ? Number(match[1]) : undefined;
+  }
+
+  private async validatePrCommentPermission(): Promise<GitHubPrCommentPermissionResult> {
+    const token = process.env.GITHUB_TOKEN?.trim() ?? '';
+    const repository = process.env.GITHUB_REPOSITORY?.trim() ?? '';
+    const pullNumber = this.resolvePullNumber();
+
+    if (!token) {
+      return { ok: false, warning: 'GITHUB_TOKEN is missing; cannot verify PR comment permission' };
+    }
+    if (!repository || pullNumber === undefined) {
+      return { ok: false, warning: 'PR metadata missing; cannot verify comment permission' };
+    }
+
+    const result = await this.githubApi.verifyPrCommentPermission({ token, repository, pullNumber });
+    if (!result.ok && !result.warning) {
+      return {
+        ...result,
+        warning: 'GitHub PR comment permission check failed; local fallback available',
+        repository,
+        pullNumber,
+      };
+    }
+    return { ...result, repository, pullNumber };
   }
 
   private validatePrContext(): { ok: boolean; missing: string[]; eventName?: string } {

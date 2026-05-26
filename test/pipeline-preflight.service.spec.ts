@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 
 import { PipelinePreflightService } from '../src/application/services/pipeline-preflight.service.js';
 import type { ClickUpApiPort } from '../src/application/ports/clickup-api.port.js';
+import type { GitHubApiPort } from '../src/application/ports/github-api.port.js';
 import type { GitRepositoryPort } from '../src/application/ports/git-repository.port.js';
 import { FileConfigLoader } from '../src/infra/config/file-config.loader.js';
 
@@ -58,15 +59,27 @@ function createClickUpApi(overrides: Partial<ClickUpApiPort>): ClickUpApiPort {
   return { ...createPassingClickUpApi(), ...overrides };
 }
 
+function createPassingGitHubApi(): GitHubApiPort {
+  return {
+    verifyPrCommentPermission: async () => ({ ok: true, statusCode: 200 }),
+  };
+}
+
+function createGitHubApi(overrides: Partial<GitHubApiPort>): GitHubApiPort {
+  return { ...createPassingGitHubApi(), ...overrides };
+}
+
 function makeService(
   gitRepo: GitRepositoryPort = createPassingGitRepo(),
   clickUpApi: ClickUpApiPort = createPassingClickUpApi(),
+  githubApi: GitHubApiPort = createPassingGitHubApi(),
 ) {
-  return new PipelinePreflightService(new FileConfigLoader(), gitRepo, clickUpApi);
+  return new PipelinePreflightService(new FileConfigLoader(), gitRepo, clickUpApi, githubApi);
 }
 
 function setPullRequestContextEnv(): void {
   process.env.GITHUB_EVENT_NAME = 'pull_request';
+  process.env.GITHUB_REPOSITORY = 'owner/repo';
   process.env.GITHUB_REF = 'refs/pull/42/merge';
   process.env.GITHUB_HEAD_REF = 'feature/test';
   process.env.GITHUB_BASE_REF = 'main';
@@ -108,6 +121,9 @@ describe('PipelinePreflightService', () => {
     expect(result.checks.clickupReadAccess.statusCode).toBe(200);
     expect(result.checks.clickupTaskId.ok).toBe(true);
     expect(result.checks.githubToken.ok).toBe(true);
+    expect(result.checks.prCommentPermission.ok).toBe(true);
+    expect(result.checks.prCommentPermission.repository).toBe('owner/repo');
+    expect(result.checks.prCommentPermission.pullNumber).toBe(42);
     expect(result.checks.prContext.ok).toBe(true);
     expect(result.checks.branchHead.ok).toBe(true);
     expect(result.checks.branchHead.branchHead).toBe('feature/test');
@@ -771,6 +787,105 @@ describe('PipelinePreflightService', () => {
       expect(result.checks.branchHead.ok).toBe(true);
       expect(result.checks.checkoutHistory.ok).toBe(true);
       expect(result.checks.config.ok).toBe(true);
+    });
+  });
+
+  describe('PRJ-11357 — PR comment permission validation', () => {
+    it('prCommentPermission passes when API returns 200', async () => {
+      const outputDir = await setupPreflightPassEnv();
+      const result = await makeService().run(outputDir);
+
+      expect(result.checks.prCommentPermission.ok).toBe(true);
+      expect(result.checks.prCommentPermission.statusCode).toBe(200);
+      expect(result.checks.prCommentPermission.warning).toBeUndefined();
+      expect(result.checks.prCommentPermission.repository).toBe('owner/repo');
+      expect(result.checks.prCommentPermission.pullNumber).toBe(42);
+    });
+
+    it('prCommentPermission calls verifyPrCommentPermission with token and PR metadata', async () => {
+      const token = 'ghp_test_pr_comment_token';
+      let receivedParams: { token: string; repository: string; pullNumber: number } | undefined;
+      const githubApi = createGitHubApi({
+        verifyPrCommentPermission: async (params) => {
+          receivedParams = params;
+          return { ok: true, statusCode: 200 };
+        },
+      });
+
+      const outputDir = await setupPreflightPassEnv();
+      process.env.GITHUB_TOKEN = token;
+      process.env.GITHUB_REPOSITORY = 'mesha/qa-agent';
+      process.env.GITHUB_REF = 'refs/pull/99/merge';
+
+      await makeService(createPassingGitRepo(), createPassingClickUpApi(), githubApi).run(outputDir);
+
+      expect(receivedParams).toEqual({
+        token,
+        repository: 'mesha/qa-agent',
+        pullNumber: 99,
+      });
+    });
+
+    it('prCommentPermission fails with warning when API returns 403', async () => {
+      const githubApi = createGitHubApi({
+        verifyPrCommentPermission: async () => ({
+          ok: false,
+          statusCode: 403,
+          warning: 'GitHub PR comment permission denied (403)',
+        }),
+      });
+      const outputDir = await setupPreflightPassEnv();
+      const result = await makeService(createPassingGitRepo(), createPassingClickUpApi(), githubApi).run(outputDir);
+
+      expect(result.checks.prCommentPermission.ok).toBe(false);
+      expect(result.checks.prCommentPermission.statusCode).toBe(403);
+      expect(result.checks.prCommentPermission.warning).toContain('403');
+    });
+
+    it('prCommentPermission fails with warning when GITHUB_TOKEN is missing', async () => {
+      const outputDir = await setupPreflightPassEnv();
+      delete process.env.GITHUB_TOKEN;
+
+      const result = await makeService().run(outputDir);
+
+      expect(result.checks.prCommentPermission.ok).toBe(false);
+      expect(result.checks.prCommentPermission.warning).toContain('GITHUB_TOKEN is missing');
+    });
+
+    it('status remains PASS when only pr comment permission fails', async () => {
+      const githubApi = createGitHubApi({
+        verifyPrCommentPermission: async () => ({
+          ok: false,
+          statusCode: 403,
+          warning: 'GitHub PR comment permission denied (403)',
+        }),
+      });
+      const outputDir = await setupPreflightPassEnv();
+      const result = await makeService(createPassingGitRepo(), createPassingClickUpApi(), githubApi).run(outputDir);
+
+      expect(result.status).toBe('PASS');
+      expect(result.checks.prCommentPermission.ok).toBe(false);
+      expect(result.checks.clickupToken.ok).toBe(true);
+      expect(result.checks.clickupReadAccess.ok).toBe(true);
+      expect(result.checks.clickupTaskId.ok).toBe(true);
+      expect(result.checks.githubToken.ok).toBe(true);
+      expect(result.checks.prContext.ok).toBe(true);
+      expect(result.checks.branchHead.ok).toBe(true);
+      expect(result.checks.checkoutHistory.ok).toBe(true);
+      expect(result.checks.config.ok).toBe(true);
+    });
+
+    it('preflight-report.json does not contain GITHUB_TOKEN value for pr comment permission check', async () => {
+      const secret = 'ghp_test_pr_comment_secret_54321';
+      const githubApi = createPassingGitHubApi();
+      const outputDir = await setupPreflightPassEnv();
+      process.env.GITHUB_TOKEN = secret;
+
+      await makeService(createPassingGitRepo(), createPassingClickUpApi(), githubApi).run(outputDir);
+
+      const raw = await readFile(join(outputDir, 'preflight-report.json'), 'utf8');
+      expect(raw).not.toContain(secret);
+      expect(JSON.parse(raw).checks.prCommentPermission.ok).toBe(true);
     });
   });
 });
