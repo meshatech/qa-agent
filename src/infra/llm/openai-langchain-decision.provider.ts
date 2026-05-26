@@ -91,7 +91,7 @@ export class OpenAiLangChainDecisionProvider implements DecisionProviderPort {
   }
 
   stats() {
-    return { calls: this.calls, wrappers: this.wrappers.slice(-20) };
+    return { calls: this.calls, wrappers: this.wrappers.slice(-20), breakdown: { plan: 0, buildPlan: 0, replan: 0, decide: 0 } };
   }
 
   private extractContent(content: unknown): string {

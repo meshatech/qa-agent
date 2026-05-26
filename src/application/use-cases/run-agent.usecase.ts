@@ -24,9 +24,12 @@ import { ScenarioPlannerService } from '../services/scenario-planner.service.js'
 import { TaskMemoryService } from '../services/task-memory.service.js';
 import { ValidateConfigUseCase } from './validate-config.usecase.js';
 import { ExecutionPlanPlannerService, type ExecutionPlanSource } from '../services/execution-plan-planner.service.js';
-import { PlanExecutorService } from '../services/plan-executor.service.js';
+import { PlanExecutorService, type PlanExecutionResult } from '../services/plan-executor.service.js';
 import { PlaywrightSpecExporter } from '../services/playwright-spec-exporter.service.js';
 import type { ExecutionPlan } from '../../domain/schemas/execution-plan.schema.js';
+import { QaToolRegistry } from '../tools/qa-tool-registry.js';
+import type { QaToolContext } from '../tools/qa-tool-context.js';
+import { MemorySearchService } from '../services/memory-search.service.js';
 
 @Injectable()
 export class RunAgentUseCase {
@@ -49,6 +52,8 @@ export class RunAgentUseCase {
     @Inject(ExecutionPlanPlannerService) private readonly executionPlanPlanner: ExecutionPlanPlannerService,
     @Inject(PlanExecutorService) private readonly planExecutor: PlanExecutorService,
     @Inject(PlaywrightSpecExporter) private readonly specExporter: PlaywrightSpecExporter,
+    @Inject(MemorySearchService) private readonly memorySearch: MemorySearchService,
+    @Inject(QaToolRegistry) private readonly toolRegistry: QaToolRegistry,
   ) { }
 
   async execute(rawDto: RunAgentDto): Promise<QaRunResult> {
@@ -66,7 +71,12 @@ export class RunAgentUseCase {
 
     const scenarios = await this.planner.plan(config);
     const filtered = dto.scenarioId ? scenarios.filter((s) => s.id === dto.scenarioId) : scenarios.slice(0, dto.maxScenarios ?? scenarios.length);
-    const planned = config.runtime.mode === 'FULL_REACTIVE' ? { plan: undefined, source: 'manual' as ExecutionPlanSource } : await this.executionPlanPlanner.build(config, filtered);
+    const useTools = config.runtime.tools?.enabled && config.runtime.mode !== 'FULL_REACTIVE';
+    const planned = config.runtime.mode === 'FULL_REACTIVE'
+      ? { plan: undefined, source: 'manual' as ExecutionPlanSource }
+      : useTools
+        ? { plan: undefined, source: 'manual' as ExecutionPlanSource }
+        : await this.executionPlanPlanner.build(config, filtered);
     await this.repo.writeJson(runDir, 'generated-execution-plan.json', planned.plan ?? filtered);
     await this.repo.writeJson(runDir, 'execution-plan.json', planned.plan ?? filtered);
 
@@ -80,6 +90,10 @@ export class RunAgentUseCase {
       fallbackWarning: planned.fallbackReason ? this.plannerFallbackWarning(planned.fallbackReason) : undefined,
     };
     if (dto.dryRun) return this.finalize(result, config, [], startedAt, runId, false);
+
+    if (useTools) {
+      return this.withTimeout(config.timeouts.runMs, () => this.runWithTools(result, config, dto, runDir, startedAt, runId));
+    }
 
     return this.withTimeout(config.timeouts.runMs, () => this.runWithBrowser(result, config, dto, runDir, startedAt, runId, planned.plan));
   }
@@ -156,6 +170,10 @@ export class RunAgentUseCase {
   private async runExecutionPlan(executionPlan: ExecutionPlan, result: QaRunResult, config: RunConfig, attempts: AttemptRecord[], runDir: string, runId: string): Promise<void> {
     for (const scenario of result.scenarios ?? []) scenario.status = 'RUNNING';
     const planResult = await this.planExecutor.execute(executionPlan, config);
+    await this.applyPlanExecutionResult(planResult, result, config, attempts, runDir, runId);
+  }
+
+  private async applyPlanExecutionResult(planResult: PlanExecutionResult, result: QaRunResult, config: RunConfig, attempts: AttemptRecord[], runDir: string, runId: string): Promise<void> {
     result.steps.push(...planResult.steps);
     attempts.push(...planResult.attempts);
     (result as QaRunResult & { planRuntime?: Record<string, unknown> }).planRuntime = {
@@ -198,6 +216,77 @@ export class RunAgentUseCase {
     }
 
     for (const scenario of result.scenarios ?? []) scenario.status = this.scenarioStatus(scenario);
+  }
+
+  private buildToolContext(input: { runId: string; config: RunConfig; runDir: string; scenarioId?: string }): QaToolContext {
+    return {
+      runId: input.runId,
+      scenarioId: input.scenarioId,
+      config: input.config,
+      runDir: input.runDir,
+      metadata: {
+        executionPlanPlanner: this.executionPlanPlanner,
+        planExecutor: this.planExecutor,
+        planReplanner: { replan: () => { throw new Error('qa.plan.replan not available in this context'); } },
+        evidence: this.evidence,
+        memorySearch: this.memorySearch,
+      },
+    };
+  }
+
+  private async runWithTools(result: QaRunResult, config: RunConfig, dto: RunAgentDto, runDir: string, startedAt: Date, runId: string): Promise<QaRunResult> {
+    void dto;
+    const attempts: AttemptRecord[] = [];
+    try {
+      try {
+        await this.browser.open(config);
+      } catch (error) {
+        if (error instanceof HarnessFatalError) throw error;
+        throw new HarnessFatalError(error instanceof Error ? error.message : String(error), error);
+      }
+
+      const toolContext = this.buildToolContext({ runId, config, runDir });
+      const usedTools: string[] = [];
+
+      const buildOutput = await this.toolRegistry.execute('qa.plan.build', { config, scenarios: result.scenarios }, toolContext);
+      usedTools.push('qa.plan.build');
+      const buildResult = (buildOutput as { result?: { plan?: unknown; planSource?: unknown; fallbackReason?: unknown; fallbackWarning?: unknown; memoryContext?: { chunks?: unknown[] } } }).result;
+      const executionPlan = buildResult?.plan as ExecutionPlan | undefined;
+      if (!executionPlan) {
+        throw new Error('qa.plan.build did not return a valid ExecutionPlan');
+      }
+
+      const memoryChunks = buildResult?.memoryContext?.chunks ?? [];
+      result.memoryRuntime = {
+        consulted: true,
+        chunksReturned: memoryChunks.length,
+        query: [config.demand.title, config.demand.description].filter(Boolean).join(' ').slice(0, 500),
+        source: 'tool',
+      };
+
+      (result as QaRunResult & { planRuntime?: Record<string, unknown> }).planRuntime = {
+        ...(result as QaRunResult & { planRuntime?: Record<string, unknown> }).planRuntime,
+        planSource: buildResult?.planSource,
+        fallbackReason: buildResult?.fallbackReason,
+        fallbackWarning: buildResult?.fallbackWarning,
+      };
+
+      const executeOutput = await this.toolRegistry.execute('qa.plan.execute', { plan: executionPlan, config, planRef: { runDir } }, toolContext);
+      usedTools.push('qa.plan.execute');
+      const executionResult = (executeOutput as { result?: { executionResult?: unknown } }).result?.executionResult as PlanExecutionResult | undefined;
+      if (!executionResult) {
+        throw new Error('qa.plan.execute did not return a valid execution result');
+      }
+
+      for (const scenario of result.scenarios ?? []) scenario.status = 'RUNNING';
+      await this.applyPlanExecutionResult(executionResult, result, config, attempts, runDir, runId);
+
+      result.toolRuntime = { enabled: true, usedTools };
+      result.status = this.runStatus(result);
+      return await this.finalize(result, config, attempts, startedAt, runId, true);
+    } finally {
+      await this.browser.close().catch(() => undefined);
+    }
   }
 
   private async runScenario(scenario: QaScenario, config: RunConfig, dto: RunAgentDto, runDir: string, runId: string, result: QaRunResult, attempts: AttemptRecord[]): Promise<void> {
@@ -854,6 +943,10 @@ export class RunAgentUseCase {
   private async finalize(result: QaRunResult, config: RunConfig, attempts: AttemptRecord[], startedAt: Date, runId: string, capturePassArtifacts: boolean): Promise<QaRunResult> {
     result.metrics = this.metrics(result, startedAt);
     result.finishedAt = new Date().toISOString();
+    const llmStats = this.decision.stats?.();
+    if (llmStats?.breakdown) {
+      console.log(`[LLM Stats] total=${llmStats.calls}, breakdown=${JSON.stringify(llmStats.breakdown)}`);
+    }
     const compactPlanRuntime = this.compactPlanRuntime((result as QaRunResult & { planRuntime?: Record<string, unknown> }).planRuntime);
     (result as QaRunResult & { planRuntime?: Record<string, unknown> }).planRuntime = compactPlanRuntime;
     if (capturePassArtifacts && result.status === 'PASSED') {
@@ -871,9 +964,9 @@ export class RunAgentUseCase {
     await this.repo.writeJson(result.runDir, 'config.json', this.sanitizer.sanitize(config));
     await this.repo.writeJson(result.runDir, 'run-data.json', this.sanitizer.sanitize(this.data.all()));
     await this.repo.writeJson(result.runDir, 'task-memory.json', this.sanitizer.sanitize(this.memory.all()));
-    await this.repo.writeJson(result.runDir, 'execution-log.json', this.sanitizer.sanitize({ version: 'log.v1', runId, planRuntime: compactPlanRuntime, llmStats: this.decision.stats?.(), attempts, steps: result.steps, bugs: result.bugs }));
+    await this.repo.writeJson(result.runDir, 'execution-log.json', this.sanitizer.sanitize({ version: 'log.v1', runId, planRuntime: compactPlanRuntime, toolRuntime: result.toolRuntime ?? { enabled: false, usedTools: [] }, memoryRuntime: result.memoryRuntime, llmStats: this.decision.stats?.(), attempts, steps: result.steps, bugs: result.bugs }));
     await this.repo.writeJson(result.runDir, 'metrics.json', result.metrics);
-    await this.repo.writeJson(result.runDir, 'qa-summary.json', this.sanitizer.sanitize({ runId, status: result.status, metrics: result.metrics, bugs: result.bugs, scenarios: result.scenarios, planRuntime: compactPlanRuntime }));
+    await this.repo.writeJson(result.runDir, 'qa-summary.json', this.sanitizer.sanitize({ runId, status: result.status, metrics: result.metrics, bugs: result.bugs, scenarios: result.scenarios, planRuntime: compactPlanRuntime, toolRuntime: result.toolRuntime ?? { enabled: false, usedTools: [] }, memoryRuntime: result.memoryRuntime }));
     await this.repo.writeFile(result.runDir, 'generated-test.spec.ts', this.specExporter.export(result));
     await this.repo.writeJson(result.runDir, 'run.json', this.sanitizer.sanitize({ schemaVersion: 'run.v1', runId, ...result }));
     await this.repo.writeReport(result.runDir, result, config, runId);

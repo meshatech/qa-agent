@@ -1,11 +1,7 @@
-import { readFile } from 'node:fs/promises';
-
 import type { QaTool } from '../qa-tool.js';
 import {
-  MemorySearchInputSchema,
   ReportGenerateInputSchema,
   ToolResultSchema,
-  type MemorySearchInput,
   type ReportGenerateInput,
   type ToolResult,
 } from './contracts.js';
@@ -15,6 +11,7 @@ import { PlanExecuteTool } from './execute_execution_plan.tool.js';
 import { EvidenceRecordTool } from './record_evidence.tool.js';
 import { PlanReplanTool } from './request_replan.tool.js';
 import { ScreenObserveTool } from './observe_screen.tool.js';
+import { MemorySearchTool, SearchProjectMemoryTool } from './memory-search.tool.js';
 import { contextService, ok } from './support.js';
 
 export const ReportGenerateTool: QaTool<ReportGenerateInput, ToolResult> = {
@@ -30,22 +27,7 @@ export const ReportGenerateTool: QaTool<ReportGenerateInput, ToolResult> = {
   },
 };
 
-export const MemorySearchTool: QaTool<MemorySearchInput, ToolResult> = {
-  name: 'qa.memory.search',
-  description: 'Search project memory text for planner/replanner context without browser access.',
-  inputSchema: MemorySearchInputSchema,
-  outputSchema: ToolResultSchema,
-  async execute(input) {
-    const text = await readFile(input.memoryPath, 'utf8').catch(() => '');
-    const query = input.query.toLowerCase();
-    const matches = text
-      .split(/\r?\n\r?\n/)
-      .map((chunk) => chunk.trim())
-      .filter((chunk) => chunk && chunk.toLowerCase().includes(query))
-      .slice(0, input.limit);
-    return ok({ matches });
-  },
-};
+export { MemorySearchTool, SearchProjectMemoryTool } from './memory-search.tool.js';
 
 export const PUBLIC_QA_TOOL_CATALOG = [
   ScreenObserveTool,
@@ -56,4 +38,5 @@ export const PUBLIC_QA_TOOL_CATALOG = [
   ReportGenerateTool,
   SpecExportTool,
   MemorySearchTool,
+  SearchProjectMemoryTool,
 ];

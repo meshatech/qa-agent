@@ -9,6 +9,7 @@ import {
   type ToolResult,
 } from './contracts.js';
 import { configFrom, contextService, failed, ok } from './support.js';
+import { executeProjectMemorySearch } from './memory-tool-support.js';
 
 type ReplanServiceResult = {
   plan?: unknown;
@@ -31,15 +32,21 @@ export const PlanReplanTool: QaTool<PlanReplanInput, ToolResult> = {
   async execute(input, context) {
     const replanner = contextService<{ replan(input: unknown): Promise<ReplanServiceResult> }>(context, 'planReplanner');
     const replanInput = normalizeReplanInput(input, configFrom(input, context, 'qa.plan.replan'));
+    const memoryContext = await executeProjectMemorySearch({
+      query: [replanInput.message, replanInput.failedStep.description].filter(Boolean).join(' ').slice(0, 500),
+      projectPath: '.',
+      limit: 5,
+    }, context);
 
     try {
-      const result = await replanner.replan(replanInput);
+      const result = await replanner.replan({ ...replanInput, memoryContext });
       const patch = result.history?.patch ? PlanPatchSchema.parse(result.history.patch) : undefined;
       return ok({
         status: result.history?.status ?? 'APPLIED',
         patch,
         appliedPlan: result.plan,
         history: result.history,
+        memoryContext,
       });
     } catch (error) {
       return failed({

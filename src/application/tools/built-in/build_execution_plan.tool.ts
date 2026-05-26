@@ -8,6 +8,7 @@ import {
   type ToolResult,
 } from './contracts.js';
 import { configFrom, contextService, ok } from './support.js';
+import { fetchMemoryContextForConfig } from './memory-tool-support.js';
 
 type PlanBuildResult = {
   plan?: unknown;
@@ -23,8 +24,10 @@ export const PlanBuildTool: QaTool<PlanBuildInput, ToolResult> = {
   inputSchema: PlanBuildInputSchema,
   outputSchema: ToolResultSchema,
   async execute(input, context) {
+    const config = configFrom(input, context, 'qa.plan.build');
+    const memoryContext = input.memoryContext ?? await fetchMemoryContextForConfig(config, context);
     const planner = contextService<{ build(config: RunConfig, scenarios: unknown[]): Promise<PlanBuildResult> }>(context, 'executionPlanPlanner');
-    const result = await planner.build(configFrom(input, context, 'qa.plan.build'), input.scenarios);
+    const result = await planner.build(config, input.scenarios);
     const plan = result.plan ? ExecutionPlanSchema.parse(result.plan) : undefined;
     const fallbackReason = typeof result.fallbackReason === 'string' ? result.fallbackReason : undefined;
 
@@ -33,6 +36,7 @@ export const PlanBuildTool: QaTool<PlanBuildInput, ToolResult> = {
       planSource: result.planSource ?? result.source,
       fallbackReason,
       fallbackWarning: typeof result.fallbackWarning === 'string' ? result.fallbackWarning : fallbackWarning(fallbackReason),
+      memoryContext,
     });
   },
 };

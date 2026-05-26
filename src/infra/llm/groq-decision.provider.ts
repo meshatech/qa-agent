@@ -13,11 +13,13 @@ const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 @Injectable()
 export class GroqDecisionProvider implements DecisionProviderPort {
   private calls = 0;
+  private readonly callCounts = { plan: 0, buildPlan: 0, replan: 0, decide: 0 };
   private readonly wrappers: Array<{ kind: 'plan' | 'patch'; wrapper: string }> = [];
 
   constructor(@Inject(LlmPlanPatchNormalizer) private readonly normalizer: LlmPlanPatchNormalizer = new LlmPlanPatchNormalizer()) {}
 
   async plan(config: RunConfig): Promise<QaScenario[]> {
+    this.callCounts.plan++;
     const key = process.env[config.llm.apiKeyEnv];
     if (!key) throw new Error(`Missing env ${config.llm.apiKeyEnv}`);
     const json = await this.chatJson(config, key, 'plan', {
@@ -34,6 +36,7 @@ export class GroqDecisionProvider implements DecisionProviderPort {
   }
 
   async buildPlan(config: RunConfig, scenarios: QaScenario[] = []): Promise<ExecutionPlan> {
+    this.callCounts.buildPlan++;
     const key = process.env[config.llm.apiKeyEnv];
     if (!key) throw new Error(`Missing env ${config.llm.apiKeyEnv}`);
     const json = await this.chatJson(config, key, 'execution-plan', {
@@ -52,6 +55,7 @@ export class GroqDecisionProvider implements DecisionProviderPort {
   }
 
   async replan(input: ReplanInput): Promise<PlanPatch> {
+    this.callCounts.replan++;
     const key = process.env[input.config.llm.apiKeyEnv];
     if (!key) throw new Error(`Missing env ${input.config.llm.apiKeyEnv}`);
     const json = await this.chatJson(input.config, key, 'replan', {
@@ -70,6 +74,7 @@ export class GroqDecisionProvider implements DecisionProviderPort {
   }
 
   async decide(input: DecisionInput): Promise<QaActionEnvelope> {
+    this.callCounts.decide++;
     const key = process.env[input.config.llm.apiKeyEnv];
     if (!key) throw new Error(`Missing env ${input.config.llm.apiKeyEnv}`);
     let lastError: unknown;
@@ -95,7 +100,7 @@ export class GroqDecisionProvider implements DecisionProviderPort {
   }
 
   stats() {
-    return { calls: this.calls, wrappers: this.wrappers.slice(-20) };
+    return { calls: this.calls, wrappers: this.wrappers.slice(-20), breakdown: { ...this.callCounts } };
   }
 
   private async chatJson(config: RunConfig, key: string, kind: 'plan' | 'decision' | 'execution-plan' | 'replan', body: unknown): Promise<GroqChatResponse> {

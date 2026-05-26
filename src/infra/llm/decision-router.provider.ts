@@ -41,9 +41,17 @@ export class DecisionRouterProvider implements DecisionProviderPort {
   }
 
   stats() {
+    const fakeStats = this.fake.stats();
+    const groqStats = this.groq.stats();
+    const openaiStats = this.openai.stats();
     return {
-      calls: this.fake.stats().calls + this.groq.stats().calls + this.openai.stats().calls,
-      wrappers: { groq: this.groq.stats().wrappers, openai: this.openai.stats().wrappers },
+      calls: (fakeStats.calls ?? 0) + (groqStats.calls ?? 0) + (openaiStats.calls ?? 0),
+      wrappers: { groq: groqStats.wrappers, openai: openaiStats.wrappers },
+      breakdown: {
+        fake: fakeStats.breakdown ?? { plan: 0, buildPlan: 0, replan: 0, decide: 0 },
+        groq: groqStats.breakdown ?? { plan: 0, buildPlan: 0, replan: 0, decide: 0 },
+        openai: openaiStats.breakdown ?? { plan: 0, buildPlan: 0, replan: 0, decide: 0 },
+      },
     };
   }
 }

@@ -77,7 +77,10 @@ export const RunConfigSchema = z.object({
       allowGlobalEscape: z.boolean().default(false),
       allowClickOutside: z.boolean().default(false),
     }).default({ enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false }),
-  }).default({ maxActionsPerTask: 3, mode: 'HYBRID_GUARDED', maxAttemptsPerStep: 2, maxReplansPerScenario: 2, destructiveActionPolicy: 'BLOCK', semanticKeys: {}, elementAvailability: { enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false } }),
+    tools: z.object({
+      enabled: z.boolean().default(false),
+    }).default({ enabled: false }),
+  }).default({ maxActionsPerTask: 3, mode: 'HYBRID_GUARDED', maxAttemptsPerStep: 2, maxReplansPerScenario: 2, destructiveActionPolicy: 'BLOCK', semanticKeys: {}, elementAvailability: { enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false }, tools: { enabled: false } }),
   recovery: z.object({
     maxAttemptsPerTask: z.number().int().positive().default(3),
     maxFallbacksPerStep: z.number().int().positive().default(1),

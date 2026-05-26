@@ -78,6 +78,9 @@ describe('qa.plan.build', () => {
       result: {
         plan,
         planSource: 'llm',
+        fallbackReason: undefined,
+        fallbackWarning: undefined,
+        memoryContext: { hints: ['prefer inbox labels'] },
       },
     });
     expect(planner.build).toHaveBeenCalledWith(config, []);

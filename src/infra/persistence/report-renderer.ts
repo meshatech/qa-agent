@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { QaBug, QaRunResult, QaScenario, QaStep } from '../../domain/models/run.model.js';
+import type { QaBug, QaRunResult, QaScenario, QaStep, MemoryRuntimeInfo } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
 
 export interface BugReportInput {
@@ -111,6 +111,10 @@ export class ReportRenderer {
       `- Fallback reason: ${String(planRuntime?.fallbackReason ?? '—')}`,
       `- Fallback warning: ${String(planRuntime?.fallbackWarning ?? '—')}`,
       '',
+      '## Memória',
+      '',
+      this.renderMemory(result.memoryRuntime),
+      '',
       '## Métricas',
       '',
       '| Métrica | Valor |',
@@ -152,6 +156,15 @@ export class ReportRenderer {
       '- metrics.json',
       '- config.json',
       '',
+    ].join('\n');
+  }
+
+  private renderMemory(memory?: MemoryRuntimeInfo): string {
+    if (!memory || !memory.consulted) return '- Memória consultada: não';
+    return [
+      `- Memória consultada: sim`,
+      `- Chunks retornados: ${memory.chunksReturned}`,
+      `- Fonte: ${memory.source ?? '—'}`,
     ].join('\n');
   }
 

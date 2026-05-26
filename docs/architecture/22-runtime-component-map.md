@@ -269,7 +269,7 @@ Tools publicas candidatas:
 - `qa.plan.replan`: solicita/aplica um `PlanPatch` controlado, respeitando `basePlanId`, `basePlanVersion` e policy contra weakening.
 - `qa.plan.execute`: orquestra execucao de plano, delegando para `PlanExecutorService`.
 - `qa.evidence.record`: registra evidencias pelo `EvidenceService`, respeitando contexto de runtime.
-- `qa.memory.search`: consulta memoria/artefatos de run sem executar browser.
+- `qa.memory.search`: consulta chunks de memoria Markdown indexados por BM25 sem executar browser.
 - `qa.report.generate`: gera ou recupera relatorios a partir de run existente.
 - `qa.spec.export`: exporta spec a partir de resultado/run existente, sem controlar Playwright diretamente.
 
