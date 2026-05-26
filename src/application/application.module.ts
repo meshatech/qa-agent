@@ -26,6 +26,7 @@ import { RunHistoryService } from './services/run-history.service.js';
 import { ProjectOnboardingService } from './services/project-onboarding.service.js';
 import { ReadinessEvaluatorService } from './services/readiness-evaluator.service.js';
 import { BaselineSmokeBuilderService } from './services/baseline-smoke-builder.service.js';
+import { PipelinePreflightService } from './services/pipeline-preflight.service.js';
 import { QaToolRegistry } from './tools/qa-tool-registry.js';
 import { ALL_QA_TOOLS } from './tools/built-in/index.js';
 import { CaptureAuthUseCase } from './use-cases/capture-auth.usecase.js';
@@ -39,7 +40,7 @@ import { InfraModule } from '../infra/infra.module.js';
 export const APPLICATION_PROVIDERS = [
   AgentService, RunAgentUseCase, ValidateConfigUseCase, InspectRunUseCase, ReportRunUseCase, CaptureAuthUseCase, RunOnboardingUseCase,
   DataHarnessService, LocatorResolverService, ValidationBinderService, ActionPolicyService, RecoveryPolicyService,
-  SanitizerService, BugClassifierService, EvidenceService, ScenarioPlannerService, TaskMemoryService, ExecutionPlanFactoryService, ExecutionPlanPlannerService, ElementAvailabilityResolver, PlanPatchApplierService, PlanExecutorService, PlanReplannerService, PlaywrightSpecExporter, AgentQaLayoutService, MemoryMarkdownLoader, MemoryChunker, BM25MemoryIndex, RunHistoryService, ProjectOnboardingService, ReadinessEvaluatorService, BaselineSmokeBuilderService,
+  SanitizerService, BugClassifierService, EvidenceService, ScenarioPlannerService, TaskMemoryService, ExecutionPlanFactoryService, ExecutionPlanPlannerService, ElementAvailabilityResolver, PlanPatchApplierService, PlanExecutorService, PlanReplannerService, PlaywrightSpecExporter, AgentQaLayoutService, MemoryMarkdownLoader, MemoryChunker, BM25MemoryIndex, RunHistoryService, ProjectOnboardingService, ReadinessEvaluatorService, BaselineSmokeBuilderService, PipelinePreflightService,
   { provide: QaToolRegistry, useFactory: () => new QaToolRegistry(ALL_QA_TOOLS) },
   {
     provide: MemorySearchService,
