@@ -172,6 +172,39 @@ Critérios de Aceite
       'ClickUpReaderPort é definido.',
       'Método readTask(taskId, token) retorna DemandContext.',
     ]);
+    expect(result.bug).toBeUndefined();
+  });
+
+  it('extracts reproduction steps into optional BugContext', async () => {
+    mockFetch(200, {
+      ...SAMPLE_TASK,
+      description: `Bug report
+Passos para Reproduzir
+1. Abrir a tela de login
+2. Clicar em Entrar`,
+    });
+    const reader = new ClickUpHttpReaderAdapter();
+
+    const result = await reader.readTask('PRJ-11364', 'pk_test_token', {
+      configTeamId: '459806',
+    });
+
+    expect(result.bug).toEqual({
+      reproductionSteps: ['Abrir a tela de login', 'Clicar em Entrar'],
+      expectedResult: null,
+      actualResult: null,
+    });
+  });
+
+  it('does not include bug context when reproduction section is absent', async () => {
+    mockFetch(200, SAMPLE_TASK);
+    const reader = new ClickUpHttpReaderAdapter();
+
+    const result = await reader.readTask('PRJ-11364', 'pk_test_token', {
+      configTeamId: '459806',
+    });
+
+    expect(result.bug).toBeUndefined();
   });
 
   it.each([

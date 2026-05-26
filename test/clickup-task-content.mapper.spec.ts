@@ -41,6 +41,22 @@ describe('extractClickUpDescription', () => {
   it('returns empty string when both fields are missing', () => {
     expect(extractClickUpDescription({})).toBe('');
   });
+
+  it('keeps a clean plain-text description unchanged', () => {
+    expect(
+      extractClickUpDescription({
+        description: 'Ler descrição da task do ClickUp.',
+      }),
+    ).toBe('Ler descrição da task do ClickUp.');
+  });
+
+  it('sanitizes HTML while preserving readable description text', () => {
+    expect(
+      extractClickUpDescription({
+        description: '<p>Passos para Reproduzir</p><p>Abrir o app</p>',
+      }),
+    ).toBe('Passos para Reproduzir\nAbrir o app');
+  });
 });
 
 describe('sanitizeClickUpDescription', () => {

@@ -5,8 +5,10 @@ import type {
   ClickUpTaskReadResult,
 } from '../../application/ports/clickup-reader.port.js';
 import { ClickUpReaderError } from '../../domain/errors.js';
+import { BugContextSchema } from '../../domain/schemas/bug-context.schema.js';
 import { DemandContextSchema } from '../../domain/schemas/demand-context.schema.js';
 import { extractClickUpAcceptanceCriteria } from './clickup-acceptance-criteria.parser.js';
+import { extractClickUpReproductionSteps } from './clickup-reproduction-steps.parser.js';
 import {
   extractClickUpDescription,
   extractClickUpTitle,
@@ -67,7 +69,18 @@ export class ClickUpHttpReaderAdapter implements ClickUpReaderPort {
       dueDate: mapDueDate(payload.due_date),
     });
 
-    return { demand };
+    const reproductionSteps = extractClickUpReproductionSteps(description);
+    const result: ClickUpTaskReadResult = { demand };
+
+    if (reproductionSteps.length > 0) {
+      result.bug = BugContextSchema.parse({
+        reproductionSteps,
+        expectedResult: null,
+        actualResult: null,
+      });
+    }
+
+    return result;
   }
 
   async readConfiguredTask(
