@@ -207,6 +207,52 @@ Passos para Reproduzir
     expect(result.bug).toBeUndefined();
   });
 
+  it('extracts expected and actual results into BugContext', async () => {
+    mockFetch(200, {
+      ...SAMPLE_TASK,
+      description: `Bug report
+Resultado Esperado
+Mensagem de erro visível
+Resultado Obtido
+Tela em branco`,
+    });
+    const reader = new ClickUpHttpReaderAdapter();
+
+    const result = await reader.readTask('PRJ-11364', 'pk_test_token', {
+      configTeamId: '459806',
+    });
+
+    expect(result.bug).toEqual({
+      reproductionSteps: [],
+      expectedResult: 'Mensagem de erro visível',
+      actualResult: 'Tela em branco',
+    });
+  });
+
+  it('includes bug context with results and reproduction steps together', async () => {
+    mockFetch(200, {
+      ...SAMPLE_TASK,
+      description: `Bug report
+Passos para Reproduzir
+1. Abrir login
+Resultado Esperado
+Erro visível
+Resultado Obtido
+Tela em branco`,
+    });
+    const reader = new ClickUpHttpReaderAdapter();
+
+    const result = await reader.readTask('PRJ-11364', 'pk_test_token', {
+      configTeamId: '459806',
+    });
+
+    expect(result.bug).toEqual({
+      reproductionSteps: ['Abrir login'],
+      expectedResult: 'Erro visível',
+      actualResult: 'Tela em branco',
+    });
+  });
+
   it.each([
     [401, 'ClickUp read access denied (401)'],
     [403, 'ClickUp read access denied (403)'],

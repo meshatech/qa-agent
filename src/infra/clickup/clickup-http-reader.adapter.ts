@@ -8,6 +8,7 @@ import { ClickUpReaderError } from '../../domain/errors.js';
 import { BugContextSchema } from '../../domain/schemas/bug-context.schema.js';
 import { DemandContextSchema } from '../../domain/schemas/demand-context.schema.js';
 import { extractClickUpAcceptanceCriteria } from './clickup-acceptance-criteria.parser.js';
+import { extractClickUpBugResults } from './clickup-bug-results.parser.js';
 import { extractClickUpReproductionSteps } from './clickup-reproduction-steps.parser.js';
 import {
   extractClickUpDescription,
@@ -70,13 +71,17 @@ export class ClickUpHttpReaderAdapter implements ClickUpReaderPort {
     });
 
     const reproductionSteps = extractClickUpReproductionSteps(description);
+    const { expectedResult, actualResult } = extractClickUpBugResults(description);
     const result: ClickUpTaskReadResult = { demand };
 
-    if (reproductionSteps.length > 0) {
+    const hasBugContext =
+      reproductionSteps.length > 0 || expectedResult !== null || actualResult !== null;
+
+    if (hasBugContext) {
       result.bug = BugContextSchema.parse({
         reproductionSteps,
-        expectedResult: null,
-        actualResult: null,
+        expectedResult,
+        actualResult,
       });
     }
 
