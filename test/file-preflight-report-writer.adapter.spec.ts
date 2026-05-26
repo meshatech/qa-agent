@@ -1,5 +1,5 @@
 import { describe, expect, it, afterEach } from 'vitest';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -42,5 +42,34 @@ describe('FilePreflightReportWriterAdapter', () => {
 
     expect(path.endsWith('preflight-report.json')).toBe(true);
     expect(JSON.parse(raw).status).toBe('PASS');
+  });
+
+  it('writes atomically without leaving a .tmp file', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'agent-qa-preflight-writer-'));
+    tempDirs.push(dir);
+    const adapter = new FilePreflightReportWriterAdapter();
+    const report = PreflightReportSchema.parse({
+      schemaVersion: 'preflight-report.v1',
+      status: 'PASS',
+      timestamp: new Date().toISOString(),
+      tokensMasked: true,
+      checkItems: PREFLIGHT_CHECK_NAMES.map((name) => ({ name, status: 'PASS', message: `${name} ok` })),
+      checks: {
+        clickupToken: { ok: true },
+        clickupReadAccess: { ok: true },
+        clickupTaskId: { ok: true },
+        githubToken: { ok: true },
+        prCommentPermission: { ok: true },
+        prContext: { ok: true, missing: [] },
+        branchHead: { ok: true, branchHead: 'feature/test', missing: [] },
+        checkoutHistory: { ok: true, errors: [] },
+        config: { ok: true, errors: [] },
+      },
+    });
+
+    const path = await adapter.write(dir, report);
+
+    await expect(access(`${path}.tmp`)).rejects.toThrow();
+    expect(JSON.parse(await readFile(path, 'utf8')).status).toBe('PASS');
   });
 });

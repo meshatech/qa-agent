@@ -32,4 +32,12 @@ describe('SanitizerService', () => {
     expect(value.error).toContain('***REDACTED***');
     expect(value.error).not.toContain(secret);
   });
+
+  it('containsLeakedSecrets detects known secrets and sensitive patterns', () => {
+    const sanitizer = new SanitizerService();
+    const secret = 'pk_test_leak_detector_secret';
+    expect(sanitizer.containsLeakedSecrets(`failed with ${secret}`, [secret])).toBe(true);
+    expect(sanitizer.containsLeakedSecrets('Authorization: Bearer ghp_abc1234567890', [])).toBe(true);
+    expect(sanitizer.containsLeakedSecrets('safe message only', [])).toBe(false);
+  });
 });

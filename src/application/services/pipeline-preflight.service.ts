@@ -1,8 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { resolve } from 'node:path';
 
 import type { ConfigLoaderPort } from '../ports/config-loader.port.js';
 import type { ClickUpApiPort, ClickUpReadAccessResult } from '../ports/clickup-api.port.js';
 import type { GitHubApiPort, GitHubPrCommentPermissionResult } from '../ports/github-api.port.js';
+import type { GitHubEventContextPort } from '../ports/github-event-context.port.js';
 import type { GitRepositoryPort } from '../ports/git-repository.port.js';
 import type { PreflightReportWriterPort } from '../ports/preflight-report-writer.port.js';
 import type { PipelinePreflightRunResult } from '../dto/pipeline-preflight-result.dto.js';
@@ -22,6 +24,11 @@ import { SanitizerService } from './sanitizer.service.js';
 
 type PreflightCheckStatus = PreflightCheckItem['status'];
 
+const GITHUB_TOKEN_ENV_KEYS = ['GITHUB_TOKEN', 'GH_TOKEN', 'INPUT_GITHUB_TOKEN'] as const;
+const GITHUB_TOKEN_MISSING_WARNING =
+  'GitHub token is missing (GITHUB_TOKEN, GH_TOKEN, or INPUT_GITHUB_TOKEN); PR read/publish may be unavailable.';
+const ALLOWED_PR_EVENT_NAMES = ['pull_request', 'pull_request_target'] as const;
+
 /**
  * Validates the pipeline environment before execution.
  * Checks required secrets, PR context, and project configuration.
@@ -33,6 +40,7 @@ export class PipelinePreflightService {
     @Inject('GitRepositoryPort') private readonly gitRepository: GitRepositoryPort,
     @Inject('ClickUpApiPort') private readonly clickUpApi: ClickUpApiPort,
     @Inject('GitHubApiPort') private readonly githubApi: GitHubApiPort,
+    @Inject('GitHubEventContextPort') private readonly githubEventContext: GitHubEventContextPort,
     @Inject(SanitizerService) private readonly sanitizer: SanitizerService,
     @Inject(ValidateConfigUseCase) private readonly validateConfigUseCase: ValidateConfigUseCase,
     @Inject('PreflightReportWriterPort') private readonly reportWriter: PreflightReportWriterPort,
@@ -79,7 +87,7 @@ export class PipelinePreflightService {
       schemaVersion: 'preflight-report.v1',
       status: allOk ? 'PASS' : 'BLOCKED',
       timestamp: new Date().toISOString(),
-      tokensMasked: true,
+      tokensMasked: false,
       checkItems: PREFLIGHT_CHECK_NAMES.map((name) => this.buildCheckItem(name, checks)),
       checks,
     };
@@ -104,8 +112,8 @@ export class PipelinePreflightService {
         return checks.clickupTaskId.ok ? 'CLICKUP_TASK_ID is configured' : 'CLICKUP_TASK_ID is missing';
       case 'githubToken':
         return checks.githubToken.ok
-          ? 'GITHUB_TOKEN is configured'
-          : (checks.githubToken.warning ?? 'GITHUB_TOKEN is missing');
+          ? 'GitHub token is configured'
+          : (checks.githubToken.warning ?? GITHUB_TOKEN_MISSING_WARNING);
       case 'prCommentPermission':
         return checks.prCommentPermission.ok
           ? 'GitHub PR comment permission verified'
@@ -145,28 +153,27 @@ export class PipelinePreflightService {
     return { ok: Boolean(value && value.trim().length > 0) };
   }
 
-  private validateGitHubToken(): { ok: boolean; warning?: string } {
-    const value = process.env.GITHUB_TOKEN;
-    const present = Boolean(value && value.trim().length > 0);
-    if (present) return { ok: true };
-    return {
-      ok: false,
-      warning: 'GITHUB_TOKEN is missing; PR read/publish may be unavailable.',
-    };
+  private resolveGitHubToken(): string {
+    for (const key of GITHUB_TOKEN_ENV_KEYS) {
+      const value = process.env[key]?.trim();
+      if (value) return value;
+    }
+    return '';
   }
 
-  private resolvePullNumber(): number | undefined {
-    const match = process.env.GITHUB_REF?.trim().match(/^refs\/pull\/(\d+)\//);
-    return match ? Number(match[1]) : undefined;
+  private validateGitHubToken(): { ok: boolean; warning?: string } {
+    const present = this.resolveGitHubToken().length > 0;
+    if (present) return { ok: true };
+    return { ok: false, warning: GITHUB_TOKEN_MISSING_WARNING };
   }
 
   private async validatePrCommentPermission(): Promise<GitHubPrCommentPermissionResult> {
-    const token = process.env.GITHUB_TOKEN?.trim() ?? '';
+    const token = this.resolveGitHubToken();
     const repository = process.env.GITHUB_REPOSITORY?.trim() ?? '';
-    const pullNumber = this.resolvePullNumber();
+    const pullNumber = await this.githubEventContext.resolvePullNumber();
 
     if (!token) {
-      return { ok: false, warning: 'GITHUB_TOKEN is missing; cannot verify PR comment permission' };
+      return { ok: false, warning: `${GITHUB_TOKEN_MISSING_WARNING.split(';')[0]}; cannot verify PR comment permission` };
     }
     if (!repository || pullNumber === undefined) {
       return { ok: false, warning: 'PR metadata missing; cannot verify comment permission' };
@@ -188,7 +195,7 @@ export class PipelinePreflightService {
     const missing: string[] = [];
     const eventName = process.env.GITHUB_EVENT_NAME?.trim() ?? '';
 
-    if (eventName !== 'pull_request') {
+    if (!ALLOWED_PR_EVENT_NAMES.includes(eventName as (typeof ALLOWED_PR_EVENT_NAMES)[number])) {
       missing.push('GITHUB_EVENT_NAME');
     }
 
@@ -241,8 +248,14 @@ export class PipelinePreflightService {
     }
   }
 
+  private resolveConfigPath(): string {
+    const rawPath = process.env.AGENT_QA_CONFIG?.trim() || './agent-qa.config.json';
+    const base = process.env.GITHUB_WORKSPACE?.trim() || process.cwd();
+    return resolve(base, rawPath);
+  }
+
   private async validateConfig(): Promise<{ ok: boolean; errors: string[]; configPath?: string }> {
-    const configPath = process.env.AGENT_QA_CONFIG?.trim() || './agent-qa.config.json';
+    const configPath = this.resolveConfigPath();
     const errors: string[] = [];
 
     try {
@@ -272,18 +285,22 @@ export class PipelinePreflightService {
   }
 
   private collectKnownSecrets(): string[] {
-    return [
+    const unique = new Set<string>();
+    for (const value of [
       process.env.CLICKUP_TOKEN,
-      process.env.GITHUB_TOKEN,
       process.env.CLICKUP_TASK_ID,
-    ].flatMap((value) => {
+      ...GITHUB_TOKEN_ENV_KEYS.map((key) => process.env[key]),
+    ]) {
       const trimmed = value?.trim() ?? '';
-      return trimmed.length > 0 ? [trimmed] : [];
-    });
+      if (trimmed) unique.add(trimmed);
+    }
+    return [...unique];
   }
 
   private sanitizeReport(report: PreflightReport): PreflightReport {
-    const sanitized = this.sanitizer.sanitizeForOutput(report, this.collectKnownSecrets());
-    return { ...sanitized, tokensMasked: true as const };
+    const secrets = this.collectKnownSecrets();
+    const sanitized = this.sanitizer.sanitizeForOutput(report, secrets);
+    const tokensMasked = !this.sanitizer.containsLeakedSecrets(JSON.stringify(sanitized), secrets);
+    return { ...sanitized, tokensMasked };
   }
 }

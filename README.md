@@ -334,6 +334,8 @@ npm run qa-agent -- preflight --output-dir ./.agent-qa/pipeline
 
 Emite `preflight-report.json` no diretorio de saida. Exit code `6` quando `status` e `BLOCKED`.
 
+Token GitHub aceito via `GITHUB_TOKEN`, `GH_TOKEN` ou `INPUT_GITHUB_TOKEN`. O campo `tokensMasked` no report indica se a sanitizacao removeu secrets conhecidos; `false` sinaliza possivel vazamento. `AGENT_QA_CONFIG` e resolvido contra `GITHUB_WORKSPACE` (ou cwd). Eventos `pull_request` e `pull_request_target` sao aceitos; PR number pode vir de `GITHUB_REF`, `GITHUB_EVENT_PATH` ou `GITHUB_PR_NUMBER`.
+
 Executar uma run:
 
 ```bash

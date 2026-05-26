@@ -14,9 +14,11 @@ import type { ClickUpApiPort } from '../src/application/ports/clickup-api.port.j
 import type { GitHubApiPort } from '../src/application/ports/github-api.port.js';
 import type { GitRepositoryPort } from '../src/application/ports/git-repository.port.js';
 import type { PreflightReportWriterPort } from '../src/application/ports/preflight-report-writer.port.js';
+import type { GitHubEventContextPort } from '../src/application/ports/github-event-context.port.js';
 import { ValidateConfigUseCase } from '../src/application/use-cases/validate-config.usecase.js';
 import { FileConfigLoader } from '../src/infra/config/file-config.loader.js';
 import { FilePreflightReportWriterAdapter } from '../src/infra/persistence/file-preflight-report-writer.adapter.js';
+import { FileGitHubEventContextAdapter } from '../src/infra/github/file-github-event-context.adapter.js';
 
 let tempDirs: string[] = [];
 let originalEnv: NodeJS.ProcessEnv;
@@ -88,6 +90,7 @@ function makeService(
   githubApi: GitHubApiPort = createPassingGitHubApi(),
   sanitizer: SanitizerService = new SanitizerService(),
   reportWriter: PreflightReportWriterPort = createPreflightReportWriter(),
+  githubEventContext: GitHubEventContextPort = new FileGitHubEventContextAdapter(),
 ) {
   const configLoader = new FileConfigLoader();
   return new PipelinePreflightService(
@@ -95,6 +98,7 @@ function makeService(
     gitRepo,
     clickUpApi,
     githubApi,
+    githubEventContext,
     sanitizer,
     new ValidateConfigUseCase(configLoader),
     reportWriter,
@@ -107,6 +111,12 @@ function setPullRequestContextEnv(): void {
   process.env.GITHUB_REF = 'refs/pull/42/merge';
   process.env.GITHUB_HEAD_REF = 'feature/test';
   process.env.GITHUB_BASE_REF = 'main';
+}
+
+function clearGitHubTokens(): void {
+  delete process.env.GITHUB_TOKEN;
+  delete process.env.GH_TOKEN;
+  delete process.env.INPUT_GITHUB_TOKEN;
 }
 
 function setFullPreflightEnv(): void {
@@ -344,7 +354,7 @@ describe('PipelinePreflightService', () => {
   describe('PRJ-11352 — GITHUB_TOKEN validation', () => {
     async function setFullEnvExceptGitHubToken(): Promise<void> {
       process.env.CLICKUP_TOKEN = 'pk_live_valid_token';
-      delete process.env.GITHUB_TOKEN;
+      clearGitHubTokens();
       process.env.CLICKUP_TASK_ID = '86ahmgfc0';
       setPullRequestContextEnv();
       await attachValidConfig();
@@ -368,7 +378,27 @@ describe('PipelinePreflightService', () => {
       const result = await makeService().run(outputDir);
 
       expect(result.report.checks.githubToken.ok).toBe(false);
-      expect(result.report.checks.githubToken.warning).toContain('GITHUB_TOKEN is missing');
+      expect(result.report.checks.githubToken.warning).toContain('GitHub token is missing');
+    });
+
+    it('githubToken check passes when GH_TOKEN is set and GITHUB_TOKEN is missing', async () => {
+      await setFullEnvExceptGitHubToken();
+      process.env.GH_TOKEN = 'ghp_from_gh_token';
+
+      const outputDir = await tempDir();
+      const result = await makeService().run(outputDir);
+
+      expect(result.report.checks.githubToken.ok).toBe(true);
+    });
+
+    it('githubToken check passes when INPUT_GITHUB_TOKEN is set', async () => {
+      await setFullEnvExceptGitHubToken();
+      process.env.INPUT_GITHUB_TOKEN = 'ghp_from_input';
+
+      const outputDir = await tempDir();
+      const result = await makeService().run(outputDir);
+
+      expect(result.report.checks.githubToken.ok).toBe(true);
     });
 
     it('githubToken check fails with warning when GITHUB_TOKEN is whitespace', async () => {
@@ -451,6 +481,17 @@ describe('PipelinePreflightService', () => {
       expect(result.report.checks.prContext.ok).toBe(true);
       expect(result.report.checks.prContext.missing).toEqual([]);
       expect(result.report.checks.prContext.eventName).toBe('pull_request');
+    });
+
+    it('prContext passes when pull_request_target event and refs are set', async () => {
+      const outputDir = await setupPreflightPassEnv();
+      process.env.GITHUB_EVENT_NAME = 'pull_request_target';
+      process.env.GITHUB_REF = 'refs/heads/main';
+
+      const result = await makeService().run(outputDir);
+
+      expect(result.report.checks.prContext.ok).toBe(true);
+      expect(result.report.checks.prContext.eventName).toBe('pull_request_target');
     });
 
     it('prContext fails when GITHUB_EVENT_NAME is missing', async () => {
@@ -580,6 +621,20 @@ describe('PipelinePreflightService', () => {
       expect(result.report.checks.clickupTaskId.ok).toBe(true);
       expect(result.report.checks.githubToken.ok).toBe(true);
       expect(result.report.checks.prContext.ok).toBe(true);
+    });
+
+    it('config check resolves AGENT_QA_CONFIG against GITHUB_WORKSPACE', async () => {
+      const workspaceDir = await tempDir();
+      const configPath = await writeConfigFile(workspaceDir, VALID_CONFIG);
+      process.env.GITHUB_WORKSPACE = workspaceDir;
+      process.env.AGENT_QA_CONFIG = './agent-qa.config.json';
+      setFullPreflightEnv();
+
+      const outputDir = await tempDir();
+      const result = await makeService().run(outputDir);
+
+      expect(result.report.checks.config.ok).toBe(true);
+      expect(result.report.checks.config.configPath).toBe(configPath);
     });
   });
 
@@ -868,12 +923,34 @@ describe('PipelinePreflightService', () => {
 
     it('prCommentPermission fails with warning when GITHUB_TOKEN is missing', async () => {
       const outputDir = await setupPreflightPassEnv();
-      delete process.env.GITHUB_TOKEN;
+      clearGitHubTokens();
 
       const result = await makeService().run(outputDir);
 
       expect(result.report.checks.prCommentPermission.ok).toBe(false);
-      expect(result.report.checks.prCommentPermission.warning).toContain('GITHUB_TOKEN is missing');
+      expect(result.report.checks.prCommentPermission.warning).toContain('GitHub token is missing');
+    });
+
+    it('prCommentPermission resolves PR number from GITHUB_EVENT_PATH when GITHUB_REF is base branch', async () => {
+      const eventDir = await tempDir();
+      const eventPath = join(eventDir, 'event.json');
+      await writeFile(eventPath, JSON.stringify({ pull_request: { number: 77 } }), 'utf8');
+
+      let receivedParams: { token: string; repository: string; pullNumber: number } | undefined;
+      const githubApi = createGitHubApi({
+        verifyPrCommentPermission: async (params) => {
+          receivedParams = params;
+          return { ok: true, statusCode: 200 };
+        },
+      });
+      const outputDir = await setupPreflightPassEnv();
+      process.env.GITHUB_EVENT_NAME = 'pull_request_target';
+      process.env.GITHUB_REF = 'refs/heads/main';
+      process.env.GITHUB_EVENT_PATH = eventPath;
+
+      await makeService(createPassingGitRepo(), createPassingClickUpApi(), githubApi).run(outputDir);
+
+      expect(receivedParams?.pullNumber).toBe(77);
     });
 
     it('status remains PASS when only pr comment permission fails', async () => {
@@ -1042,7 +1119,7 @@ describe('PipelinePreflightService', () => {
 
     it('global status stays PASS when only GITHUB_TOKEN is missing', async () => {
       const outputDir = await setupPreflightPassEnv();
-      delete process.env.GITHUB_TOKEN;
+      clearGitHubTokens();
 
       const result = await makeService().run(outputDir);
 
@@ -1068,6 +1145,28 @@ describe('PipelinePreflightService', () => {
       expect(result.report.tokensMasked).toBe(true);
       expect(raw).not.toContain(secret);
       expect(raw).toContain('***REDACTED***');
+    });
+
+    it('tokensMasked is false when sanitized output still contains known secrets', async () => {
+      const secret = 'pk_test_tokens_masked_false_secret';
+      const clickUpApi = createClickUpApi({
+        verifyReadAccess: async () => ({
+          ok: false,
+          error: `Auth failed for token ${secret}`,
+        }),
+      });
+      const passthroughSanitizer = {
+        sanitizeForOutput: <T>(input: T) => input,
+        containsLeakedSecrets: (serialized: string, secrets: string[]) =>
+          new SanitizerService().containsLeakedSecrets(serialized, secrets),
+      } as unknown as SanitizerService;
+      const outputDir = await setupPreflightPassEnv();
+      process.env.CLICKUP_TOKEN = secret;
+
+      const result = await makeService(createPassingGitRepo(), clickUpApi, createPassingGitHubApi(), passthroughSanitizer).run(outputDir);
+
+      expect(result.report.tokensMasked).toBe(false);
+      expect(JSON.stringify(result.report)).toContain(secret);
     });
   });
 
@@ -1098,7 +1197,7 @@ describe('PipelinePreflightService', () => {
 
     it('runOrThrow() resolves when only GITHUB_TOKEN is missing', async () => {
       const outputDir = await setupPreflightPassEnv();
-      delete process.env.GITHUB_TOKEN;
+      clearGitHubTokens();
 
       const result = await makeService().runOrThrow(outputDir);
 

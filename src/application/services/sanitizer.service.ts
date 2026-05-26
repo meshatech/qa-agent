@@ -40,6 +40,15 @@ export class SanitizerService {
     return this.sanitizeStringsDeep(input, secrets);
   }
 
+  containsLeakedSecrets(serialized: string, knownSecrets: string[] = []): boolean {
+    const secrets = knownSecrets.map((value) => value.trim()).filter((value) => value.length > 0);
+    if (secrets.some((secret) => serialized.includes(secret))) return true;
+    return patterns.some((pattern) => {
+      pattern.lastIndex = 0;
+      return pattern.test(serialized);
+    });
+  }
+
   private sanitizeStringsDeep<T>(input: T, secrets: string[]): T {
     if (typeof input === 'string') {
       let value = patterns.reduce<string>((current, pattern) => current.replace(pattern, () => this.mark('strings')), input);

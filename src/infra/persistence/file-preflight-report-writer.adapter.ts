@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 import type { PreflightReportWriterPort } from '../../application/ports/preflight-report-writer.port.js';
@@ -10,7 +10,10 @@ export class FilePreflightReportWriterAdapter implements PreflightReportWriterPo
   async write(outputDir: string, report: PreflightReport): Promise<string> {
     await mkdir(outputDir, { recursive: true });
     const path = resolve(join(outputDir, 'preflight-report.json'));
-    await writeFile(path, JSON.stringify(report, null, 2), 'utf8');
+    const tmpPath = `${path}.tmp`;
+    const payload = JSON.stringify(report, null, 2);
+    await writeFile(tmpPath, payload, 'utf8');
+    await rename(tmpPath, path);
     return path;
   }
 }

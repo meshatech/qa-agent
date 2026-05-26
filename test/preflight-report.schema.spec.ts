@@ -38,10 +38,8 @@ describe('PreflightReportSchema', () => {
     expect(() => PreflightReportSchema.parse(withoutCheckItems)).toThrow();
   });
 
-  it('rejects reports when tokensMasked is false', () => {
-    expect(() =>
-      PreflightReportSchema.parse({ ...VALID_REPORT, tokensMasked: false }),
-    ).toThrow();
+  it('accepts reports when tokensMasked is false', () => {
+    expect(PreflightReportSchema.parse({ ...VALID_REPORT, tokensMasked: false }).tokensMasked).toBe(false);
   });
 
   it('rejects reports with wrong checkItems length', () => {

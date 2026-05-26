@@ -75,7 +75,7 @@ export const PreflightReportSchema = z.object({
   schemaVersion: z.literal('preflight-report.v1'),
   status: z.enum(['PASS', 'BLOCKED']),
   timestamp: z.string(),
-  tokensMasked: z.literal(true),
+  tokensMasked: z.boolean(),
   checkItems: z.array(PreflightCheckItemSchema).length(PREFLIGHT_CHECK_NAMES.length),
   checks: PreflightChecksDetailSchema,
 });
