@@ -46,10 +46,11 @@ describe('DemandContextPersistenceService', () => {
       new SanitizerService(),
     );
 
-    const path = await service.persistDemandContext(dir, VALID_DEMAND_CONTEXT);
+    const { path, demand } = await service.persistDemandContext(dir, VALID_DEMAND_CONTEXT);
 
     expect(writeSpy).toHaveBeenCalledWith(dir, VALID_DEMAND_CONTEXT);
     expect(path.endsWith('demand-context.json')).toBe(true);
+    expect(demand).toEqual(VALID_DEMAND_CONTEXT);
     expect(DemandContextSchema.parse(JSON.parse(await readFile(path, 'utf8')))).toEqual(
       VALID_DEMAND_CONTEXT,
     );
@@ -65,7 +66,7 @@ describe('DemandContextPersistenceService', () => {
       new SanitizerService(),
     );
 
-    const path = await service.persistDemandContext(
+    const { path, demand } = await service.persistDemandContext(
       dir,
       {
         ...VALID_DEMAND_CONTEXT,
@@ -77,6 +78,8 @@ describe('DemandContextPersistenceService', () => {
 
     expect(raw).not.toContain(secret);
     expect(raw).toContain('***REDACTED***');
+    expect(demand.description).not.toContain(secret);
+    expect(demand.description).toContain('***REDACTED***');
   });
 
   it('persistFromClickUpTask reads ClickUp demand and writes demand-context.json', async () => {

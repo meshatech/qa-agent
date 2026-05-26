@@ -8,6 +8,11 @@ import {
 } from '../../domain/schemas/demand-context.schema.js';
 import { SanitizerService } from './sanitizer.service.js';
 
+export interface DemandContextPersistResult {
+  path: string;
+  demand: DemandContext;
+}
+
 @Injectable()
 export class DemandContextPersistenceService {
   constructor(
@@ -21,23 +26,23 @@ export class DemandContextPersistenceService {
     runDir: string,
     demand: DemandContext,
     knownSecrets: string[] = [],
-  ): Promise<string> {
+  ): Promise<DemandContextPersistResult> {
     const validated = DemandContextSchema.parse(demand);
     const sanitized = this.sanitizer.sanitizeForOutput(validated, knownSecrets);
-    return this.writer.write(runDir, sanitized);
+    const path = await this.writer.write(runDir, sanitized);
+    return { path, demand: DemandContextSchema.parse(sanitized) };
   }
 
   async persistFromClickUpTask(
     runDir: string,
     token: string,
     options?: { configTaskId?: string; configTeamId?: string },
-  ): Promise<{ path: string; demand: DemandContext }> {
+  ): Promise<DemandContextPersistResult> {
     const result = await this.clickUpReader.readConfiguredTask(
       token,
       options?.configTaskId,
       options?.configTeamId,
     );
-    const path = await this.persistDemandContext(runDir, result.demand, [token]);
-    return { path, demand: DemandContextSchema.parse(result.demand) };
+    return this.persistDemandContext(runDir, result.demand, [token]);
   }
 }
