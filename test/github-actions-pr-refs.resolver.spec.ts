@@ -71,6 +71,12 @@ describe('resolveBaseBranchFromEnv / resolveHeadBranchFromEnv', () => {
     expect(resolveBaseBranchFromEnv({})).toBeUndefined();
     expect(resolveHeadBranchFromEnv({})).toBeUndefined();
   });
+
+  it('reads head branch names containing slashes', () => {
+    expect(resolveHeadBranchFromEnv({ GITHUB_HEAD_REF: 'feature/my-branch' })).toBe(
+      'feature/my-branch',
+    );
+  });
 });
 
 describe('resolveGitHubActionsPrRefs', () => {

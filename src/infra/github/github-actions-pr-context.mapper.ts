@@ -6,7 +6,7 @@ import {
   PullRequestContextSchema,
   type PullRequestContext,
 } from '../../domain/schemas/pull-request-context.schema.js';
-import { resolveGitHubActionsPrRefs } from './github-actions-pr-refs.resolver.js';
+import { resolveGitHubActionsPrRefs, resolveHeadBranchFromEnv, resolveBaseBranchFromEnv } from './github-actions-pr-refs.resolver.js';
 
 const ALLOWED_PR_EVENT_NAMES = ['pull_request', 'pull_request_target'] as const;
 
@@ -120,10 +120,10 @@ export async function mapGitHubActionsToPullRequestContext(
 
   const prRefs = await resolveGitHubActionsPrRefs(env);
   if (!prRefs) {
-    if (!env.GITHUB_BASE_REF?.trim()) {
+    if (!resolveBaseBranchFromEnv(env)) {
       throw missingContextError(env, 'GITHUB_BASE_REF is missing');
     }
-    if (!env.GITHUB_HEAD_REF?.trim()) {
+    if (!resolveHeadBranchFromEnv(env)) {
       throw missingContextError(env, 'GITHUB_HEAD_REF is missing');
     }
     throw new PrContextReaderError(

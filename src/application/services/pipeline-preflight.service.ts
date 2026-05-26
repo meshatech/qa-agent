@@ -20,6 +20,7 @@ import {
   type PreflightReport,
 } from '../../domain/schemas/preflight-report.schema.js';
 import { ConfigError, PreflightBlockedError } from '../../domain/errors.js';
+import { resolveHeadBranchFromEnv } from '../../infra/github/github-actions-pr-refs.resolver.js';
 import { SanitizerService } from './sanitizer.service.js';
 
 type PreflightCheckStatus = PreflightCheckItem['status'];
@@ -209,7 +210,7 @@ export class PipelinePreflightService {
   }
 
   private readBranchHead(): { ok: boolean; branchHead?: string; missing: string[] } {
-    const branchHead = process.env.GITHUB_HEAD_REF?.trim() ?? '';
+    const branchHead = resolveHeadBranchFromEnv(process.env);
     if (!branchHead) {
       return { ok: false, missing: ['GITHUB_HEAD_REF'] };
     }
