@@ -3,6 +3,7 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import type { ConfigLoaderPort } from '../ports/config-loader.port.js';
+import type { ClickUpApiPort, ClickUpReadAccessResult } from '../ports/clickup-api.port.js';
 import type { GitRepositoryPort } from '../ports/git-repository.port.js';
 import { RunConfigSchema } from '../../domain/schemas/config.schema.js';
 
@@ -11,6 +12,7 @@ export interface PreflightReport {
   timestamp: string;
   checks: {
     clickupToken: { ok: boolean };
+    clickupReadAccess: { ok: boolean; statusCode?: number; error?: string };
     clickupTaskId: { ok: boolean };
     githubToken: { ok: boolean; warning?: string };
     prContext: { ok: boolean; missing: string[]; eventName?: string };
@@ -29,10 +31,12 @@ export class PipelinePreflightService {
   constructor(
     @Inject('ConfigLoaderPort') private readonly configLoader: ConfigLoaderPort,
     @Inject('GitRepositoryPort') private readonly gitRepository: GitRepositoryPort,
+    @Inject('ClickUpApiPort') private readonly clickUpApi: ClickUpApiPort,
   ) {}
 
   async run(outputDir: string): Promise<PreflightReport> {
     const clickupTokenCheck = this.validateClickUpToken();
+    const clickupReadAccessCheck = await this.validateClickUpReadAccess();
     const clickupTaskIdCheck = this.validateClickUpTaskId();
     const githubTokenCheck = this.validateGitHubToken();
     const prCheck = this.validatePrContext();
@@ -42,6 +46,7 @@ export class PipelinePreflightService {
 
     const allOk =
       clickupTokenCheck.ok &&
+      clickupReadAccessCheck.ok &&
       clickupTaskIdCheck.ok &&
       prCheck.ok &&
       branchHeadCheck.ok &&
@@ -53,6 +58,7 @@ export class PipelinePreflightService {
       timestamp: new Date().toISOString(),
       checks: {
         clickupToken: clickupTokenCheck,
+        clickupReadAccess: clickupReadAccessCheck,
         clickupTaskId: clickupTaskIdCheck,
         githubToken: githubTokenCheck,
         prContext: prCheck,
@@ -69,6 +75,14 @@ export class PipelinePreflightService {
   private validateClickUpToken(): { ok: boolean } {
     const value = process.env.CLICKUP_TOKEN;
     return { ok: Boolean(value && value.trim().length > 0) };
+  }
+
+  private async validateClickUpReadAccess(): Promise<ClickUpReadAccessResult> {
+    const token = process.env.CLICKUP_TOKEN?.trim() ?? '';
+    if (!token) {
+      return { ok: false, error: 'CLICKUP_TOKEN is missing; cannot verify read access' };
+    }
+    return this.clickUpApi.verifyReadAccess(token);
   }
 
   private validateClickUpTaskId(): { ok: boolean } {

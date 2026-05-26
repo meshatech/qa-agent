@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { PipelinePreflightService } from '../src/application/services/pipeline-preflight.service.js';
+import type { ClickUpApiPort } from '../src/application/ports/clickup-api.port.js';
 import type { GitRepositoryPort } from '../src/application/ports/git-repository.port.js';
 import { FileConfigLoader } from '../src/infra/config/file-config.loader.js';
 
@@ -47,8 +48,21 @@ function createGitRepo(overrides: Partial<GitRepositoryPort>): GitRepositoryPort
   return { ...createPassingGitRepo(), ...overrides };
 }
 
-function makeService(gitRepo: GitRepositoryPort = createPassingGitRepo()) {
-  return new PipelinePreflightService(new FileConfigLoader(), gitRepo);
+function createPassingClickUpApi(): ClickUpApiPort {
+  return {
+    verifyReadAccess: async () => ({ ok: true, statusCode: 200 }),
+  };
+}
+
+function createClickUpApi(overrides: Partial<ClickUpApiPort>): ClickUpApiPort {
+  return { ...createPassingClickUpApi(), ...overrides };
+}
+
+function makeService(
+  gitRepo: GitRepositoryPort = createPassingGitRepo(),
+  clickUpApi: ClickUpApiPort = createPassingClickUpApi(),
+) {
+  return new PipelinePreflightService(new FileConfigLoader(), gitRepo, clickUpApi);
 }
 
 function setPullRequestContextEnv(): void {
@@ -90,6 +104,8 @@ describe('PipelinePreflightService', () => {
 
     expect(result.status).toBe('PASS');
     expect(result.checks.clickupToken.ok).toBe(true);
+    expect(result.checks.clickupReadAccess.ok).toBe(true);
+    expect(result.checks.clickupReadAccess.statusCode).toBe(200);
     expect(result.checks.clickupTaskId.ok).toBe(true);
     expect(result.checks.githubToken.ok).toBe(true);
     expect(result.checks.prContext.ok).toBe(true);
@@ -658,6 +674,102 @@ describe('PipelinePreflightService', () => {
       expect(result.checks.githubToken.ok).toBe(true);
       expect(result.checks.prContext.ok).toBe(true);
       expect(result.checks.branchHead.ok).toBe(true);
+      expect(result.checks.config.ok).toBe(true);
+    });
+  });
+
+  describe('PRJ-11351 — ClickUp read access validation', () => {
+    it('clickupReadAccess passes when API returns 200', async () => {
+      const outputDir = await setupPreflightPassEnv();
+      const result = await makeService().run(outputDir);
+
+      expect(result.checks.clickupReadAccess.ok).toBe(true);
+      expect(result.checks.clickupReadAccess.statusCode).toBe(200);
+      expect(result.checks.clickupReadAccess.error).toBeUndefined();
+    });
+
+    it('clickupReadAccess calls verifyReadAccess with CLICKUP_TOKEN', async () => {
+      const token = 'pk_test_read_access_token';
+      process.env.CLICKUP_TOKEN = token;
+      let receivedToken = '';
+      const clickUpApi = createClickUpApi({
+        verifyReadAccess: async (t) => {
+          receivedToken = t;
+          return { ok: true, statusCode: 200 };
+        },
+      });
+
+      const outputDir = await setupPreflightPassEnv();
+      process.env.CLICKUP_TOKEN = token;
+      await makeService(createPassingGitRepo(), clickUpApi).run(outputDir);
+
+      expect(receivedToken).toBe(token);
+    });
+
+    it('clickupReadAccess fails when API returns 401', async () => {
+      const clickUpApi = createClickUpApi({
+        verifyReadAccess: async () => ({
+          ok: false,
+          statusCode: 401,
+          error: 'ClickUp read access denied (401)',
+        }),
+      });
+      const outputDir = await setupPreflightPassEnv();
+      const result = await makeService(createPassingGitRepo(), clickUpApi).run(outputDir);
+
+      expect(result.checks.clickupReadAccess.ok).toBe(false);
+      expect(result.checks.clickupReadAccess.statusCode).toBe(401);
+      expect(result.status).toBe('BLOCKED');
+    });
+
+    it('clickupReadAccess fails when API returns 403', async () => {
+      const clickUpApi = createClickUpApi({
+        verifyReadAccess: async () => ({
+          ok: false,
+          statusCode: 403,
+          error: 'ClickUp read access denied (403)',
+        }),
+      });
+      const outputDir = await setupPreflightPassEnv();
+      const result = await makeService(createPassingGitRepo(), clickUpApi).run(outputDir);
+
+      expect(result.checks.clickupReadAccess.ok).toBe(false);
+      expect(result.checks.clickupReadAccess.statusCode).toBe(403);
+      expect(result.status).toBe('BLOCKED');
+    });
+
+    it('preflight-report.json does not contain CLICKUP_TOKEN value for read access check', async () => {
+      const secret = 'pk_test_read_access_secret_98765';
+      process.env.CLICKUP_TOKEN = secret;
+      const outputDir = await setupPreflightPassEnv();
+      process.env.CLICKUP_TOKEN = secret;
+
+      await makeService().run(outputDir);
+
+      const raw = await readFile(join(outputDir, 'preflight-report.json'), 'utf8');
+      expect(raw).not.toContain(secret);
+      expect(JSON.parse(raw).checks.clickupReadAccess.ok).toBe(true);
+    });
+
+    it('status is BLOCKED when only clickup read access fails', async () => {
+      const clickUpApi = createClickUpApi({
+        verifyReadAccess: async () => ({
+          ok: false,
+          statusCode: 401,
+          error: 'ClickUp read access denied (401)',
+        }),
+      });
+      const outputDir = await setupPreflightPassEnv();
+      const result = await makeService(createPassingGitRepo(), clickUpApi).run(outputDir);
+
+      expect(result.status).toBe('BLOCKED');
+      expect(result.checks.clickupReadAccess.ok).toBe(false);
+      expect(result.checks.clickupToken.ok).toBe(true);
+      expect(result.checks.clickupTaskId.ok).toBe(true);
+      expect(result.checks.githubToken.ok).toBe(true);
+      expect(result.checks.prContext.ok).toBe(true);
+      expect(result.checks.branchHead.ok).toBe(true);
+      expect(result.checks.checkoutHistory.ok).toBe(true);
       expect(result.checks.config.ok).toBe(true);
     });
   });
