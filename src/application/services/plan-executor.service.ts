@@ -123,10 +123,14 @@ export class PlanExecutorService {
         result.attempts.push(record);
         if (step.scenarioId && step.taskId) this.memory.action(step.scenarioId, step.taskId, action, record.result);
 
-        const quiescence = await this.browser.waitForQuiescence(config.timeouts.quiescenceMs);
-        if (!quiescence.stable) {
-          result.warnings.push({ stepId: step.id, message: 'QUIESCENCE_TIMEOUT' });
-          result.attempts.push({ actionType: 'waitForQuiescence', result: 'FAILED', reason: 'QUIESCENCE_TIMEOUT', ts: new Date().toISOString() });
+        let quiescence: QuiescenceResult | undefined;
+        const isFastSuccess = exec.ok && (exec.durationMs ?? 0) < 1000;
+        if (!isFastSuccess) {
+          quiescence = await this.browser.waitForQuiescence(config.timeouts.quiescenceMs);
+          if (!quiescence.stable) {
+            result.warnings.push({ stepId: step.id, message: 'QUIESCENCE_TIMEOUT' });
+            result.attempts.push({ actionType: 'waitForQuiescence', result: 'FAILED', reason: 'QUIESCENCE_TIMEOUT', ts: new Date().toISOString() });
+          }
         }
 
         const after = await this.observe(step);

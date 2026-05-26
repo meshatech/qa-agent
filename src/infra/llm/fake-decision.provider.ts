@@ -79,6 +79,6 @@ export class FakeDecisionProvider implements DecisionProviderPort {
   }
 
   stats() {
-    return { calls: this.calls };
+    return { calls: this.calls, breakdown: { plan: 0, buildPlan: 0, replan: 0, decide: 0 } };
   }
 }

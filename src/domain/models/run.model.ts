@@ -138,6 +138,18 @@ export interface QaRunMetrics {
   sanitization?: Record<string, number>;
 }
 
+export interface ToolRuntimeInfo {
+  enabled: boolean;
+  usedTools: string[];
+}
+
+export interface MemoryRuntimeInfo {
+  consulted: boolean;
+  chunksReturned: number;
+  query?: string;
+  source?: 'tool' | 'service';
+}
+
 export interface QaRunResult {
   status: QaRunStatus;
   runDir: string;
@@ -147,6 +159,8 @@ export interface QaRunResult {
   metrics?: QaRunMetrics;
   startedAt?: string;
   finishedAt?: string;
+  toolRuntime?: ToolRuntimeInfo;
+  memoryRuntime?: MemoryRuntimeInfo;
 }
 
 export interface BugClassification {

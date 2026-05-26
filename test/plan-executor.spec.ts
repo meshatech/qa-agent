@@ -97,7 +97,7 @@ describe('PlanExecutorService', () => {
   it('treats quiescence timeout as warning, not automatic bug', async () => {
     const browser: Partial<BrowserHarnessPort> = {
       async observe() { return obs(['Sair']); },
-      async execute(action) { return { ok: true, actionType: action.type, durationMs: 1 }; },
+      async execute(action) { return { ok: true, actionType: action.type, durationMs: 1500 }; },
       async waitForQuiescence() { return { stable: false, reason: 'TIMEOUT_BUT_CONTINUABLE', elapsedMs: 10 }; },
       async validate() { return { ok: true, type: 'text_visible', durationMs: 1 }; },
     };

@@ -37,7 +37,7 @@
     "dotenv": "^17.4.2",
     "js-yaml": "^4.1.1",
     "langchain": "^1.4.1",
-    "playwright": "^1.61.0-alpha-2026-05-25",
+    "playwright": "^1.60.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "zod": "^4.4.3"

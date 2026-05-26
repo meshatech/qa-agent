@@ -21,10 +21,25 @@ export interface ReplanInput {
   runData: Record<string, string>;
 }
 
+export interface LlmCallBreakdown {
+  plan: number;
+  buildPlan: number;
+  replan: number;
+  decide: number;
+}
+
+export interface LlmStats {
+  calls: number;
+  tokensIn?: number;
+  tokensOut?: number;
+  wrappers?: unknown;
+  breakdown?: Record<string, unknown>;
+}
+
 export interface DecisionProviderPort {
   plan?(config: RunConfig): Promise<QaScenario[]>;
   buildPlan?(config: RunConfig, scenarios?: QaScenario[]): Promise<ExecutionPlan>;
   replan?(input: ReplanInput): Promise<PlanPatch>;
   decide(input: DecisionInput): Promise<QaActionEnvelope>;
-  stats?(): { calls: number; tokensIn?: number; tokensOut?: number; wrappers?: unknown };
+  stats?(): LlmStats;
 }

@@ -55,14 +55,17 @@
     "timezone": "America/Sao_Paulo"
   },
   "timeouts": {
-    "quiescenceMs": 5000,
+    "quiescenceMs": 1200,
     "actionMs": 15000,
     "navigationMs": 45000,
     "scenarioMs": 180000,
     "runMs": 600000
   },
   "runtime": {
-    "maxActionsPerTask": 2
+    "maxActionsPerTask": 2,
+    "tools": {
+      "enabled": true
+    }
   },
   "recovery": {
     "maxAttemptsPerTask": 2,
