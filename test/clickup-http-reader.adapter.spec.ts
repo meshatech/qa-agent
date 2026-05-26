@@ -40,7 +40,7 @@ describe('ClickUpHttpReaderAdapter', () => {
     vi.unstubAllEnvs();
   });
 
-  it('readConfiguredTask resolves taskId from env and calls ClickUp API', async () => {
+  it('readConfiguredTask resolves taskId from env and calls ClickUp API with custom ID params', async () => {
     const fetchMock = vi.fn(async () =>
       ({
         ok: true,
@@ -50,17 +50,18 @@ describe('ClickUpHttpReaderAdapter', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
     vi.stubEnv('CLICKUP_TASK_ID', 'PRJ-11366');
+    vi.stubEnv('CLICKUP_TEAM_ID', '459806');
     const reader = new ClickUpHttpReaderAdapter();
 
     await reader.readConfiguredTask('pk_test_token');
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://api.clickup.com/api/v2/task/PRJ-11366',
+      'https://api.clickup.com/api/v2/task/PRJ-11366?custom_task_ids=true&team_id=459806',
       { headers: { Authorization: 'pk_test_token' } },
     );
   });
 
-  it('calls ClickUp task API with taskId and Authorization header', async () => {
+  it('calls ClickUp task API with custom task ID query params', async () => {
     const fetchMock = vi.fn(async () =>
       ({
         ok: true,
@@ -71,19 +72,39 @@ describe('ClickUpHttpReaderAdapter', () => {
     vi.stubGlobal('fetch', fetchMock);
     const reader = new ClickUpHttpReaderAdapter();
 
-    await reader.readTask('PRJ-11365', 'pk_test_token');
+    await reader.readTask('PRJ-11365', 'pk_test_token', { configTeamId: '459806' });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://api.clickup.com/api/v2/task/PRJ-11365',
+      'https://api.clickup.com/api/v2/task/PRJ-11365?custom_task_ids=true&team_id=459806',
       { headers: { Authorization: 'pk_test_token' } },
     );
+  });
+
+  it('calls ClickUp task API without custom ID params for internal task IDs', async () => {
+    const fetchMock = vi.fn(async () =>
+      ({
+        ok: true,
+        status: 200,
+        json: async () => SAMPLE_TASK,
+      }) as unknown as Response,
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const reader = new ClickUpHttpReaderAdapter();
+
+    await reader.readTask('86ahmgh5e', 'pk_test_token');
+
+    expect(fetchMock).toHaveBeenCalledWith('https://api.clickup.com/api/v2/task/86ahmgh5e', {
+      headers: { Authorization: 'pk_test_token' },
+    });
   });
 
   it('maps a ClickUp task response to DemandContext', async () => {
     mockFetch(200, SAMPLE_TASK);
     const reader = new ClickUpHttpReaderAdapter();
 
-    const result = await reader.readTask('PRJ-11364', 'pk_test_token');
+    const result = await reader.readTask('PRJ-11364', 'pk_test_token', {
+      configTeamId: '459806',
+    });
 
     expect(result.demand).toEqual({
       taskId: 'PRJ-11364',
@@ -104,6 +125,35 @@ describe('ClickUpHttpReaderAdapter', () => {
     });
   });
 
+  it('sanitizes HTML markup from task description', async () => {
+    mockFetch(200, {
+      ...SAMPLE_TASK,
+      description: '<p>HTML <strong>description</strong></p><br/>line two',
+    });
+    const reader = new ClickUpHttpReaderAdapter();
+
+    const result = await reader.readTask('PRJ-11364', 'pk_test_token', {
+      configTeamId: '459806',
+    });
+
+    expect(result.demand.description).toBe('HTML description\nline two');
+    expect(result.demand.description).not.toMatch(/<[^>]+>/);
+  });
+
+  it('trims whitespace from task title', async () => {
+    mockFetch(200, {
+      ...SAMPLE_TASK,
+      name: '  Criar ClickUpReaderPort  ',
+    });
+    const reader = new ClickUpHttpReaderAdapter();
+
+    const result = await reader.readTask('PRJ-11364', 'pk_test_token', {
+      configTeamId: '459806',
+    });
+
+    expect(result.demand.title).toBe('Criar ClickUpReaderPort');
+  });
+
   it.each([
     [401, 'ClickUp read access denied (401)'],
     [403, 'ClickUp read access denied (403)'],
@@ -113,7 +163,9 @@ describe('ClickUpHttpReaderAdapter', () => {
     mockFetch(status);
     const reader = new ClickUpHttpReaderAdapter();
 
-    await expect(reader.readTask('PRJ-404', 'pk_test_token')).rejects.toMatchObject({
+    await expect(
+      reader.readTask('PRJ-404', 'pk_test_token', { configTeamId: '459806' }),
+    ).rejects.toMatchObject({
       name: 'ClickUpReaderError',
       message,
       statusCode: status,
@@ -129,8 +181,8 @@ describe('ClickUpHttpReaderAdapter', () => {
     );
     const reader = new ClickUpHttpReaderAdapter();
 
-    await expect(reader.readTask('PRJ-11364', 'pk_test_token')).rejects.toBeInstanceOf(
-      ClickUpReaderError,
-    );
+    await expect(
+      reader.readTask('PRJ-11364', 'pk_test_token', { configTeamId: '459806' }),
+    ).rejects.toBeInstanceOf(ClickUpReaderError);
   });
 });

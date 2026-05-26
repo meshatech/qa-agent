@@ -6,9 +6,13 @@ import type {
 } from '../../application/ports/clickup-reader.port.js';
 import { ClickUpReaderError } from '../../domain/errors.js';
 import { DemandContextSchema } from '../../domain/schemas/demand-context.schema.js';
+import {
+  extractClickUpDescription,
+  extractClickUpTitle,
+} from './clickup-task-content.mapper.js';
 import { resolveClickUpTaskId } from './clickup-task-id.resolver.js';
-
-const CLICKUP_TASK_URL = 'https://api.clickup.com/api/v2/task';
+import { resolveClickUpTeamId } from './clickup-team-id.resolver.js';
+import { buildClickUpTaskUrl, isCustomClickUpTaskId } from './clickup-task-url.builder.js';
 
 const PRIORITY_BY_ID: Record<string, string> = {
   '1': 'urgent',
@@ -32,14 +36,18 @@ interface ClickUpTaskResponse {
 
 @Injectable()
 export class ClickUpHttpReaderAdapter implements ClickUpReaderPort {
-  async readTask(taskId: string, token: string): Promise<ClickUpTaskReadResult> {
-    const response = await this.fetchTask(taskId, token);
+  async readTask(
+    taskId: string,
+    token: string,
+    options?: { configTeamId?: string },
+  ): Promise<ClickUpTaskReadResult> {
+    const response = await this.fetchTask(taskId, token, options?.configTeamId);
     const payload = (await response.json()) as ClickUpTaskResponse;
 
     const demand = DemandContextSchema.parse({
       taskId: payload.custom_id?.trim() || payload.id,
-      title: payload.name,
-      description: payload.description ?? payload.text_content ?? '',
+      title: extractClickUpTitle(payload.name),
+      description: extractClickUpDescription(payload),
       acceptanceCriteria: [],
       attachments: (payload.attachments ?? [])
         .filter((attachment) => attachment.url && (attachment.title || attachment.mimetype))
@@ -62,14 +70,23 @@ export class ClickUpHttpReaderAdapter implements ClickUpReaderPort {
   async readConfiguredTask(
     token: string,
     configTaskId?: string,
+    configTeamId?: string,
   ): Promise<ClickUpTaskReadResult> {
     const taskId = resolveClickUpTaskId({ configTaskId });
-    return this.readTask(taskId, token);
+    return this.readTask(taskId, token, { configTeamId });
   }
 
-  private async fetchTask(taskId: string, token: string): Promise<Response> {
+  private async fetchTask(
+    taskId: string,
+    token: string,
+    configTeamId?: string,
+  ): Promise<Response> {
     try {
-      const response = await fetch(`${CLICKUP_TASK_URL}/${encodeURIComponent(taskId)}`, {
+      const teamId = isCustomClickUpTaskId(taskId)
+        ? resolveClickUpTeamId({ configTeamId, required: true })
+        : resolveClickUpTeamId({ configTeamId });
+      const url = buildClickUpTaskUrl(taskId, { teamId });
+      const response = await fetch(url, {
         headers: { Authorization: token },
       });
 

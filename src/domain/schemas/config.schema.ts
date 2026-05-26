@@ -102,6 +102,7 @@ export const RunConfigSchema = z.object({
   clickup: z
     .object({
       taskId: z.string().min(1).optional(),
+      teamId: z.string().min(1).optional(),
     })
     .optional(),
   output: z.object({
