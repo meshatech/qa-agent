@@ -99,6 +99,11 @@ export const RunConfigSchema = z.object({
     additionalRegexes: z.array(z.string()).optional(),
   }).default({ maskEmails: false, maskJwt: true, maskCookies: true }),
   allowedRoutes: z.array(z.string()).optional(),
+  clickup: z
+    .object({
+      taskId: z.string().min(1).optional(),
+    })
+    .optional(),
   output: z.object({
     runsDir: z.string().default('./qa-agent-runs'),
     keepVideoOnPass: z.boolean().default(false),

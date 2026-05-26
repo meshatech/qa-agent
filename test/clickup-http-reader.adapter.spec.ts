@@ -37,6 +37,27 @@ function mockFetch(status: number, body?: unknown): void {
 describe('ClickUpHttpReaderAdapter', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  it('readConfiguredTask resolves taskId from env and calls ClickUp API', async () => {
+    const fetchMock = vi.fn(async () =>
+      ({
+        ok: true,
+        status: 200,
+        json: async () => SAMPLE_TASK,
+      }) as unknown as Response,
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubEnv('CLICKUP_TASK_ID', 'PRJ-11366');
+    const reader = new ClickUpHttpReaderAdapter();
+
+    await reader.readConfiguredTask('pk_test_token');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.clickup.com/api/v2/task/PRJ-11366',
+      { headers: { Authorization: 'pk_test_token' } },
+    );
   });
 
   it('calls ClickUp task API with taskId and Authorization header', async () => {

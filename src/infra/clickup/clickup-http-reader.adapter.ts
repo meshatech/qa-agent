@@ -6,6 +6,7 @@ import type {
 } from '../../application/ports/clickup-reader.port.js';
 import { ClickUpReaderError } from '../../domain/errors.js';
 import { DemandContextSchema } from '../../domain/schemas/demand-context.schema.js';
+import { resolveClickUpTaskId } from './clickup-task-id.resolver.js';
 
 const CLICKUP_TASK_URL = 'https://api.clickup.com/api/v2/task';
 
@@ -56,6 +57,14 @@ export class ClickUpHttpReaderAdapter implements ClickUpReaderPort {
     });
 
     return { demand };
+  }
+
+  async readConfiguredTask(
+    token: string,
+    configTaskId?: string,
+  ): Promise<ClickUpTaskReadResult> {
+    const taskId = resolveClickUpTaskId({ configTaskId });
+    return this.readTask(taskId, token);
   }
 
   private async fetchTask(taskId: string, token: string): Promise<Response> {
