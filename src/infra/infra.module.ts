@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { FileConfigLoader } from './config/file-config.loader.js';
+import { ExecGitRepositoryAdapter } from './git/exec-git-repository.adapter.js';
 import { DecisionRouterProvider } from './llm/decision-router.provider.js';
 import { FakeDecisionProvider } from './llm/fake-decision.provider.js';
 import { GroqDecisionProvider } from './llm/groq-decision.provider.js';
@@ -38,10 +39,12 @@ export const INFRA_PROVIDERS = [
   OpenAiLangChainDecisionProvider,
   DecisionRouterProvider,
   FileConfigLoader,
+  ExecGitRepositoryAdapter,
   { provide: 'BrowserHarnessPort', useExisting: PlaywrightHarness },
   { provide: 'RunRepositoryPort', useExisting: FileRunRepository },
   { provide: 'DecisionProviderPort', useExisting: DecisionRouterProvider },
   { provide: 'ConfigLoaderPort', useExisting: FileConfigLoader },
+  { provide: 'GitRepositoryPort', useExisting: ExecGitRepositoryAdapter },
 ];
 
 @Module({ providers: INFRA_PROVIDERS, exports: INFRA_PROVIDERS })

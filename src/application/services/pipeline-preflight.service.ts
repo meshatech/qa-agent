@@ -3,6 +3,7 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import type { ConfigLoaderPort } from '../ports/config-loader.port.js';
+import type { GitRepositoryPort } from '../ports/git-repository.port.js';
 import { RunConfigSchema } from '../../domain/schemas/config.schema.js';
 
 export interface PreflightReport {
@@ -14,6 +15,7 @@ export interface PreflightReport {
     githubToken: { ok: boolean; warning?: string };
     prContext: { ok: boolean; missing: string[]; eventName?: string };
     branchHead: { ok: boolean; branchHead?: string; missing: string[] };
+    checkoutHistory: { ok: boolean; errors: string[]; baseRef?: string; shallow?: boolean };
     config: { ok: boolean; errors: string[]; configPath?: string };
   };
 }
@@ -24,7 +26,10 @@ export interface PreflightReport {
  */
 @Injectable()
 export class PipelinePreflightService {
-  constructor(@Inject('ConfigLoaderPort') private readonly configLoader: ConfigLoaderPort) {}
+  constructor(
+    @Inject('ConfigLoaderPort') private readonly configLoader: ConfigLoaderPort,
+    @Inject('GitRepositoryPort') private readonly gitRepository: GitRepositoryPort,
+  ) {}
 
   async run(outputDir: string): Promise<PreflightReport> {
     const clickupTokenCheck = this.validateClickUpToken();
@@ -32,6 +37,7 @@ export class PipelinePreflightService {
     const githubTokenCheck = this.validateGitHubToken();
     const prCheck = this.validatePrContext();
     const branchHeadCheck = this.readBranchHead();
+    const checkoutHistoryCheck = await this.validateCheckoutHistory();
     const configCheck = await this.validateConfig();
 
     const allOk =
@@ -39,6 +45,7 @@ export class PipelinePreflightService {
       clickupTaskIdCheck.ok &&
       prCheck.ok &&
       branchHeadCheck.ok &&
+      checkoutHistoryCheck.ok &&
       configCheck.ok;
 
     const report: PreflightReport = {
@@ -50,6 +57,7 @@ export class PipelinePreflightService {
         githubToken: githubTokenCheck,
         prContext: prCheck,
         branchHead: branchHeadCheck,
+        checkoutHistory: checkoutHistoryCheck,
         config: configCheck,
       },
     };
@@ -101,6 +109,38 @@ export class PipelinePreflightService {
       return { ok: false, missing: ['GITHUB_HEAD_REF'] };
     }
     return { ok: true, branchHead, missing: [] };
+  }
+
+  private async validateCheckoutHistory(): Promise<{
+    ok: boolean;
+    errors: string[];
+    baseRef?: string;
+    shallow?: boolean;
+  }> {
+    const baseRef = process.env.GITHUB_BASE_REF?.trim() ?? '';
+    const cwd = process.env.GITHUB_WORKSPACE?.trim() || process.cwd();
+    const errors: string[] = [];
+
+    if (!baseRef) {
+      return { ok: false, errors: ['GITHUB_BASE_REF is missing'], shallow: false };
+    }
+
+    try {
+      const shallow = await this.gitRepository.isShallowRepository(cwd);
+      if (shallow) {
+        errors.push('Checkout is shallow; fetch-depth: 0 required for git diff');
+      }
+
+      const baseAccessible = await this.gitRepository.hasRemoteBranch(baseRef, cwd);
+      if (!baseAccessible) {
+        errors.push(`Base branch not accessible locally: origin/${baseRef}`);
+      }
+
+      return { ok: errors.length === 0, errors, baseRef, shallow };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { ok: false, errors: [`Git repository check failed: ${message}`], baseRef, shallow: false };
+    }
   }
 
   private async validateConfig(): Promise<{ ok: boolean; errors: string[]; configPath?: string }> {

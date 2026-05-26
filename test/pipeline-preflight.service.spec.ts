@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { PipelinePreflightService } from '../src/application/services/pipeline-preflight.service.js';
+import type { GitRepositoryPort } from '../src/application/ports/git-repository.port.js';
 import { FileConfigLoader } from '../src/infra/config/file-config.loader.js';
 
 let tempDirs: string[] = [];
@@ -35,8 +36,19 @@ async function tempDir(): Promise<string> {
   return dir;
 }
 
-function makeService() {
-  return new PipelinePreflightService(new FileConfigLoader());
+function createPassingGitRepo(): GitRepositoryPort {
+  return {
+    isShallowRepository: async () => false,
+    hasRemoteBranch: async () => true,
+  };
+}
+
+function createGitRepo(overrides: Partial<GitRepositoryPort>): GitRepositoryPort {
+  return { ...createPassingGitRepo(), ...overrides };
+}
+
+function makeService(gitRepo: GitRepositoryPort = createPassingGitRepo()) {
+  return new PipelinePreflightService(new FileConfigLoader(), gitRepo);
 }
 
 function setPullRequestContextEnv(): void {
@@ -83,6 +95,9 @@ describe('PipelinePreflightService', () => {
     expect(result.checks.prContext.ok).toBe(true);
     expect(result.checks.branchHead.ok).toBe(true);
     expect(result.checks.branchHead.branchHead).toBe('feature/test');
+    expect(result.checks.checkoutHistory.ok).toBe(true);
+    expect(result.checks.checkoutHistory.baseRef).toBe('main');
+    expect(result.checks.checkoutHistory.shallow).toBe(false);
     expect(result.checks.config.ok).toBe(true);
   });
 
@@ -584,6 +599,65 @@ describe('PipelinePreflightService', () => {
       expect(result.checks.clickupToken.ok).toBe(true);
       expect(result.checks.clickupTaskId.ok).toBe(true);
       expect(result.checks.githubToken.ok).toBe(true);
+      expect(result.checks.config.ok).toBe(true);
+    });
+  });
+
+  describe('PRJ-11356 — checkout history validation', () => {
+    it('checkoutHistory passes when not shallow and base branch is accessible', async () => {
+      const outputDir = await setupPreflightPassEnv();
+      const result = await makeService().run(outputDir);
+
+      expect(result.checks.checkoutHistory.ok).toBe(true);
+      expect(result.checks.checkoutHistory.errors).toEqual([]);
+      expect(result.checks.checkoutHistory.baseRef).toBe('main');
+      expect(result.checks.checkoutHistory.shallow).toBe(false);
+    });
+
+    it('checkoutHistory fails when repository is shallow', async () => {
+      const gitRepo = createGitRepo({ isShallowRepository: async () => true });
+      const outputDir = await setupPreflightPassEnv();
+      const result = await makeService(gitRepo).run(outputDir);
+
+      expect(result.checks.checkoutHistory.ok).toBe(false);
+      expect(result.checks.checkoutHistory.shallow).toBe(true);
+      expect(result.checks.checkoutHistory.errors.some((e) => e.includes('shallow'))).toBe(true);
+      expect(result.status).toBe('BLOCKED');
+    });
+
+    it('checkoutHistory fails when base branch is not accessible locally', async () => {
+      const gitRepo = createGitRepo({ hasRemoteBranch: async () => false });
+      const outputDir = await setupPreflightPassEnv();
+      const result = await makeService(gitRepo).run(outputDir);
+
+      expect(result.checks.checkoutHistory.ok).toBe(false);
+      expect(result.checks.checkoutHistory.errors.some((e) => e.includes('origin/main'))).toBe(true);
+      expect(result.status).toBe('BLOCKED');
+    });
+
+    it('checkoutHistory fails when GITHUB_BASE_REF is missing', async () => {
+      const outputDir = await setupPreflightPassEnv();
+      delete process.env.GITHUB_BASE_REF;
+
+      const result = await makeService().run(outputDir);
+
+      expect(result.checks.checkoutHistory.ok).toBe(false);
+      expect(result.checks.checkoutHistory.errors).toContain('GITHUB_BASE_REF is missing');
+      expect(result.status).toBe('BLOCKED');
+    });
+
+    it('status is BLOCKED when only checkout history is invalid', async () => {
+      const gitRepo = createGitRepo({ isShallowRepository: async () => true });
+      const outputDir = await setupPreflightPassEnv();
+      const result = await makeService(gitRepo).run(outputDir);
+
+      expect(result.status).toBe('BLOCKED');
+      expect(result.checks.checkoutHistory.ok).toBe(false);
+      expect(result.checks.clickupToken.ok).toBe(true);
+      expect(result.checks.clickupTaskId.ok).toBe(true);
+      expect(result.checks.githubToken.ok).toBe(true);
+      expect(result.checks.prContext.ok).toBe(true);
+      expect(result.checks.branchHead.ok).toBe(true);
       expect(result.checks.config.ok).toBe(true);
     });
   });
