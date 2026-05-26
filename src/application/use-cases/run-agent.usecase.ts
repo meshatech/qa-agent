@@ -1,6 +1,6 @@
 import { RunConfigSchema, type RunConfig } from '../../domain/schemas/config.schema.js';
 import { RunAgentDtoSchema, type RunAgentDto } from '../dto/run-agent.dto.js';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { readFile } from 'node:fs/promises';
 import { ZodError } from 'zod';
 
@@ -31,6 +31,8 @@ import { QaToolRegistry } from '../tools/qa-tool-registry.js';
 import type { QaToolContext } from '../tools/qa-tool-context.js';
 import { MemorySearchService } from '../services/memory-search.service.js';
 import { DemandContextPersistenceService } from '../services/demand-context-persistence.service.js';
+
+const logger = new Logger('RunAgentUseCase');
 
 @Injectable()
 export class RunAgentUseCase {
@@ -71,7 +73,15 @@ export class RunAgentUseCase {
     this.memory.reset();
     const runDir = await this.repo.createRunDir(config);
     const runId = runDir.split(/[\\/]/).pop()!;
-    await this.persistClickUpDemandContext(runDir, config);
+    try {
+      await this.persistClickUpDemandContext(runDir, config);
+    } catch (error) {
+      logger.warn(
+        `ClickUp demand context persistence failed: ${error instanceof Error ? error.message : String(error)}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      // fallback: execução sem contexto ClickUp
+    }
 
     const scenarios = await this.planner.plan(config);
     const filtered = dto.scenarioId ? scenarios.filter((s) => s.id === dto.scenarioId) : scenarios.slice(0, dto.maxScenarios ?? scenarios.length);

@@ -3,6 +3,14 @@ const BLOCK_BREAK_TAGS =
 
 const HTML_TAG = /<[^>]+>/g;
 
+const ANCHOR_TAG =
+  /<a\s+[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+
+const ELEMENT_WITH_DATA_ATTR =
+  /<([a-z][a-z0-9]*)\b([^>]*\bdata-[a-z0-9-]+=["'][^"']+["'][^>]*)>([\s\S]*?)<\/\1>/gi;
+
+const DATA_ATTR = /\bdata-([a-z0-9-]+)=["']([^"']+)["']/gi;
+
 const HTML_ENTITIES: Record<string, string> = {
   '&nbsp;': ' ',
   '&amp;': '&',
@@ -28,10 +36,33 @@ export function extractClickUpDescription(payload: ClickUpTaskContentSource): st
 }
 
 export function sanitizeClickUpDescription(raw: string): string {
-  const withLineBreaks = raw.replace(BLOCK_BREAK_TAGS, '\n');
+  let withLineBreaks = raw.replace(BLOCK_BREAK_TAGS, '\n');
+  withLineBreaks = preserveAnchorLinks(withLineBreaks);
+  withLineBreaks = preserveDataAttributes(withLineBreaks);
   const withoutTags = withLineBreaks.replace(HTML_TAG, '');
   const decoded = decodeHtmlEntities(withoutTags);
   return decoded.replace(/\r\n/g, '\n').replace(/\n{2,}/g, '\n').trim();
+}
+
+function preserveAnchorLinks(html: string): string {
+  return html.replace(ANCHOR_TAG, (_match, href: string, text: string) => {
+    const linkText = text.replace(HTML_TAG, '').trim();
+    return linkText ? `${linkText} (${href})` : href;
+  });
+}
+
+function preserveDataAttributes(html: string): string {
+  return html.replace(
+    ELEMENT_WITH_DATA_ATTR,
+    (_match, _tag: string, attrs: string, inner: string) => {
+      const dataSuffix = [...attrs.matchAll(DATA_ATTR)]
+        .map(([, name, value]) => `[data-${name}=${value}]`)
+        .join(' ');
+      const text = inner.replace(HTML_TAG, '').trim();
+      if (!dataSuffix) return text;
+      return text ? `${text} ${dataSuffix}` : dataSuffix;
+    },
+  );
 }
 
 function decodeHtmlEntities(text: string): string {

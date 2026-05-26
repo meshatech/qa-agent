@@ -79,4 +79,16 @@ describe('sanitizeClickUpDescription', () => {
     expect(sanitized).toBe('x'.repeat(5000));
     expect(sanitized.length).toBe(5000);
   });
+
+  it('preserves anchor hrefs when stripping HTML tags', () => {
+    expect(
+      sanitizeClickUpDescription('<a href="https://link.com">clique aqui</a>'),
+    ).toBe('clique aqui (https://link.com)');
+  });
+
+  it('preserves data-* attributes when stripping HTML tags', () => {
+    expect(
+      sanitizeClickUpDescription('<span data-task-id="123">Task ref</span>'),
+    ).toBe('Task ref [data-task-id=123]');
+  });
 });
