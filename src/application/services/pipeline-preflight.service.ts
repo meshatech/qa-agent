@@ -1,6 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+
+import type { ConfigLoaderPort } from '../ports/config-loader.port.js';
+import { RunConfigSchema } from '../../domain/schemas/config.schema.js';
 
 export interface PreflightReport {
   status: 'PASS' | 'BLOCKED';
@@ -10,7 +13,7 @@ export interface PreflightReport {
     clickupTaskId: { ok: boolean };
     githubToken: { ok: boolean; warning?: string };
     prContext: { ok: boolean; missing: string[]; eventName?: string };
-    config: { ok: boolean; errors: string[] };
+    config: { ok: boolean; errors: string[]; configPath?: string };
   };
 }
 
@@ -20,12 +23,14 @@ export interface PreflightReport {
  */
 @Injectable()
 export class PipelinePreflightService {
+  constructor(@Inject('ConfigLoaderPort') private readonly configLoader: ConfigLoaderPort) {}
+
   async run(outputDir: string): Promise<PreflightReport> {
     const clickupTokenCheck = this.validateClickUpToken();
     const clickupTaskIdCheck = this.validateClickUpTaskId();
     const githubTokenCheck = this.validateGitHubToken();
     const prCheck = this.validatePrContext();
-    const configCheck = this.validateConfig();
+    const configCheck = await this.validateConfig();
 
     const allOk = clickupTokenCheck.ok && clickupTaskIdCheck.ok && prCheck.ok && configCheck.ok;
 
@@ -82,20 +87,26 @@ export class PipelinePreflightService {
     return { ok: missing.length === 0, missing, eventName: eventName || undefined };
   }
 
-  private validateConfig(): { ok: boolean; errors: string[] } {
+  private async validateConfig(): Promise<{ ok: boolean; errors: string[]; configPath?: string }> {
+    const configPath = process.env.AGENT_QA_CONFIG?.trim() || './agent-qa.config.json';
     const errors: string[] = [];
 
-    // Check for project config file presence (agent-qa.config.json or similar)
     try {
-      const configPath = process.env.AGENT_QA_CONFIG ?? './agent-qa.config.json';
-      if (!configPath) {
-        errors.push('AGENT_QA_CONFIG not set and no default config found');
+      const raw = await this.configLoader.load(configPath);
+      const parsed = RunConfigSchema.safeParse(raw);
+      if (!parsed.success) {
+        errors.push(...parsed.error.issues.map((issue) => `${issue.path.join('.') || 'root'}: ${issue.message}`));
       }
-    } catch {
-      errors.push('Config validation error');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push(
+        message.includes('ENOENT')
+          ? `Config file not found: ${configPath}`
+          : `Failed to load config from ${configPath}: ${message}`,
+      );
     }
 
-    return { ok: errors.length === 0, errors };
+    return { ok: errors.length === 0, errors, configPath };
   }
 
   private async writeReport(outputDir: string, report: PreflightReport): Promise<void> {
