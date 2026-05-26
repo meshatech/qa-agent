@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { writeFile, mkdir } from 'node:fs/promises';
+import { writeFileSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
@@ -71,7 +72,6 @@ export class ProjectOnboardingService {
     }
 
     readiness = this.readinessEvaluator.evaluate({ browserOpenOk, smokeResult, executionError });
-    await this.writeReadinessStatus(projectPath, readiness);
 
     if (smokePlan && smokeResult) {
       baselineReportPath = await this.writeBaselineReport(outputDir, config, smokePlan, smokeResult, readiness, warnings, startedAt, accessibleRoutes, blockedRoutes);
@@ -245,6 +245,7 @@ export class ProjectOnboardingService {
     accessibleRoutes: string[],
     blockedRoutes: string[],
   ): Promise<void> {
+    await this.writeReadinessStatus(projectPath, readiness);
     await this.runHistory.append(projectPath, {
       runId: `onboarding-${Date.now()}`,
       ts: startedAt,
@@ -260,14 +261,21 @@ export class ProjectOnboardingService {
   }
 
   private async writeReadinessStatus(projectPath: string, readiness: ProjectReadinessStatus): Promise<void> {
-    const dir = join(projectPath, '.agent-qa');
-    await mkdir(dir, { recursive: true });
-    const path = join(dir, 'readiness.json');
-    const payload = {
-      readiness,
-      updatedAt: new Date().toISOString(),
-    };
-    await writeFile(path, JSON.stringify(payload, null, 2), 'utf8');
+    try {
+      const dir = join(projectPath, '.agent-qa');
+      await mkdir(dir, { recursive: true });
+      const targetPath = join(dir, 'readiness.json');
+      const tempPath = join(dir, `readiness.json.tmp.${Date.now()}`);
+      const payload = {
+        readiness,
+        updatedAt: new Date().toISOString(),
+      };
+      writeFileSync(tempPath, JSON.stringify(payload, null, 2), 'utf8');
+      renameSync(tempPath, targetPath);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to persist readiness status: ${message}`);
+    }
   }
 
   async getReadinessStatus(projectPath: string): Promise<ProjectReadinessStatus | null> {
