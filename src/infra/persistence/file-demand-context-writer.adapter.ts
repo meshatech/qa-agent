@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { mkdir, rename, writeFile } from 'node:fs/promises';
+import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 import type { DemandContextWriterPort } from '../../application/ports/demand-context-writer.port.js';
@@ -14,8 +14,17 @@ export class FileDemandContextWriterAdapter implements DemandContextWriterPort {
     const path = resolve(join(runDir, DEMAND_CONTEXT_FILE));
     const tmpPath = `${path}.tmp`;
     const payload = JSON.stringify(demand, null, 2);
-    await writeFile(tmpPath, payload, 'utf8');
-    await rename(tmpPath, path);
-    return path;
+    let committed = false;
+
+    try {
+      await writeFile(tmpPath, payload, 'utf8');
+      await rename(tmpPath, path);
+      committed = true;
+      return path;
+    } finally {
+      if (!committed) {
+        await rm(tmpPath, { force: true }).catch(() => undefined);
+      }
+    }
   }
 }

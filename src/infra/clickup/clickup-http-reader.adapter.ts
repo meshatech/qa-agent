@@ -27,6 +27,10 @@ function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === 'AbortError';
 }
 
+function scheduleClickUpRequestTimeout(controller: AbortController): ReturnType<typeof setTimeout> {
+  return setTimeout(() => controller.abort(), CLICKUP_REQUEST_TIMEOUT_MS);
+}
+
 @Injectable()
 export class ClickUpHttpReaderAdapter implements ClickUpReaderPort {
   async readTask(
@@ -40,6 +44,9 @@ export class ClickUpHttpReaderAdapter implements ClickUpReaderPort {
       const payload = ClickUpTaskResponseSchema.parse(raw);
       return mapClickUpTaskToReadResult(payload);
     } catch (error) {
+      if (error instanceof ClickUpReaderError) {
+        throw error;
+      }
       if (error instanceof ZodError) {
         throw new ClickUpReaderError(
           sanitizeClickUpErrorMessage('ClickUp API returned an invalid task payload', token),
@@ -70,7 +77,7 @@ export class ClickUpHttpReaderAdapter implements ClickUpReaderPort {
     configTeamId?: string,
   ): Promise<Response> {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), CLICKUP_REQUEST_TIMEOUT_MS);
+    let timeoutId = scheduleClickUpRequestTimeout(controller);
 
     try {
       const teamId = isCustomClickUpTaskId(taskId)
@@ -85,6 +92,7 @@ export class ClickUpHttpReaderAdapter implements ClickUpReaderPort {
         });
 
         if (response.status === 429 && attempt < CLICKUP_RATE_LIMIT_RETRIES) {
+          clearTimeout(timeoutId);
           await sleep(
             computeClickUpRetryWaitMs(
               response.headers,
@@ -92,6 +100,7 @@ export class ClickUpHttpReaderAdapter implements ClickUpReaderPort {
               CLICKUP_RATE_LIMIT_MAX_WAIT_MS,
             ),
           );
+          timeoutId = scheduleClickUpRequestTimeout(controller);
           continue;
         }
 

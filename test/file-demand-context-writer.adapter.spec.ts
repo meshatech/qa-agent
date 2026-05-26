@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { access, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { DemandContextSchema } from '../src/domain/schemas/demand-context.schema.js';
@@ -56,5 +56,17 @@ describe('FileDemandContextWriterAdapter', () => {
     expect(DemandContextSchema.parse(JSON.parse(await readFile(path, 'utf8')))).toEqual(
       VALID_DEMAND_CONTEXT,
     );
+  });
+
+  it('removes .tmp file when rename fails', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'agent-qa-demand-context-writer-'));
+    tempDirs.push(dir);
+    const adapter = new FileDemandContextWriterAdapter();
+    const finalPath = resolve(join(dir, 'demand-context.json'));
+    const tmpPath = `${finalPath}.tmp`;
+    await mkdir(finalPath);
+
+    await expect(adapter.write(dir, VALID_DEMAND_CONTEXT)).rejects.toThrow();
+    await expect(access(tmpPath)).rejects.toThrow();
   });
 });

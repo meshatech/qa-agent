@@ -84,10 +84,12 @@ export function computeClickUpRetryWaitMs(
   maxWaitMs: number,
 ): number {
   const retryAfter = Number(headers.get('retry-after'));
-  const seconds =
-    Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : Math.min(2 ** attempt, 10);
+  if (Number.isFinite(retryAfter) && retryAfter > 0) {
+    return Math.ceil(retryAfter * 1000);
+  }
 
-  return Math.min(Math.ceil(seconds * 1000), maxWaitMs);
+  const fallbackSeconds = Math.min(2 ** attempt, 10);
+  return Math.min(Math.ceil(fallbackSeconds * 1000), maxWaitMs);
 }
 
 export async function sleep(ms: number): Promise<void> {

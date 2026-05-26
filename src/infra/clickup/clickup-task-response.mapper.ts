@@ -1,8 +1,16 @@
 import { Logger } from '@nestjs/common';
+import { z, ZodError } from 'zod';
+
 import type { ClickUpTaskReadResult } from '../../application/ports/clickup-reader.port.js';
+import { ClickUpReaderError } from '../../domain/errors.js';
 import { BugContextSchema, type BugContext } from '../../domain/schemas/bug-context.schema.js';
-import { DemandContextSchema } from '../../domain/schemas/demand-context.schema.js';
-import { z } from 'zod';
+import {
+  DemandContextSchema,
+  type DemandContext,
+} from '../../domain/schemas/demand-context.schema.js';
+import {
+  sanitizeClickUpErrorCause,
+} from './clickup-http-error.handler.js';
 import { extractClickUpAcceptanceCriteria } from './clickup-acceptance-criteria.parser.js';
 import { extractClickUpBugResults } from './clickup-bug-results.parser.js';
 import { extractClickUpReproductionSteps } from './clickup-reproduction-steps.parser.js';
@@ -41,6 +49,7 @@ function buildClickUpBugContext(
   reproductionSteps: string[],
   expectedResult: string | null,
   actualResult: string | null,
+  warnings?: string[],
 ): BugContext | null {
   const normalizedSteps = reproductionSteps
     .map((step) => step.trim())
@@ -57,11 +66,34 @@ function buildClickUpBugContext(
     return null;
   }
 
-  return BugContextSchema.parse({
+  const bugParse = BugContextSchema.safeParse({
     reproductionSteps: normalizedSteps,
     expectedResult: normalizedExpected,
     actualResult: normalizedActual,
   });
+  if (bugParse.success) {
+    return bugParse.data;
+  }
+
+  logger.warn('ClickUp bug context ignored due to validation failure');
+  warnings?.push('Bug context validation failed');
+  return null;
+}
+
+function parseDemandContext(input: unknown): DemandContext {
+  try {
+    return DemandContextSchema.parse(input);
+  } catch (error) {
+    if (error instanceof ZodError) {
+      throw new ClickUpReaderError(
+        'ClickUp demand mapping failed',
+        undefined,
+        sanitizeClickUpErrorCause(new Error('ClickUp demand mapping failed')),
+        'API_ERROR',
+      );
+    }
+    throw error;
+  }
 }
 
 export function mapClickUpTaskToReadResult(payload: ClickUpTaskPayload): ClickUpTaskReadResult {
@@ -72,7 +104,7 @@ export function mapClickUpTaskToReadResult(payload: ClickUpTaskPayload): ClickUp
   );
   warnings.push(...attachmentWarnings);
 
-  const demand = DemandContextSchema.parse({
+  const demand = parseDemandContext({
     taskId: payload.custom_id?.trim() || payload.id,
     title: extractClickUpTitle(payload.name),
     description,
@@ -90,7 +122,7 @@ export function mapClickUpTaskToReadResult(payload: ClickUpTaskPayload): ClickUp
   const { expectedResult, actualResult } = extractClickUpBugResults(description);
   const result: ClickUpTaskReadResult = { demand };
 
-  const bug = buildClickUpBugContext(reproductionSteps, expectedResult, actualResult);
+  const bug = buildClickUpBugContext(reproductionSteps, expectedResult, actualResult, warnings);
   if (bug) {
     result.bug = bug;
   }

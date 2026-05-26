@@ -30,6 +30,7 @@ import type { ExecutionPlan } from '../../domain/schemas/execution-plan.schema.j
 import { QaToolRegistry } from '../tools/qa-tool-registry.js';
 import type { QaToolContext } from '../tools/qa-tool-context.js';
 import { MemorySearchService } from '../services/memory-search.service.js';
+import { DemandContextPersistenceService } from '../services/demand-context-persistence.service.js';
 
 @Injectable()
 export class RunAgentUseCase {
@@ -54,6 +55,8 @@ export class RunAgentUseCase {
     @Inject(PlaywrightSpecExporter) private readonly specExporter: PlaywrightSpecExporter,
     @Inject(MemorySearchService) private readonly memorySearch: MemorySearchService,
     @Inject(QaToolRegistry) private readonly toolRegistry: QaToolRegistry,
+    @Inject(DemandContextPersistenceService)
+    private readonly demandContextPersistence: DemandContextPersistenceService,
   ) { }
 
   async execute(rawDto: RunAgentDto): Promise<QaRunResult> {
@@ -68,6 +71,7 @@ export class RunAgentUseCase {
     this.memory.reset();
     const runDir = await this.repo.createRunDir(config);
     const runId = runDir.split(/[\\/]/).pop()!;
+    await this.persistClickUpDemandContext(runDir, config);
 
     const scenarios = await this.planner.plan(config);
     const filtered = dto.scenarioId ? scenarios.filter((s) => s.id === dto.scenarioId) : scenarios.slice(0, dto.maxScenarios ?? scenarios.length);
@@ -123,6 +127,20 @@ export class RunAgentUseCase {
   private applyOverrides(config: RunConfig, dto: RunAgentDto): void {
     if (dto.headed !== undefined) config.browser.headed = dto.headed;
     if (dto.outputDir) config.output.runsDir = dto.outputDir;
+  }
+
+  private async persistClickUpDemandContext(runDir: string, config: RunConfig): Promise<void> {
+    const token = process.env.CLICKUP_TOKEN?.trim();
+    if (!token) return;
+
+    const configTaskId = config.clickup?.taskId;
+    const hasTaskId = Boolean(process.env.CLICKUP_TASK_ID?.trim() || configTaskId?.trim());
+    if (!hasTaskId) return;
+
+    await this.demandContextPersistence.persistFromClickUpTask(runDir, token, {
+      configTaskId,
+      configTeamId: config.clickup?.teamId,
+    });
   }
 
   private plannerFallbackWarning(reason: string): string {
