@@ -386,6 +386,37 @@ Tela em branco`,
     });
   });
 
+  it('throws API_ERROR with HTTP status when ClickUp response JSON is malformed', async () => {
+    const leakedToken = 'pk_leaked_malformed_json_token';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        ({
+          ok: true,
+          status: 200,
+          json: async () => {
+            throw new SyntaxError(`Unexpected token in JSON at position 0: Bearer ${leakedToken}`);
+          },
+        }) as unknown as Response,
+      ),
+    );
+    const reader = new ClickUpHttpReaderAdapter();
+
+    await expect(
+      reader.readTask('PRJ-11364', leakedToken, { configTeamId: '459806' }),
+    ).rejects.toSatisfy((error: unknown) => {
+      expect(error).toBeInstanceOf(ClickUpReaderError);
+      const readerError = error as ClickUpReaderError;
+      expect(readerError.code).toBe('API_ERROR');
+      expect(readerError.statusCode).toBe(200);
+      expect(readerError.message).toContain('malformed JSON');
+      expect(readerError.message).not.toContain(leakedToken);
+      expect(readerError.cause).toBeInstanceOf(Error);
+      expect((readerError.cause as Error).message).not.toContain(leakedToken);
+      return true;
+    });
+  });
+
   it.each([
     [401, 'AUTH_FAILED', 'ClickUp authentication failed (401)'],
     [403, 'PERMISSION_DENIED', 'ClickUp permission denied (403)'],

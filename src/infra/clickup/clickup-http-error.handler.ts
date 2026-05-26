@@ -85,7 +85,7 @@ export function computeClickUpRetryWaitMs(
 ): number {
   const retryAfter = Number(headers.get('retry-after'));
   if (Number.isFinite(retryAfter) && retryAfter > 0) {
-    return Math.ceil(retryAfter * 1000);
+    return Math.min(Math.ceil(retryAfter * 1000), maxWaitMs);
   }
 
   const fallbackSeconds = Math.min(2 ** attempt, 10);

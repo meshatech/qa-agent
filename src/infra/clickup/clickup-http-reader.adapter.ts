@@ -39,8 +39,20 @@ export class ClickUpHttpReaderAdapter implements ClickUpReaderPort {
     options?: { configTeamId?: string },
   ): Promise<ClickUpTaskReadResult> {
     const response = await this.fetchTask(taskId, token, options?.configTeamId);
+    let raw: unknown;
     try {
-      const raw: unknown = await response.json();
+      raw = await response.json();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new ClickUpReaderError(
+        sanitizeClickUpErrorMessage(`ClickUp API returned malformed JSON: ${message}`, token),
+        response.status,
+        sanitizeClickUpErrorCause(error, token),
+        'API_ERROR',
+      );
+    }
+
+    try {
       const payload = ClickUpTaskResponseSchema.parse(raw);
       return mapClickUpTaskToReadResult(payload);
     } catch (error) {

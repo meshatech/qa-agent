@@ -90,10 +90,10 @@ describe('computeClickUpRetryWaitMs', () => {
     expect(computeClickUpRetryWaitMs(headers, 0, CLICKUP_RATE_LIMIT_MAX_WAIT_MS)).toBe(2000);
   });
 
-  it('uses Retry-After header without capping at maxWaitMs', () => {
+  it('caps Retry-After header at maxWaitMs', () => {
     const headers = new Headers({ 'retry-after': '120' });
 
-    expect(computeClickUpRetryWaitMs(headers, 0, 5000)).toBe(120_000);
+    expect(computeClickUpRetryWaitMs(headers, 0, 5000)).toBe(5000);
   });
 
   it('caps exponential fallback at maxWaitMs when Retry-After is absent', () => {
