@@ -54,7 +54,27 @@ describe('ExecGitRepositoryAdapter', () => {
     expect(rawDiff).toContain('+changed');
   });
 
-  it('throws PrContextReaderError when origin base branch is missing', async () => {
+  it('resolves ensureBaseBranchAvailable when origin base branch already exists', async () => {
+    const dir = await initRepoWithOriginMain();
+
+    await expect(adapter.ensureBaseBranchAvailable('main', dir)).resolves.toBeUndefined();
+  });
+
+  it('throws BASE_BRANCH_UNAVAILABLE when origin base branch is missing', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'agent-qa-git-diff-'));
+    tempDirs.push(dir);
+    await execFileAsync('git', ['init'], { cwd: dir });
+
+    await expect(adapter.ensureBaseBranchAvailable('main', dir)).rejects.toMatchObject({
+      name: 'PrContextReaderError',
+      code: 'BASE_BRANCH_UNAVAILABLE',
+    });
+    await expect(adapter.ensureBaseBranchAvailable('main', dir)).rejects.toBeInstanceOf(
+      PrContextReaderError,
+    );
+  });
+
+  it('throws PrContextReaderError when origin base branch is missing for diff', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'agent-qa-git-diff-'));
     tempDirs.push(dir);
     await execFileAsync('git', ['init'], { cwd: dir });

@@ -21,6 +21,7 @@ export class GitHubActionsPrContextReaderAdapter implements GitHubActionsPrConte
     const env = options?.env ?? process.env;
     const cwd = options?.cwd ?? resolveGitHubWorkspace(env);
     const pullRequest = await mapGitHubActionsToPullRequestContext({ env });
+    await this.git.ensureBaseBranchAvailable(pullRequest.baseBranch, cwd);
     const rawDiff = await this.git.diffPullRequest(pullRequest.baseBranch, cwd);
 
     return { pullRequest, rawDiff };

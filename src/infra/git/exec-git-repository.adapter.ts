@@ -42,6 +42,43 @@ export class ExecGitRepositoryAdapter implements GitRepositoryPort {
     }
   }
 
+  async ensureBaseBranchAvailable(baseBranch: string, cwd: string): Promise<void> {
+    if (await this.hasRemoteBranch(baseBranch, cwd)) {
+      return;
+    }
+
+    if (await this.isShallowRepository(cwd)) {
+      throw new PrContextReaderError(
+        'Base branch is unavailable in a shallow checkout',
+        sanitizeGitErrorMessage('Base branch is unavailable in a shallow checkout'),
+        'BASE_BRANCH_UNAVAILABLE',
+      );
+    }
+
+    try {
+      await execFileAsync(
+        'git',
+        ['fetch', 'origin', `${baseBranch}:refs/remotes/origin/${baseBranch}`],
+        { cwd, encoding: 'utf8' },
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new PrContextReaderError(
+        sanitizeGitErrorMessage('Base branch fetch failed'),
+        sanitizeGitErrorMessage(message),
+        'BASE_BRANCH_UNAVAILABLE',
+      );
+    }
+
+    if (!(await this.hasRemoteBranch(baseBranch, cwd))) {
+      throw new PrContextReaderError(
+        'Base branch is not accessible locally',
+        sanitizeGitErrorMessage('Base branch is not accessible locally'),
+        'BASE_BRANCH_UNAVAILABLE',
+      );
+    }
+  }
+
   async diffPullRequest(baseBranch: string, cwd: string): Promise<string> {
     try {
       const { stdout } = await execFileAsync(

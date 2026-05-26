@@ -54,20 +54,26 @@ function buildPrEnv(eventPath: string, workspace: string): NodeJS.ProcessEnv {
 }
 
 describe('GitHubActionsPrContextReaderAdapter', () => {
-  it('returns PullRequestContext and raw diff from git port', async () => {
+  it('ensures base branch availability before git diff', async () => {
     const { dir, eventPath } = await writePullRequestEvent();
     const env = buildPrEnv(eventPath, dir);
+    const ensureBaseBranchAvailable = vi.fn().mockResolvedValue(undefined);
     const diffPullRequest = vi.fn().mockResolvedValue('diff --git a/file.ts b/file.ts\n');
     const git: GitRepositoryPort = {
       isShallowRepository: async () => false,
       hasRemoteBranch: async () => true,
+      ensureBaseBranchAvailable,
       diffPullRequest,
     };
     const adapter = new GitHubActionsPrContextReaderAdapter(git);
 
     const result = await adapter.read({ cwd: dir, env });
 
+    expect(ensureBaseBranchAvailable).toHaveBeenCalledWith('main', dir);
     expect(diffPullRequest).toHaveBeenCalledWith('main', dir);
+    expect(ensureBaseBranchAvailable.mock.invocationCallOrder[0]).toBeLessThan(
+      diffPullRequest.mock.invocationCallOrder[0],
+    );
     expect(result).toEqual({
       pullRequest: {
         prNumber: 42,
@@ -80,6 +86,26 @@ describe('GitHubActionsPrContextReaderAdapter', () => {
     });
   });
 
+  it('propagates base branch ensure failures', async () => {
+    const { dir, eventPath } = await writePullRequestEvent();
+    const env = buildPrEnv(eventPath, dir);
+    const ensureError = new PrContextReaderError(
+      'Base branch is not accessible locally',
+      undefined,
+      'BASE_BRANCH_UNAVAILABLE',
+    );
+    const git: GitRepositoryPort = {
+      isShallowRepository: async () => false,
+      hasRemoteBranch: async () => false,
+      ensureBaseBranchAvailable: vi.fn().mockRejectedValue(ensureError),
+      diffPullRequest: vi.fn(),
+    };
+    const adapter = new GitHubActionsPrContextReaderAdapter(git);
+
+    await expect(adapter.read({ cwd: dir, env })).rejects.toBe(ensureError);
+    expect(git.diffPullRequest).not.toHaveBeenCalled();
+  });
+
   it('propagates git diff failures', async () => {
     const { dir, eventPath } = await writePullRequestEvent();
     const env = buildPrEnv(eventPath, dir);
@@ -87,6 +113,7 @@ describe('GitHubActionsPrContextReaderAdapter', () => {
     const git: GitRepositoryPort = {
       isShallowRepository: async () => false,
       hasRemoteBranch: async () => true,
+      ensureBaseBranchAvailable: vi.fn().mockResolvedValue(undefined),
       diffPullRequest: vi.fn().mockRejectedValue(gitError),
     };
     const adapter = new GitHubActionsPrContextReaderAdapter(git);
