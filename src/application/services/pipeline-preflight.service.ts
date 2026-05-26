@@ -7,6 +7,7 @@ import type { ClickUpApiPort, ClickUpReadAccessResult } from '../ports/clickup-a
 import type { GitHubApiPort, GitHubPrCommentPermissionResult } from '../ports/github-api.port.js';
 import type { GitRepositoryPort } from '../ports/git-repository.port.js';
 import { RunConfigSchema } from '../../domain/schemas/config.schema.js';
+import { SanitizerService } from './sanitizer.service.js';
 
 export interface PreflightReport {
   status: 'PASS' | 'BLOCKED';
@@ -41,6 +42,7 @@ export class PipelinePreflightService {
     @Inject('GitRepositoryPort') private readonly gitRepository: GitRepositoryPort,
     @Inject('ClickUpApiPort') private readonly clickUpApi: ClickUpApiPort,
     @Inject('GitHubApiPort') private readonly githubApi: GitHubApiPort,
+    @Inject(SanitizerService) private readonly sanitizer: SanitizerService,
   ) {}
 
   async run(outputDir: string): Promise<PreflightReport> {
@@ -79,8 +81,9 @@ export class PipelinePreflightService {
       },
     };
 
-    await this.writeReport(outputDir, report);
-    return report;
+    const safeReport = this.sanitizeReport(report);
+    await this.writeReport(outputDir, safeReport);
+    return safeReport;
   }
 
   private validateClickUpToken(): { ok: boolean } {
@@ -219,8 +222,28 @@ export class PipelinePreflightService {
     return { ok: errors.length === 0, errors, configPath };
   }
 
+  private collectKnownSecrets(): string[] {
+    return [
+      process.env.CLICKUP_TOKEN,
+      process.env.GITHUB_TOKEN,
+      process.env.CLICKUP_TASK_ID,
+    ].flatMap((value) => {
+      const trimmed = value?.trim() ?? '';
+      return trimmed.length > 0 ? [trimmed] : [];
+    });
+  }
+
+  private sanitizeReport(report: PreflightReport): PreflightReport {
+    return this.sanitizer.sanitizeForOutput(report, this.collectKnownSecrets());
+  }
+
+  private logPreflight(message: string): void {
+    console.log(this.sanitizer.sanitizeForOutput(message, this.collectKnownSecrets()));
+  }
+
   private async writeReport(outputDir: string, report: PreflightReport): Promise<void> {
     const path = join(outputDir, 'preflight-report.json');
     await writeFile(path, JSON.stringify(report, null, 2), 'utf8');
+    this.logPreflight(`Preflight ${report.status} → preflight-report.json`);
   }
 }

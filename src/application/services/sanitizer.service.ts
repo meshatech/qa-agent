@@ -6,6 +6,8 @@ const patterns = [
   /Bearer\s+[a-zA-Z0-9._-]+/gi,
   /eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+/g,
   /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,
+  /pk_[a-zA-Z0-9_-]{8,}/gi,
+  /gh[pousr]_[a-zA-Z0-9_]{8,}/gi,
 ];
 
 @Injectable()
@@ -31,6 +33,28 @@ export class SanitizerService {
 
   sanitizeCookies(cookies: unknown): unknown {
     return this.sanitize(cookies);
+  }
+
+  sanitizeForOutput<T>(input: T, knownSecrets: string[] = []): T {
+    const secrets = knownSecrets.map((value) => value.trim()).filter((value) => value.length > 0);
+    return this.sanitizeStringsDeep(input, secrets);
+  }
+
+  private sanitizeStringsDeep<T>(input: T, secrets: string[]): T {
+    if (typeof input === 'string') {
+      let value = patterns.reduce<string>((current, pattern) => current.replace(pattern, () => this.mark('strings')), input);
+      for (const secret of secrets) {
+        value = value.split(secret).join(MASK);
+      }
+      return value as T;
+    }
+    if (Array.isArray(input)) return input.map((item) => this.sanitizeStringsDeep(item, secrets)) as T;
+    if (input && typeof input === 'object') {
+      return Object.fromEntries(
+        Object.entries(input).map(([key, value]) => [key, this.sanitizeStringsDeep(value, secrets)]),
+      ) as T;
+    }
+    return input;
   }
 
   private mark(kind: string): string {

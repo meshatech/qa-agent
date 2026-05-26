@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { PipelinePreflightService } from '../src/application/services/pipeline-preflight.service.js';
+import { SanitizerService } from '../src/application/services/sanitizer.service.js';
 import type { ClickUpApiPort } from '../src/application/ports/clickup-api.port.js';
 import type { GitHubApiPort } from '../src/application/ports/github-api.port.js';
 import type { GitRepositoryPort } from '../src/application/ports/git-repository.port.js';
@@ -73,8 +74,9 @@ function makeService(
   gitRepo: GitRepositoryPort = createPassingGitRepo(),
   clickUpApi: ClickUpApiPort = createPassingClickUpApi(),
   githubApi: GitHubApiPort = createPassingGitHubApi(),
+  sanitizer: SanitizerService = new SanitizerService(),
 ) {
-  return new PipelinePreflightService(new FileConfigLoader(), gitRepo, clickUpApi, githubApi);
+  return new PipelinePreflightService(new FileConfigLoader(), gitRepo, clickUpApi, githubApi, sanitizer);
 }
 
 function setPullRequestContextEnv(): void {
@@ -886,6 +888,91 @@ describe('PipelinePreflightService', () => {
       const raw = await readFile(join(outputDir, 'preflight-report.json'), 'utf8');
       expect(raw).not.toContain(secret);
       expect(JSON.parse(raw).checks.prCommentPermission.ok).toBe(true);
+    });
+  });
+
+  describe('PRJ-11358 — token masking in logs and reports', () => {
+    it('preflight-report.json masks CLICKUP_TOKEN leaked in read access error', async () => {
+      const secret = 'pk_test_read_access_leak_98765';
+      process.env.CLICKUP_TOKEN = secret;
+      const clickUpApi = createClickUpApi({
+        verifyReadAccess: async () => ({
+          ok: false,
+          error: `Auth failed for token ${secret}`,
+        }),
+      });
+      const outputDir = await setupPreflightPassEnv();
+      process.env.CLICKUP_TOKEN = secret;
+
+      const result = await makeService(createPassingGitRepo(), clickUpApi).run(outputDir);
+      const raw = await readFile(join(outputDir, 'preflight-report.json'), 'utf8');
+
+      expect(result.status).toBe('BLOCKED');
+      expect(raw).not.toContain(secret);
+      expect(raw).toContain('***REDACTED***');
+      expect(result.checks.clickupReadAccess.error).toContain('***REDACTED***');
+      expect(result.checks.clickupReadAccess.error).not.toContain(secret);
+    });
+
+    it('preflight-report.json masks Authorization Bearer header in GitHub error', async () => {
+      const bearer = 'ghp_test_bearer_leak_12345678';
+      const githubApi = createGitHubApi({
+        verifyPrCommentPermission: async () => ({
+          ok: false,
+          statusCode: 401,
+          warning: `Authorization: Bearer ${bearer} rejected`,
+        }),
+      });
+      const outputDir = await setupPreflightPassEnv();
+
+      const result = await makeService(createPassingGitRepo(), createPassingClickUpApi(), githubApi).run(outputDir);
+      const raw = await readFile(join(outputDir, 'preflight-report.json'), 'utf8');
+
+      expect(raw).not.toContain(bearer);
+      expect(raw).toContain('***REDACTED***');
+      expect(result.checks.prCommentPermission.warning).toContain('***REDACTED***');
+      expect(result.checks.prCommentPermission.warning).not.toContain(bearer);
+    });
+
+    it('run() return value matches sanitized preflight-report.json on disk', async () => {
+      const secret = 'pk_test_return_match_secret_111';
+      const clickUpApi = createClickUpApi({
+        verifyReadAccess: async () => ({
+          ok: false,
+          error: `token ${secret} invalid`,
+        }),
+      });
+      const outputDir = await setupPreflightPassEnv();
+      process.env.CLICKUP_TOKEN = secret;
+
+      const result = await makeService(createPassingGitRepo(), clickUpApi).run(outputDir);
+      const raw = await readFile(join(outputDir, 'preflight-report.json'), 'utf8');
+      const parsed = JSON.parse(raw);
+
+      expect(result).toEqual(parsed);
+      expect(JSON.stringify(result)).not.toContain(secret);
+    });
+
+    it('logPreflight masks tokens in console output', async () => {
+      const secret = 'ghp_test_console_leak_99999999';
+      const logs: string[] = [];
+      const originalLog = console.log;
+      console.log = (...args: unknown[]) => {
+        logs.push(args.map(String).join(' '));
+      };
+
+      try {
+        process.env.GITHUB_TOKEN = secret;
+        const outputDir = await setupPreflightPassEnv();
+        process.env.GITHUB_TOKEN = secret;
+
+        await makeService().run(outputDir);
+
+        expect(logs.some((line) => line.includes('Preflight PASS'))).toBe(true);
+        expect(logs.join('\n')).not.toContain(secret);
+      } finally {
+        console.log = originalLog;
+      }
     });
   });
 });
