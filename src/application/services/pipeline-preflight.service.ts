@@ -8,7 +8,7 @@ export interface PreflightReport {
   checks: {
     clickupToken: { ok: boolean };
     clickupTaskId: { ok: boolean };
-    secrets: { ok: boolean; missing: string[] };
+    githubToken: { ok: boolean; warning?: string };
     prContext: { ok: boolean; missing: string[] };
     config: { ok: boolean; errors: string[] };
   };
@@ -23,11 +23,11 @@ export class PipelinePreflightService {
   async run(outputDir: string): Promise<PreflightReport> {
     const clickupTokenCheck = this.validateClickUpToken();
     const clickupTaskIdCheck = this.validateClickUpTaskId();
-    const secretsCheck = this.validateSecrets();
+    const githubTokenCheck = this.validateGitHubToken();
     const prCheck = this.validatePrContext();
     const configCheck = this.validateConfig();
 
-    const allOk = clickupTokenCheck.ok && clickupTaskIdCheck.ok && secretsCheck.ok && prCheck.ok && configCheck.ok;
+    const allOk = clickupTokenCheck.ok && clickupTaskIdCheck.ok && prCheck.ok && configCheck.ok;
 
     const report: PreflightReport = {
       status: allOk ? 'PASS' : 'BLOCKED',
@@ -35,7 +35,7 @@ export class PipelinePreflightService {
       checks: {
         clickupToken: clickupTokenCheck,
         clickupTaskId: clickupTaskIdCheck,
-        secrets: secretsCheck,
+        githubToken: githubTokenCheck,
         prContext: prCheck,
         config: configCheck,
       },
@@ -55,10 +55,14 @@ export class PipelinePreflightService {
     return { ok: Boolean(value && value.trim().length > 0) };
   }
 
-  private validateSecrets(): { ok: boolean; missing: string[] } {
-    const required = ['GITHUB_TOKEN'];
-    const missing = required.filter((key) => !process.env[key] || process.env[key]!.trim().length === 0);
-    return { ok: missing.length === 0, missing };
+  private validateGitHubToken(): { ok: boolean; warning?: string } {
+    const value = process.env.GITHUB_TOKEN;
+    const present = Boolean(value && value.trim().length > 0);
+    if (present) return { ok: true };
+    return {
+      ok: false,
+      warning: 'GITHUB_TOKEN is missing; PR read/publish may be unavailable.',
+    };
   }
 
   private validatePrContext(): { ok: boolean; missing: string[] } {

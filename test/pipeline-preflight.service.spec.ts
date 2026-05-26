@@ -47,13 +47,13 @@ describe('PipelinePreflightService', () => {
     expect(result.status).toBe('PASS');
     expect(result.checks.clickupToken.ok).toBe(true);
     expect(result.checks.clickupTaskId.ok).toBe(true);
-    expect(result.checks.secrets.ok).toBe(true);
+    expect(result.checks.githubToken.ok).toBe(true);
     expect(result.checks.prContext.ok).toBe(true);
     expect(result.checks.config.ok).toBe(true);
   });
 
-  it('returns BLOCKED when secrets are missing', async () => {
-    // No secrets set
+  it('returns BLOCKED when required env is missing', async () => {
+    // No env set
     const outputDir = await tempDir();
     const service = makeService();
     const result = await service.run(outputDir);
@@ -61,8 +61,8 @@ describe('PipelinePreflightService', () => {
     expect(result.status).toBe('BLOCKED');
     expect(result.checks.clickupToken.ok).toBe(false);
     expect(result.checks.clickupTaskId.ok).toBe(false);
-    expect(result.checks.secrets.ok).toBe(false);
-    expect(result.checks.secrets.missing).toContain('GITHUB_TOKEN');
+    expect(result.checks.githubToken.ok).toBe(false);
+    expect(result.checks.githubToken.warning).toBeTruthy();
   });
 
   it('returns BLOCKED when PR context is missing', async () => {
@@ -82,7 +82,7 @@ describe('PipelinePreflightService', () => {
     expect(result.checks.prContext.missing).toContain('GITHUB_SHA');
   });
 
-  it('returns BLOCKED when secrets are empty strings', async () => {
+  it('returns BLOCKED when clickup env is empty strings', async () => {
     process.env.CLICKUP_TOKEN = '';
     process.env.GITHUB_TOKEN = '   ';
     process.env.CLICKUP_TASK_ID = '';
@@ -95,7 +95,8 @@ describe('PipelinePreflightService', () => {
     const result = await service.run(outputDir);
 
     expect(result.status).toBe('BLOCKED');
-    expect(result.checks.secrets.ok).toBe(false);
+    expect(result.checks.githubToken.ok).toBe(false);
+    expect(result.checks.githubToken.warning).toBeTruthy();
     expect(result.checks.clickupToken.ok).toBe(false);
     expect(result.checks.clickupTaskId.ok).toBe(false);
   });
@@ -154,7 +155,7 @@ describe('PipelinePreflightService', () => {
       expect(result.status).toBe('BLOCKED');
       expect(result.checks.clickupTaskId.ok).toBe(false);
       expect(result.checks.clickupToken.ok).toBe(true);
-      expect(result.checks.secrets.ok).toBe(true);
+      expect(result.checks.githubToken.ok).toBe(true);
       expect(result.checks.prContext.ok).toBe(true);
     });
 
@@ -229,7 +230,7 @@ describe('PipelinePreflightService', () => {
 
       expect(result.status).toBe('BLOCKED');
       expect(result.checks.clickupToken.ok).toBe(false);
-      expect(result.checks.secrets.ok).toBe(true);
+      expect(result.checks.githubToken.ok).toBe(true);
       expect(result.checks.prContext.ok).toBe(true);
     });
 
@@ -248,6 +249,83 @@ describe('PipelinePreflightService', () => {
       const raw = await readFile(join(outputDir, 'preflight-report.json'), 'utf8');
       expect(raw).not.toContain(secret);
       expect(JSON.parse(raw).checks.clickupToken.ok).toBe(true);
+    });
+  });
+
+  describe('PRJ-11352 — GITHUB_TOKEN validation', () => {
+    function setFullEnvExceptGitHubToken(): void {
+      process.env.CLICKUP_TOKEN = 'pk_live_valid_token';
+      delete process.env.GITHUB_TOKEN;
+      process.env.CLICKUP_TASK_ID = '86ahmgfc0';
+      process.env.GITHUB_REPOSITORY = 'owner/repo';
+      process.env.GITHUB_REF_NAME = 'feature/test';
+      process.env.GITHUB_SHA = 'abc123';
+    }
+
+    it('githubToken check passes when GITHUB_TOKEN is set', async () => {
+      process.env.CLICKUP_TOKEN = 'pk_live_valid_token';
+      process.env.GITHUB_TOKEN = 'ghp_live_valid_token';
+      process.env.CLICKUP_TASK_ID = '86ahmgfc0';
+      process.env.GITHUB_REPOSITORY = 'owner/repo';
+      process.env.GITHUB_REF_NAME = 'feature/test';
+      process.env.GITHUB_SHA = 'abc123';
+
+      const outputDir = await tempDir();
+      const result = await makeService().run(outputDir);
+
+      expect(result.checks.githubToken.ok).toBe(true);
+      expect(result.checks.githubToken.warning).toBeUndefined();
+    });
+
+    it('githubToken check fails with warning when GITHUB_TOKEN is missing', async () => {
+      setFullEnvExceptGitHubToken();
+
+      const outputDir = await tempDir();
+      const result = await makeService().run(outputDir);
+
+      expect(result.checks.githubToken.ok).toBe(false);
+      expect(result.checks.githubToken.warning).toContain('GITHUB_TOKEN is missing');
+    });
+
+    it('githubToken check fails with warning when GITHUB_TOKEN is whitespace', async () => {
+      setFullEnvExceptGitHubToken();
+      process.env.GITHUB_TOKEN = '   ';
+
+      const outputDir = await tempDir();
+      const result = await makeService().run(outputDir);
+
+      expect(result.checks.githubToken.ok).toBe(false);
+      expect(result.checks.githubToken.warning).toBeTruthy();
+    });
+
+    it('status remains PASS when only GITHUB_TOKEN is missing', async () => {
+      setFullEnvExceptGitHubToken();
+
+      const outputDir = await tempDir();
+      const result = await makeService().run(outputDir);
+
+      expect(result.status).toBe('PASS');
+      expect(result.checks.githubToken.ok).toBe(false);
+      expect(result.checks.clickupToken.ok).toBe(true);
+      expect(result.checks.clickupTaskId.ok).toBe(true);
+      expect(result.checks.prContext.ok).toBe(true);
+    });
+
+    it('preflight-report.json does not contain GITHUB_TOKEN value', async () => {
+      const secret = 'ghp_test_super_secret_12345';
+      process.env.CLICKUP_TOKEN = 'pk_live_valid_token';
+      process.env.GITHUB_TOKEN = secret;
+      process.env.CLICKUP_TASK_ID = '86ahmgfc0';
+      process.env.GITHUB_REPOSITORY = 'owner/repo';
+      process.env.GITHUB_REF_NAME = 'feature/test';
+      process.env.GITHUB_SHA = 'abc123';
+
+      const outputDir = await tempDir();
+      await makeService().run(outputDir);
+
+      const raw = await readFile(join(outputDir, 'preflight-report.json'), 'utf8');
+      expect(raw).not.toContain(secret);
+      expect(JSON.parse(raw).checks.githubToken.ok).toBe(true);
     });
   });
 
