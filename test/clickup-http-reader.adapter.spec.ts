@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ZodError } from 'zod';
 
 import { ClickUpReaderError } from '../src/domain/errors.js';
 import { ClickUpHttpReaderAdapter } from '../src/infra/clickup/clickup-http-reader.adapter.js';
@@ -354,6 +355,24 @@ Tela em branco`,
     });
   });
 
+  it('does not expose raw ZodError as cause for invalid payload', async () => {
+    mockFetch(200, { id: '86ahmgh5e', name: 123 });
+    const reader = new ClickUpHttpReaderAdapter();
+
+    await expect(
+      reader.readTask('PRJ-11364', 'pk_test_token', { configTeamId: '459806' }),
+    ).rejects.toSatisfy((error: unknown) => {
+      expect(error).toBeInstanceOf(ClickUpReaderError);
+      const readerError = error as ClickUpReaderError;
+      expect(readerError.cause).toBeInstanceOf(Error);
+      expect(readerError.cause).not.toBeInstanceOf(ZodError);
+      expect((readerError.cause as Error).message).toBe(
+        'ClickUp API returned an invalid task payload',
+      );
+      return true;
+    });
+  });
+
   it.each([
     [401, 'AUTH_FAILED', 'ClickUp authentication failed (401)'],
     [403, 'PERMISSION_DENIED', 'ClickUp permission denied (403)'],
@@ -451,6 +470,9 @@ Tela em branco`,
       expect(readerError.code).toBe('REQUEST_FAILED');
       expect(readerError.message).not.toContain(leakedToken);
       expect(readerError.message).toContain('***REDACTED***');
+      expect(readerError.cause).toBeInstanceOf(Error);
+      expect((readerError.cause as Error).message).not.toContain(leakedToken);
+      expect((readerError.cause as Error).message).toContain('***REDACTED***');
       return true;
     });
   });

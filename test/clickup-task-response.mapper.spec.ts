@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Logger } from '@nestjs/common';
 
 import * as reproductionStepsParser from '../src/infra/clickup/clickup-reproduction-steps.parser.js';
 import { mapClickUpTaskToReadResult } from '../src/infra/clickup/clickup-task-response.mapper.js';
@@ -10,6 +11,7 @@ describe('mapClickUpTaskToReadResult', () => {
 
   it('returns demand without bug when BugContext validation fails', () => {
     vi.spyOn(reproductionStepsParser, 'extractClickUpReproductionSteps').mockReturnValue(['']);
+    const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
 
     const result = mapClickUpTaskToReadResult({
       id: '86ahmgh5e',
@@ -22,5 +24,8 @@ describe('mapClickUpTaskToReadResult', () => {
     expect(result.demand.taskId).toBe('PRJ-11369');
     expect(result.demand.title).toBe('Optional bug context');
     expect(result.bug).toBeUndefined();
+    expect(warnSpy).toHaveBeenCalledWith(
+      'ClickUp bug context ignored due to validation failure',
+    );
   });
 });

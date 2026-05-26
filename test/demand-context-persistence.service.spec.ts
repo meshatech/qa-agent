@@ -1,13 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import type { ClickUpReaderPort } from '../src/application/ports/clickup-reader.port.js';
 import { DemandContextPersistenceService } from '../src/application/services/demand-context-persistence.service.js';
 import { SanitizerService } from '../src/application/services/sanitizer.service.js';
+import { ClickUpReaderError } from '../src/domain/errors.js';
 import { DemandContextSchema } from '../src/domain/schemas/demand-context.schema.js';
 import { FileDemandContextWriterAdapter } from '../src/infra/persistence/file-demand-context-writer.adapter.js';
+import { sanitizeClickUpErrorMessage } from '../src/infra/clickup/clickup-http-error.handler.js';
 
 const VALID_DEMAND_CONTEXT = {
   taskId: 'PRJ-11373',
@@ -110,5 +112,82 @@ describe('DemandContextPersistenceService', () => {
     expect(DemandContextSchema.parse(JSON.parse(await readFile(result.path, 'utf8')))).toEqual(
       VALID_DEMAND_CONTEXT,
     );
+  });
+
+  it.each([
+    ['AUTH_FAILED', 'ClickUp authentication failed (401)', 401],
+    ['TASK_NOT_FOUND', 'ClickUp task not found (PRJ-11373)', 404],
+    ['REQUEST_FAILED', 'ClickUp API request failed: network down', undefined],
+  ] as const)(
+    'persistFromClickUpTask propagates ClickUpReaderError with code %s',
+    async (code, message, statusCode) => {
+      const dir = await mkdtemp(join(tmpdir(), 'agent-qa-demand-context-persist-'));
+      tempDirs.push(dir);
+      const token = 'pk_test_token_abcdef12';
+      const readerError = new ClickUpReaderError(message, statusCode, undefined, code);
+      const clickUpReader: ClickUpReaderPort = {
+        readTask: vi.fn(),
+        readConfiguredTask: vi.fn(async () => {
+          throw readerError;
+        }),
+      };
+      const service = new DemandContextPersistenceService(
+        new FileDemandContextWriterAdapter(),
+        clickUpReader,
+        new SanitizerService(),
+      );
+
+      await expect(
+        service.persistFromClickUpTask(dir, token, {
+          configTaskId: 'PRJ-11373',
+          configTeamId: '459806',
+        }),
+      ).rejects.toBe(readerError);
+
+      await expect(access(join(dir, 'demand-context.json'))).rejects.toThrow();
+    },
+  );
+
+  it('persistFromClickUpTask propagates sanitized ClickUpReaderError without leaking token', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'agent-qa-demand-context-persist-'));
+    tempDirs.push(dir);
+    const token = 'pk_leaked_token_12345678';
+    const readerError = new ClickUpReaderError(
+      sanitizeClickUpErrorMessage(
+        `ClickUp API request failed: Authorization ${token} failed`,
+        token,
+      ),
+      undefined,
+      undefined,
+      'REQUEST_FAILED',
+    );
+    const clickUpReader: ClickUpReaderPort = {
+      readTask: vi.fn(),
+      readConfiguredTask: vi.fn(async () => {
+        throw readerError;
+      }),
+    };
+    const service = new DemandContextPersistenceService(
+      new FileDemandContextWriterAdapter(),
+      clickUpReader,
+      new SanitizerService(),
+    );
+
+    await expect(
+      service.persistFromClickUpTask(dir, token, {
+        configTaskId: 'PRJ-11373',
+        configTeamId: '459806',
+      }),
+    ).rejects.toSatisfy((error: unknown) => {
+      expect(error).toBe(readerError);
+      expect(error).toBeInstanceOf(ClickUpReaderError);
+      const propagated = error as ClickUpReaderError;
+      expect(propagated.code).toBe('REQUEST_FAILED');
+      expect(propagated.message).not.toContain(token);
+      expect(propagated.message).toContain('***REDACTED***');
+      return true;
+    });
+
+    await expect(access(join(dir, 'demand-context.json'))).rejects.toThrow();
   });
 });

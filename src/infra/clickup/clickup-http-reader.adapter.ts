@@ -11,6 +11,7 @@ import {
   CLICKUP_RATE_LIMIT_RETRIES,
   computeClickUpRetryWaitMs,
   mapClickUpHttpError,
+  sanitizeClickUpErrorCause,
   sanitizeClickUpErrorMessage,
   sleep,
 } from './clickup-http-error.handler.js';
@@ -37,7 +38,10 @@ export class ClickUpHttpReaderAdapter implements ClickUpReaderPort {
         throw new ClickUpReaderError(
           sanitizeClickUpErrorMessage('ClickUp API returned an invalid task payload', token),
           undefined,
-          error,
+          sanitizeClickUpErrorCause(
+            new Error('ClickUp API returned an invalid task payload'),
+            token,
+          ),
           'API_ERROR',
         );
       }
@@ -98,7 +102,7 @@ export class ClickUpHttpReaderAdapter implements ClickUpReaderPort {
       throw new ClickUpReaderError(
         sanitizeClickUpErrorMessage(`ClickUp API request failed: ${message}`, token),
         undefined,
-        error,
+        sanitizeClickUpErrorCause(error, token),
         'REQUEST_FAILED',
       );
     }

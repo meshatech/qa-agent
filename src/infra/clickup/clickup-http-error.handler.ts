@@ -70,6 +70,14 @@ export function sanitizeClickUpErrorMessage(message: string, token?: string): st
   return sanitized;
 }
 
+export function sanitizeClickUpErrorCause(error: unknown, token?: string): Error | undefined {
+  if (!(error instanceof Error)) {
+    return undefined;
+  }
+
+  return new Error(sanitizeClickUpErrorMessage(error.message, token));
+}
+
 export function computeClickUpRetryWaitMs(
   headers: Headers,
   attempt: number,

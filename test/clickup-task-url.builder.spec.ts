@@ -33,5 +33,7 @@ describe('buildClickUpTaskUrl', () => {
     expect(() => buildClickUpTaskUrl('PRJ-11366')).toThrow(
       /CLICKUP_TEAM_ID is required when using a custom ClickUp task ID/,
     );
+    expect(() => buildClickUpTaskUrl('PRJ-1', {})).toThrow(ClickUpReaderError);
+    expect(() => buildClickUpTaskUrl('PRJ-1', { teamId: '   ' })).toThrow(ClickUpReaderError);
   });
 });

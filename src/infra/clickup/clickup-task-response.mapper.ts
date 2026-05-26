@@ -1,3 +1,5 @@
+import { Logger } from '@nestjs/common';
+
 import type { ClickUpTaskReadResult } from '../../application/ports/clickup-reader.port.js';
 import { BugContextSchema } from '../../domain/schemas/bug-context.schema.js';
 import { DemandContextSchema } from '../../domain/schemas/demand-context.schema.js';
@@ -17,6 +19,8 @@ const PRIORITY_BY_ID: Record<string, string> = {
   '3': 'normal',
   '4': 'low',
 };
+
+const logger = new Logger('ClickUpTaskResponseMapper');
 
 export type { ClickUpTaskPayload } from './clickup-task-response.schema.js';
 
@@ -52,6 +56,8 @@ export function mapClickUpTaskToReadResult(payload: ClickUpTaskPayload): ClickUp
     });
     if (bugParse.success) {
       result.bug = bugParse.data;
+    } else {
+      logger.warn('ClickUp bug context ignored due to validation failure');
     }
   }
 

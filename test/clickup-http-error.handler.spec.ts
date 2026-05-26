@@ -5,6 +5,7 @@ import {
   CLICKUP_RATE_LIMIT_MAX_WAIT_MS,
   computeClickUpRetryWaitMs,
   mapClickUpHttpError,
+  sanitizeClickUpErrorCause,
   sanitizeClickUpErrorMessage,
 } from '../src/infra/clickup/clickup-http-error.handler.js';
 
@@ -61,6 +62,24 @@ describe('sanitizeClickUpErrorMessage', () => {
     expect(sanitized).not.toContain('pk_secret123');
     expect(sanitized).not.toContain('Bearer abc.def.ghi');
     expect(sanitized).toContain('***REDACTED***');
+  });
+});
+
+describe('sanitizeClickUpErrorCause', () => {
+  it('returns a new Error with sanitized message', () => {
+    const token = 'pk_secret123';
+    const cause = sanitizeClickUpErrorCause(
+      new Error(`Authorization ${token} failed`),
+      token,
+    );
+
+    expect(cause).toBeInstanceOf(Error);
+    expect(cause?.message).not.toContain(token);
+    expect(cause?.message).toContain('***REDACTED***');
+  });
+
+  it('returns undefined for non-Error values', () => {
+    expect(sanitizeClickUpErrorCause('network down', 'pk_test')).toBeUndefined();
   });
 });
 
