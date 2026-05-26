@@ -1,0 +1,46 @@
+---
+description: Core identity, stack, commands, and scope boundaries for agent-qa
+alwaysApply: true
+---
+
+# Agent QA — Project Core
+
+Entry point: @AGENTS.md
+
+**agent-qa** (v0.1.0) is an LLM-guided QA runtime: Playwright executes web flows while an orchestrator governs observe → decide → act → validate → recover.
+
+## Stack
+
+TypeScript (strict, ESM), NestJS DI, Playwright, Zod v4, Commander CLI (`qa-agent`).
+
+## Canonical docs
+
+- Runtime law and index: @doc/README.md
+- Release baseline: @doc/release-notes/v0.2-stable.md
+- Architecture map v0.2: @docs/architecture/
+
+## Commands (run before committing)
+
+```bash
+npm run check
+```
+
+Local fixture smoke:
+
+```bash
+node ./test/fixtures/server.mjs
+npm run qa-agent -- validate-config --config ./agent-qa.fixture.config.json
+npm run qa-agent -- run --config ./agent-qa.fixture.config.json
+```
+
+## Scope boundaries
+
+- **Implemented**: CLI runtime, reactive loop, evidence, recovery, QaToolRegistry, Hybrid Guarded execution (v0.2-stable).
+- **Planned only** (`tasks-clickup/`): PR pipeline, ClickUp reader, BM25 project memory services — do not implement unless the task explicitly requires it.
+- **Cursor config**: `.cursor/` is canonical for Cursor; `.windsurf/` is legacy parity.
+
+## Guiding principle
+
+```
+LLM decides. Harness executes. Orchestrator governs. Schemas validate. Evidence records.
+```

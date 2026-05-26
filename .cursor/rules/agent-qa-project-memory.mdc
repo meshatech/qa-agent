@@ -1,0 +1,42 @@
+---
+description: Format and conventions for .agent-qa/ persistent project memory files
+globs: .agent-qa/**
+alwaysApply: false
+---
+
+# Agent QA Project Memory (`.agent-qa/`)
+
+Runtime persistent memory for QA runs. Format contract: @.agent-qa/structure.md. Content: @.agent-qa/memory.md.
+
+## Chunk types (`MemoryChunkType` — planned domain contract)
+
+`project`, `route`, `flow`, `semantic_locator`, `scenario`, `known_issue`, `runtime_learning`
+
+Each section in `memory.md` must include metadata:
+
+```markdown
+## Section title
+<!-- type: route | id: ROUTE-001 -->
+Content here...
+```
+
+## Files
+
+| File | Purpose |
+|------|---------|
+| `memory.md` | Searchable project knowledge (BM25 index planned) |
+| `structure.md` | Conventions for sections and chunk types |
+| `run-history.jsonl` | One JSON event per line (run summaries) |
+
+## Rules
+
+- Version in Git; **never** literal passwords, tokens, API keys, or env values
+- Reference auth via config/env names only (e.g. `usernameEnv`, `passwordEnv`)
+- Each chunk `id` must be **unique** — validated by `npm run validate:agent-config`
+- Keep chunks focused and independently useful for search
+- Sync stable learnings from `.cursor/memory/` when they help QA execution
+- `TaskMemoryService` is ephemeral — do not write run-scratch state into `memory.md`
+
+## Future services (not yet in `src/`)
+
+`MemoryChunker`, `BM25MemoryIndex`, `MemorySearchService` — see `tasks-clickup/PRJ-11315/`.

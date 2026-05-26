@@ -1,0 +1,52 @@
+---
+description: Agentic workflow for reading and updating the project Memory Bank and syncing with .agent-qa/
+alwaysApply: true
+---
+
+# Agentic Memory Bank Workflow
+
+This repo uses a **Memory Bank** for persistent agent context. Rules are in English; memory files are in Portuguese.
+
+## At task start
+
+1. Read all files in `.cursor/memory/` (see @.cursor/memory/README.md).
+2. Treat `active-context.md` and `progress.md` as the current session state.
+
+## Before runtime changes
+
+Cross-check runtime law in @doc/README.md and @doc/07-runtime-flow.md. Do not violate quiescence, ephemeral IDs, or data-harness rules.
+
+## After meaningful work
+
+Update `.cursor/memory/active-context.md` and `.cursor/memory/progress.md` with:
+- what changed
+- what is in progress
+- known blockers or next steps
+
+## Sync with `.agent-qa/` (runtime memory)
+
+When knowledge helps QA runs (routes, flows, locators, known issues, learnings), mirror it into `.agent-qa/memory.md` using chunk types defined in @.agent-qa/structure.md.
+
+| Cursor memory | Agent QA chunk type |
+|---------------|---------------------|
+| `architecture.md` | `project` |
+| routes / fixtures | `route`, `flow` |
+| `progress.md` learnings | `runtime_learning` |
+| documented limits | `known_issue` |
+
+Do **not** duplicate entire specs — link to `doc/` instead. Never store tokens, env values, or credentials.
+
+## Three memory layers
+
+- `.cursor/memory/` — IDE dev context
+- `.agent-qa/memory.md` — persistent QA run knowledge (BM25 planned)
+- `TaskMemoryService` — ephemeral per-task during a run only
+
+## Task completion gate
+
+Before marking work done:
+
+- Read `.cursor/memory/` at start; confirm in final response
+- Update `active-context.md` / `progress.md` when focus or deliverables change
+- Mirror stable QA knowledge to `.agent-qa/memory.md` when applicable
+- Run `npm run validate:agent-config`

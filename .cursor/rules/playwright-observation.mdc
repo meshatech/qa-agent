@@ -1,0 +1,30 @@
+---
+description: Playwright harness, quiescence guard, and screen observation
+globs: src/infra/playwright/**,src/infra/observation/**
+alwaysApply: false
+---
+
+# Playwright and Observation
+
+Specs: @doc/02-quiescence-guard.md, @doc/13-observation-and-locators.md
+
+## Playwright (`src/infra/playwright/`)
+
+- `PlaywrightHarness` — implements `BrowserHarnessPort`; executes actions
+- `PlaywrightQuiescenceGuard` — wait for page stability **before** next observe/decide
+- `FormLogin` — pre-runtime auth when `auth.kind === 'formLogin'`
+
+## Observation (`src/infra/observation/`)
+
+- `ObservationService` — screen snapshot for LLM; **invalidates stale locator map** before reobserve
+- `AxTreeCollector`, `DomPurifier`, `PageStateDetector`, `SignalsBuffer` — observation pipeline
+
+## Invariants
+
+1. **Quiescence** between every action and new observation.
+2. **Ephemeral IDs** — LLM may only use element IDs from the current observation.
+3. Observation layer must not bypass Zod action schemas or orchestrator policy.
+
+## Auth
+
+Login runs in preflight/pre-runtime — not as demand steps. See @doc/17-configuration-and-cli.md.

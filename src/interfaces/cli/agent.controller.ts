@@ -28,4 +28,8 @@ export class AgentController {
   captureAuth(configPath: string, outputPath: string) {
     return this.service.capture(configPath, outputPath);
   }
+
+  onboard(configPath: string, projectDir?: string, outputDir?: string, headed?: boolean) {
+    return this.service.onboard(configPath, projectDir, outputDir, headed);
+  }
 }

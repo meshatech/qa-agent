@@ -1,0 +1,39 @@
+---
+description: Application services and use cases — orchestration, planning, recovery, evidence
+globs: src/application/services/**,src/application/use-cases/**
+alwaysApply: false
+---
+
+# Application Services
+
+Hub: @src/application/use-cases/run-agent.usecase.ts orchestrates the full run loop.
+
+## Planning vs execution
+
+| Service | Role |
+|---------|------|
+| `ScenarioPlannerService` | Scenario list from demand |
+| `ExecutionPlanPlannerService` | ExecutionPlan (Hybrid Guarded) |
+| `ExecutionPlanFactoryService` | Safe factory fallback when LLM plan fails |
+| `PlanExecutorService` | Executes plan steps |
+| `PlanReplannerService` / `PlanPatchApplierService` | Replan and patch |
+
+## Runtime support
+
+| Service | Role |
+|---------|------|
+| `ActionPolicyService` | Destructive/sensitive action policy |
+| `DataHarnessService` | Resolve dynamic placeholders |
+| `LocatorResolverService` / `ElementAvailabilityResolverService` | Locators and availability |
+| `ValidationBinderService` | Bind validations to resolved data |
+| `RecoveryPolicyService` | Fallback and emergency actions |
+| `BugClassifierService` | Severity from signals |
+| `EvidenceService` | Run artifacts and bug folders |
+| `SanitizerService` | Strip secrets before persist |
+| `TaskMemoryService` | **Ephemeral** per-task state during run only |
+
+## Rules
+
+- Services depend on **ports**, never concrete infra adapters.
+- Register new services in `APPLICATION_PROVIDERS` (@src/application/application.module.ts).
+- Business logic stays here — not in `interfaces/cli/` or `infra/`.

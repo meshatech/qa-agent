@@ -5,6 +5,8 @@ import { ValidateConfigUseCase } from '../use-cases/validate-config.usecase.js';
 import { InspectRunUseCase } from '../use-cases/inspect-run.usecase.js';
 import { ReportRunUseCase } from '../use-cases/report-run.usecase.js';
 import { CaptureAuthUseCase } from '../use-cases/capture-auth.usecase.js';
+import { RunOnboardingUseCase } from '../use-cases/run-onboarding.usecase.js';
+import type { OnboardingResult } from '../../domain/models/readiness.model.js';
 
 @Injectable()
 export class AgentService {
@@ -14,6 +16,7 @@ export class AgentService {
     @Inject(InspectRunUseCase) private readonly inspectRun: InspectRunUseCase,
     @Inject(ReportRunUseCase) private readonly reportRun: ReportRunUseCase,
     @Inject(CaptureAuthUseCase) private readonly captureAuth: CaptureAuthUseCase,
+    @Inject(RunOnboardingUseCase) private readonly runOnboarding: RunOnboardingUseCase,
   ) {}
 
   execute(dto: RunAgentDto) {
@@ -38,5 +41,9 @@ export class AgentService {
 
   capture(configPath: string, outputPath: string) {
     return this.captureAuth.execute(configPath, outputPath);
+  }
+
+  onboard(configPath: string, projectDir?: string, outputDir?: string, headed?: boolean): Promise<OnboardingResult> {
+    return this.runOnboarding.execute(configPath, projectDir, outputDir, { headed });
   }
 }

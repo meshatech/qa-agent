@@ -1,0 +1,25 @@
+---
+description: Checklist for adding or modifying LLM decision providers
+globs: src/infra/llm/**
+alwaysApply: false
+---
+
+# LLM Providers
+
+Implement @src/application/ports/decision-provider.port.ts — methods include `decide`, optional `plan` / `buildPlan` / `replan` / `stats`.
+
+## Add a provider
+
+1. Create `src/infra/llm/<name>-decision.provider.ts`
+2. Register in `INFRA_PROVIDERS` (@src/infra/infra.module.ts)
+3. Route in @src/infra/llm/decision-router.provider.ts
+4. Add enum value in @src/domain/schemas/config.schema.ts (`llm.provider`)
+5. Normalize LLM output before Zod (see existing normalizers in this folder)
+
+## Testing
+
+Prefer `FakeDecisionProvider` in unit tests. External providers (Groq, OpenAI) may need network; factory plan fallback is the safe default (@doc/release-notes/v0.2-stable.md).
+
+## Config
+
+API keys via env vars referenced in config (`apiKeyEnv`) — never hardcode secrets.
