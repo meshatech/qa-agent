@@ -6,6 +6,7 @@ import {
   PullRequestContextSchema,
   type PullRequestContext,
 } from '../../domain/schemas/pull-request-context.schema.js';
+import { resolveGitHubActionsPrRefs } from './github-actions-pr-refs.resolver.js';
 
 const ALLOWED_PR_EVENT_NAMES = ['pull_request', 'pull_request_target'] as const;
 
@@ -13,11 +14,9 @@ const GITHUB_TOKEN_ENV_KEYS = ['GITHUB_TOKEN', 'GH_TOKEN', 'INPUT_GITHUB_TOKEN']
 
 type GitHubPullRequestEvent = {
   pull_request?: {
-    number?: number;
     title?: string;
     user?: { login?: string };
   };
-  number?: number;
 };
 
 export function resolveGitHubWorkspace(env: NodeJS.ProcessEnv = process.env): string {
@@ -41,35 +40,6 @@ function sanitizePrContextErrorCause(error: unknown, env: NodeJS.ProcessEnv): Er
   }
 
   return new Error(sanitizePrContextErrorMessage(error.message, env));
-}
-
-async function resolvePullNumberFromEnv(env: NodeJS.ProcessEnv): Promise<number | undefined> {
-  const fromRef = env.GITHUB_REF?.trim().match(/^refs\/pull\/(\d+)\//);
-  if (fromRef) {
-    return Number(fromRef[1]);
-  }
-
-  const fromEnv = env.GITHUB_PR_NUMBER?.trim();
-  if (fromEnv) {
-    const parsed = Number(fromEnv);
-    if (!Number.isNaN(parsed)) {
-      return parsed;
-    }
-  }
-
-  const eventPath = env.GITHUB_EVENT_PATH?.trim();
-  if (!eventPath) {
-    return undefined;
-  }
-
-  try {
-    const raw = await readFile(eventPath, 'utf8');
-    const event = JSON.parse(raw) as GitHubPullRequestEvent;
-    const num = event.pull_request?.number ?? event.number;
-    return typeof num === 'number' ? num : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 async function readPullRequestMetadata(
@@ -115,6 +85,17 @@ async function readPullRequestMetadata(
   }
 }
 
+function missingContextError(
+  env: NodeJS.ProcessEnv,
+  message: string,
+): PrContextReaderError {
+  return new PrContextReaderError(
+    'GitHub Actions PR context is incomplete',
+    sanitizePrContextErrorCause(new Error(message), env),
+    'MISSING_CONTEXT',
+  );
+}
+
 export async function mapGitHubActionsToPullRequestContext(
   options?: { env?: NodeJS.ProcessEnv },
 ): Promise<PullRequestContext> {
@@ -132,36 +113,19 @@ export async function mapGitHubActionsToPullRequestContext(
     );
   }
 
-  const baseBranch = env.GITHUB_BASE_REF?.trim() ?? '';
-  const headBranch = env.GITHUB_HEAD_REF?.trim() ?? '';
   const gitRef = env.GITHUB_REF?.trim() ?? '';
-
   if (!gitRef) {
-    throw new PrContextReaderError(
-      'GitHub Actions PR context is incomplete',
-      sanitizePrContextErrorCause(new Error('GITHUB_REF is missing'), env),
-      'MISSING_CONTEXT',
-    );
+    throw missingContextError(env, 'GITHUB_REF is missing');
   }
 
-  if (!baseBranch) {
-    throw new PrContextReaderError(
-      'GitHub Actions PR context is incomplete',
-      sanitizePrContextErrorCause(new Error('GITHUB_BASE_REF is missing'), env),
-      'MISSING_CONTEXT',
-    );
-  }
-
-  if (!headBranch) {
-    throw new PrContextReaderError(
-      'GitHub Actions PR context is incomplete',
-      sanitizePrContextErrorCause(new Error('GITHUB_HEAD_REF is missing'), env),
-      'MISSING_CONTEXT',
-    );
-  }
-
-  const prNumber = await resolvePullNumberFromEnv(env);
-  if (!prNumber || prNumber <= 0) {
+  const prRefs = await resolveGitHubActionsPrRefs(env);
+  if (!prRefs) {
+    if (!env.GITHUB_BASE_REF?.trim()) {
+      throw missingContextError(env, 'GITHUB_BASE_REF is missing');
+    }
+    if (!env.GITHUB_HEAD_REF?.trim()) {
+      throw missingContextError(env, 'GITHUB_HEAD_REF is missing');
+    }
     throw new PrContextReaderError(
       'GitHub Actions pull request number is missing',
       sanitizePrContextErrorCause(new Error('GitHub Actions pull request number is missing'), env),
@@ -173,9 +137,7 @@ export async function mapGitHubActionsToPullRequestContext(
 
   try {
     return PullRequestContextSchema.parse({
-      prNumber,
-      baseBranch,
-      headBranch,
+      ...prRefs,
       title,
       author,
     });
