@@ -10,6 +10,14 @@ describe('extractClickUpTitle', () => {
   it('trims whitespace from task name', () => {
     expect(extractClickUpTitle('  Criar ClickUpReaderPort  ')).toBe('Criar ClickUpReaderPort');
   });
+
+  it('keeps a clean title unchanged', () => {
+    expect(extractClickUpTitle('Ler título')).toBe('Ler título');
+  });
+
+  it('trims tabs and newlines around the title', () => {
+    expect(extractClickUpTitle('\n\t Ler título \t\n')).toBe('Ler título');
+  });
 });
 
 describe('extractClickUpDescription', () => {

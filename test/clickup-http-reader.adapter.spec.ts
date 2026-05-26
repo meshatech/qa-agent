@@ -143,7 +143,7 @@ describe('ClickUpHttpReaderAdapter', () => {
   it('trims whitespace from task title', async () => {
     mockFetch(200, {
       ...SAMPLE_TASK,
-      name: '  Criar ClickUpReaderPort  ',
+      name: '  Ler título  ',
     });
     const reader = new ClickUpHttpReaderAdapter();
 
@@ -151,7 +151,27 @@ describe('ClickUpHttpReaderAdapter', () => {
       configTeamId: '459806',
     });
 
-    expect(result.demand.title).toBe('Criar ClickUpReaderPort');
+    expect(result.demand.title).toBe('Ler título');
+  });
+
+  it('extracts acceptance criteria from description section', async () => {
+    mockFetch(200, {
+      ...SAMPLE_TASK,
+      description: `Task body
+Critérios de Aceite
+- [x] ClickUpReaderPort é definido.
+- [x] Método readTask(taskId, token) retorna DemandContext.`,
+    });
+    const reader = new ClickUpHttpReaderAdapter();
+
+    const result = await reader.readTask('PRJ-11364', 'pk_test_token', {
+      configTeamId: '459806',
+    });
+
+    expect(result.demand.acceptanceCriteria).toEqual([
+      'ClickUpReaderPort é definido.',
+      'Método readTask(taskId, token) retorna DemandContext.',
+    ]);
   });
 
   it.each([

@@ -6,6 +6,7 @@ import type {
 } from '../../application/ports/clickup-reader.port.js';
 import { ClickUpReaderError } from '../../domain/errors.js';
 import { DemandContextSchema } from '../../domain/schemas/demand-context.schema.js';
+import { extractClickUpAcceptanceCriteria } from './clickup-acceptance-criteria.parser.js';
 import {
   extractClickUpDescription,
   extractClickUpTitle,
@@ -44,11 +45,13 @@ export class ClickUpHttpReaderAdapter implements ClickUpReaderPort {
     const response = await this.fetchTask(taskId, token, options?.configTeamId);
     const payload = (await response.json()) as ClickUpTaskResponse;
 
+    const description = extractClickUpDescription(payload);
+
     const demand = DemandContextSchema.parse({
       taskId: payload.custom_id?.trim() || payload.id,
       title: extractClickUpTitle(payload.name),
-      description: extractClickUpDescription(payload),
-      acceptanceCriteria: [],
+      description,
+      acceptanceCriteria: extractClickUpAcceptanceCriteria(description),
       attachments: (payload.attachments ?? [])
         .filter((attachment) => attachment.url && (attachment.title || attachment.mimetype))
         .map((attachment) => ({
