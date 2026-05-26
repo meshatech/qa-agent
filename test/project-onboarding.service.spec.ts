@@ -559,4 +559,125 @@ describe('ProjectOnboardingService', () => {
     // Should NOT duplicate execution logic; result comes from the injected executor
     expect(result.readiness).toBe('READY');
   });
+
+  it('generates baseline-report.md with readiness status and routes', async () => {
+    const outputDir = await tempDir();
+    const projectPath = await tempDir();
+    const config = RunConfigSchema.parse({
+      baseUrl: 'https://app.local',
+      appDomains: ['app.local'],
+      demand: { id: 'D', title: 'T', description: 'D' },
+      allowedRoutes: ['/dashboard', '/blocked'],
+    });
+
+    let callCount = 0;
+    const browser: BrowserHarnessPort = {
+      ...makeBrowser(),
+      async observe() {
+        callCount++;
+        if (callCount === 1) {
+          return makeObservation('https://app.local/', [], {
+            networkSignals: [{ method: 'GET', url: 'https://app.local/', status: 200, isAppOrigin: true, timestamp: new Date().toISOString() }],
+            elements: [{ id: 'el_001', role: 'heading', name: 'App', inViewport: true, locator: { strategy: 'text', text: 'App' } }],
+          });
+        }
+        return makeObservation('https://app.local/blocked', [], {
+          networkSignals: [{ method: 'GET', url: 'https://app.local/blocked', status: 403, isAppOrigin: true, timestamp: new Date().toISOString() }],
+          elements: [{ id: 'el_001', role: 'heading', name: 'Blocked', inViewport: true, locator: { strategy: 'text', text: 'Blocked' } }],
+        });
+      },
+    };
+
+    const service = makeService({ browser });
+    const result = await service.execute(config, outputDir, projectPath);
+
+    expect(result.baselineReportPath).toBe(join(outputDir, 'baseline-report.md'));
+    const report = await readFile(result.baselineReportPath!, 'utf8');
+
+    // Readiness status
+    expect(report).toContain('**Readiness:**');
+
+    // Routes section
+    expect(report).toContain('## Routes');
+    expect(report).toContain('### Accessible Routes');
+    expect(report).toContain('### Blocked Routes');
+  });
+
+  it('lists accessible and blocked routes in baseline report', async () => {
+    const outputDir = await tempDir();
+    const projectPath = await tempDir();
+    const config = RunConfigSchema.parse({
+      baseUrl: 'https://app.local',
+      appDomains: ['app.local'],
+      demand: { id: 'D', title: 'T', description: 'D' },
+      allowedRoutes: ['/ok-route', '/fail-route'],
+    });
+
+    let callCount = 0;
+    const browser: BrowserHarnessPort = {
+      ...makeBrowser(),
+      async observe() {
+        callCount++;
+        if (callCount === 1) {
+          return makeObservation('https://app.local/', [], {
+            networkSignals: [{ method: 'GET', url: 'https://app.local/', status: 200, isAppOrigin: true, timestamp: new Date().toISOString() }],
+            elements: [{ id: 'el_001', role: 'heading', name: 'App', inViewport: true, locator: { strategy: 'text', text: 'App' } }],
+          });
+        }
+        if (callCount === 2) {
+          // /ok-route
+          return makeObservation('https://app.local/ok-route', [], {
+            networkSignals: [{ method: 'GET', url: 'https://app.local/ok-route', status: 200, isAppOrigin: true, timestamp: new Date().toISOString() }],
+            elements: [{ id: 'el_001', role: 'heading', name: 'OK', inViewport: true, locator: { strategy: 'text', text: 'OK' } }],
+          });
+        }
+        // /fail-route
+        return makeObservation('https://app.local/fail-route', [], {
+          networkSignals: [{ method: 'GET', url: 'https://app.local/fail-route', status: 500, isAppOrigin: true, timestamp: new Date().toISOString() }],
+          elements: [{ id: 'el_001', role: 'heading', name: 'Fail', inViewport: true, locator: { strategy: 'text', text: 'Fail' } }],
+        });
+      },
+    };
+
+    const service = makeService({ browser });
+    const result = await service.execute(config, outputDir, projectPath);
+    const report = await readFile(result.baselineReportPath!, 'utf8');
+
+    expect(report).toContain('- /ok-route');
+    expect(report).toContain('- /fail-route');
+  });
+
+  it('does not leak sensitive data in baseline report', async () => {
+    process.env.TEST_USER = 'alice';
+    process.env.TEST_PASS = 'supersecret123';
+
+    const outputDir = await tempDir();
+    const projectPath = await tempDir();
+    const config = RunConfigSchema.parse({
+      baseUrl: 'https://app.local',
+      appDomains: ['app.local'],
+      demand: { id: 'D', title: 'T', description: 'D' },
+      auth: {
+        kind: 'formLogin',
+        loginUrl: 'https://app.local/login',
+        usernameSelector: '#username',
+        passwordSelector: '#password',
+        submitSelector: 'button',
+        usernameEnv: 'TEST_USER',
+        passwordEnv: 'TEST_PASS',
+      },
+    });
+
+    const executor = makePlanExecutor();
+    const service = makeService({ executor });
+    const result = await service.execute(config, outputDir, projectPath);
+    const report = await readFile(result.baselineReportPath!, 'utf8');
+
+    expect(report).not.toContain('supersecret123');
+    expect(report).not.toContain('alice');
+    expect(report).toContain('No sensitive credentials');
+
+    delete process.env.TEST_USER;
+    delete process.env.TEST_PASS;
+  });
 });

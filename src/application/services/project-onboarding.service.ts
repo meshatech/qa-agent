@@ -33,6 +33,8 @@ export class ProjectOnboardingService {
     let smokePlan: ExecutionPlan | null = null;
     let smokeResult: import('./plan-executor.service.js').PlanExecutionResult | null = null;
     let executionError = false;
+    const accessibleRoutes: string[] = [];
+    const blockedRoutes: string[] = [];
 
     try {
       await this.browser.open(config);
@@ -48,6 +50,8 @@ export class ProjectOnboardingService {
 
       const routeCheck = await this.verifyAllowedRoutes(config);
       warnings.push(...routeCheck.warnings);
+      accessibleRoutes.push(...routeCheck.accessibleRoutes);
+      blockedRoutes.push(...routeCheck.blockedRoutes);
 
       try {
         smokePlan = this.smokeBuilder.build(config);
@@ -69,7 +73,7 @@ export class ProjectOnboardingService {
     readiness = this.readinessEvaluator.evaluate({ browserOpenOk, smokeResult, executionError });
 
     if (smokePlan && smokeResult) {
-      baselineReportPath = await this.writeBaselineReport(outputDir, config, smokePlan, smokeResult, readiness, warnings, startedAt);
+      baselineReportPath = await this.writeBaselineReport(outputDir, config, smokePlan, smokeResult, readiness, warnings, startedAt, accessibleRoutes, blockedRoutes);
     }
 
     await this.persistResult(projectPath, outputDir, readiness, warnings, startedAt);
@@ -187,6 +191,8 @@ export class ProjectOnboardingService {
     readiness: ProjectReadinessStatus,
     warnings: string[],
     startedAt: string,
+    accessibleRoutes: string[],
+    blockedRoutes: string[],
   ): Promise<string> {
     await mkdir(outputDir, { recursive: true });
     const path = join(outputDir, 'baseline-report.md');
@@ -208,12 +214,21 @@ export class ProjectOnboardingService {
       `- **Steps executed:** ${planResult.steps.length}`,
       `- **Warnings:** ${planResult.warnings.length}`,
       '',
+      '## Routes',
+      '',
+      '### Accessible Routes',
+      ...(accessibleRoutes.length ? accessibleRoutes.map((r) => `- ${r}`) : ['- None']),
+      '',
+      '### Blocked Routes',
+      ...(blockedRoutes.length ? blockedRoutes.map((r) => `- ${r}`) : ['- None']),
+      '',
       '## Warnings',
       ...(warnings.length ? warnings.map((w) => `- ${w}`) : ['- None']),
       '',
       '## Notes',
       '- Onboarding failures are classified as ONBOARDING_BLOCKED, not product bugs.',
       '- No destructive actions were attempted.',
+      '- No sensitive credentials or tokens are included in this report.',
     ];
 
     await writeFile(path, lines.join('\n'), 'utf8');
