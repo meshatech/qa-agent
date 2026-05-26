@@ -46,6 +46,7 @@ describe('PipelinePreflightService', () => {
 
     expect(result.status).toBe('PASS');
     expect(result.checks.clickupToken.ok).toBe(true);
+    expect(result.checks.clickupTaskId.ok).toBe(true);
     expect(result.checks.secrets.ok).toBe(true);
     expect(result.checks.prContext.ok).toBe(true);
     expect(result.checks.config.ok).toBe(true);
@@ -59,9 +60,9 @@ describe('PipelinePreflightService', () => {
 
     expect(result.status).toBe('BLOCKED');
     expect(result.checks.clickupToken.ok).toBe(false);
+    expect(result.checks.clickupTaskId.ok).toBe(false);
     expect(result.checks.secrets.ok).toBe(false);
     expect(result.checks.secrets.missing).toContain('GITHUB_TOKEN');
-    expect(result.checks.secrets.missing).toContain('CLICKUP_TASK_ID');
   });
 
   it('returns BLOCKED when PR context is missing', async () => {
@@ -96,6 +97,83 @@ describe('PipelinePreflightService', () => {
     expect(result.status).toBe('BLOCKED');
     expect(result.checks.secrets.ok).toBe(false);
     expect(result.checks.clickupToken.ok).toBe(false);
+    expect(result.checks.clickupTaskId.ok).toBe(false);
+  });
+
+  describe('PRJ-11350 — CLICKUP_TASK_ID validation', () => {
+    function setFullEnvExceptClickUpTaskId(): void {
+      process.env.CLICKUP_TOKEN = 'pk_live_valid_token';
+      process.env.GITHUB_TOKEN = 'ghp_xxx';
+      delete process.env.CLICKUP_TASK_ID;
+      process.env.GITHUB_REPOSITORY = 'owner/repo';
+      process.env.GITHUB_REF_NAME = 'feature/test';
+      process.env.GITHUB_SHA = 'abc123';
+    }
+
+    it('clickupTaskId check passes when CLICKUP_TASK_ID is set', async () => {
+      process.env.CLICKUP_TOKEN = 'pk_live_valid_token';
+      process.env.GITHUB_TOKEN = 'ghp_xxx';
+      process.env.CLICKUP_TASK_ID = '86ahmgfc0';
+      process.env.GITHUB_REPOSITORY = 'owner/repo';
+      process.env.GITHUB_REF_NAME = 'feature/test';
+      process.env.GITHUB_SHA = 'abc123';
+
+      const outputDir = await tempDir();
+      const result = await makeService().run(outputDir);
+
+      expect(result.checks.clickupTaskId.ok).toBe(true);
+    });
+
+    it('clickupTaskId check fails when CLICKUP_TASK_ID is missing', async () => {
+      setFullEnvExceptClickUpTaskId();
+
+      const outputDir = await tempDir();
+      const result = await makeService().run(outputDir);
+
+      expect(result.checks.clickupTaskId.ok).toBe(false);
+      expect(result.status).toBe('BLOCKED');
+    });
+
+    it('clickupTaskId check fails when CLICKUP_TASK_ID is whitespace', async () => {
+      setFullEnvExceptClickUpTaskId();
+      process.env.CLICKUP_TASK_ID = '   ';
+
+      const outputDir = await tempDir();
+      const result = await makeService().run(outputDir);
+
+      expect(result.checks.clickupTaskId.ok).toBe(false);
+      expect(result.status).toBe('BLOCKED');
+    });
+
+    it('status is BLOCKED when only CLICKUP_TASK_ID is missing', async () => {
+      setFullEnvExceptClickUpTaskId();
+
+      const outputDir = await tempDir();
+      const result = await makeService().run(outputDir);
+
+      expect(result.status).toBe('BLOCKED');
+      expect(result.checks.clickupTaskId.ok).toBe(false);
+      expect(result.checks.clickupToken.ok).toBe(true);
+      expect(result.checks.secrets.ok).toBe(true);
+      expect(result.checks.prContext.ok).toBe(true);
+    });
+
+    it('preflight-report.json does not contain CLICKUP_TASK_ID value', async () => {
+      const taskId = '86ahmgfc0_secret_task_id';
+      process.env.CLICKUP_TOKEN = 'pk_live_valid_token';
+      process.env.GITHUB_TOKEN = 'ghp_xxx';
+      process.env.CLICKUP_TASK_ID = taskId;
+      process.env.GITHUB_REPOSITORY = 'owner/repo';
+      process.env.GITHUB_REF_NAME = 'feature/test';
+      process.env.GITHUB_SHA = 'abc123';
+
+      const outputDir = await tempDir();
+      await makeService().run(outputDir);
+
+      const raw = await readFile(join(outputDir, 'preflight-report.json'), 'utf8');
+      expect(raw).not.toContain(taskId);
+      expect(JSON.parse(raw).checks.clickupTaskId.ok).toBe(true);
+    });
   });
 
   describe('PRJ-11349 — CLICKUP_TOKEN validation', () => {
