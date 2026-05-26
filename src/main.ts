@@ -5,7 +5,8 @@ import { NestFactory } from '@nestjs/core';
 import { Command } from 'commander';
 import { AppModule } from './app.module.js';
 import { AgentController } from './interfaces/cli/agent.controller.js';
-import { ExitCodes as EXIT, classifyError, classifyResult, classifyOnboardingResult } from './interfaces/cli/exit-codes.js';
+import { ExitCodes as EXIT, classifyError, classifyPreflightReport, classifyResult, classifyOnboardingResult } from './interfaces/cli/exit-codes.js';
+import { PreflightBlockedError } from './domain/errors.js';
 
 async function withApp<T>(fn: (controller: AgentController) => Promise<T>): Promise<T> {
   const app = await NestFactory.createApplicationContext(AppModule, { logger: false });
@@ -78,6 +79,26 @@ program
       process.exitCode = EXIT.OK;
     } catch (err) {
       console.error(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }, null, 2));
+      process.exitCode = classifyError(err);
+    }
+  });
+
+program
+  .command('preflight')
+  .description('Run pipeline preflight checks and emit preflight-report.json')
+  .option('--output-dir <path>', 'output directory for preflight-report.json', './.agent-qa/pipeline')
+  .action(async (opts) => {
+    try {
+      const result = await withApp((c) => c.preflight(opts.outputDir));
+      console.log(JSON.stringify(result, null, 2));
+      process.exitCode = classifyPreflightReport(result.report);
+    } catch (err) {
+      if (err instanceof PreflightBlockedError) {
+        console.log(JSON.stringify({ report: err.report, reportPath: err.reportPath ?? null }, null, 2));
+        process.exitCode = classifyPreflightReport(err.report);
+        return;
+      }
+      console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err), kind: err instanceof Error ? err.constructor.name : 'Error' }, null, 2));
       process.exitCode = classifyError(err);
     }
   });

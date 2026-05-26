@@ -170,6 +170,7 @@ Comando:
 
 ```txt
 qa-agent run --config ./agent-qa.config.json [flags]
+qa-agent preflight --output-dir ./.agent-qa/pipeline
 qa-agent inspect --runId <id>
 qa-agent report --runId <id> --format md|json
 qa-agent validate-config --config ./agent-qa.config.json
@@ -197,6 +198,8 @@ qa-agent validate-config --config ./agent-qa.config.json
 2 — erro de configuração
 3 — erro fatal do harness (não conseguiu rodar)
 4 — abortado por timeout total
+5 — onboarding bloqueado (smoke/readiness)
+6 — pipeline preflight bloqueado (check obrigatório falhou; `preflight-report.json` gerado)
 ```
 
 ## Entrypoint TypeScript

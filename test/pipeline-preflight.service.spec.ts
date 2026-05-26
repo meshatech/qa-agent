@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -9,10 +9,14 @@ import {
   PREFLIGHT_CHECK_NAMES,
   PreflightReportSchema,
 } from '../src/domain/schemas/preflight-report.schema.js';
+import { PreflightBlockedError } from '../src/domain/errors.js';
 import type { ClickUpApiPort } from '../src/application/ports/clickup-api.port.js';
 import type { GitHubApiPort } from '../src/application/ports/github-api.port.js';
 import type { GitRepositoryPort } from '../src/application/ports/git-repository.port.js';
+import type { PreflightReportWriterPort } from '../src/application/ports/preflight-report-writer.port.js';
+import { ValidateConfigUseCase } from '../src/application/use-cases/validate-config.usecase.js';
 import { FileConfigLoader } from '../src/infra/config/file-config.loader.js';
+import { FilePreflightReportWriterAdapter } from '../src/infra/persistence/file-preflight-report-writer.adapter.js';
 
 let tempDirs: string[] = [];
 let originalEnv: NodeJS.ProcessEnv;
@@ -74,13 +78,27 @@ function createGitHubApi(overrides: Partial<GitHubApiPort>): GitHubApiPort {
   return { ...createPassingGitHubApi(), ...overrides };
 }
 
+function createPreflightReportWriter(): PreflightReportWriterPort {
+  return new FilePreflightReportWriterAdapter();
+}
+
 function makeService(
   gitRepo: GitRepositoryPort = createPassingGitRepo(),
   clickUpApi: ClickUpApiPort = createPassingClickUpApi(),
   githubApi: GitHubApiPort = createPassingGitHubApi(),
   sanitizer: SanitizerService = new SanitizerService(),
+  reportWriter: PreflightReportWriterPort = createPreflightReportWriter(),
 ) {
-  return new PipelinePreflightService(new FileConfigLoader(), gitRepo, clickUpApi, githubApi, sanitizer);
+  const configLoader = new FileConfigLoader();
+  return new PipelinePreflightService(
+    configLoader,
+    gitRepo,
+    clickUpApi,
+    githubApi,
+    sanitizer,
+    new ValidateConfigUseCase(configLoader),
+    reportWriter,
+  );
 }
 
 function setPullRequestContextEnv(): void {
@@ -121,34 +139,34 @@ describe('PipelinePreflightService', () => {
     const outputDir = await setupPreflightPassEnv();
     const result = await makeService().run(outputDir);
 
-    expect(result.status).toBe('PASS');
-    expect(result.checks.clickupToken.ok).toBe(true);
-    expect(result.checks.clickupReadAccess.ok).toBe(true);
-    expect(result.checks.clickupReadAccess.statusCode).toBe(200);
-    expect(result.checks.clickupTaskId.ok).toBe(true);
-    expect(result.checks.githubToken.ok).toBe(true);
-    expect(result.checks.prCommentPermission.ok).toBe(true);
-    expect(result.checks.prCommentPermission.repository).toBe('owner/repo');
-    expect(result.checks.prCommentPermission.pullNumber).toBe(42);
-    expect(result.checks.prContext.ok).toBe(true);
-    expect(result.checks.branchHead.ok).toBe(true);
-    expect(result.checks.branchHead.branchHead).toBe('feature/test');
-    expect(result.checks.checkoutHistory.ok).toBe(true);
-    expect(result.checks.checkoutHistory.baseRef).toBe('main');
-    expect(result.checks.checkoutHistory.shallow).toBe(false);
-    expect(result.checks.config.ok).toBe(true);
+    expect(result.report.status).toBe('PASS');
+    expect(result.report.checks.clickupToken.ok).toBe(true);
+    expect(result.report.checks.clickupReadAccess.ok).toBe(true);
+    expect(result.report.checks.clickupReadAccess.statusCode).toBe(200);
+    expect(result.report.checks.clickupTaskId.ok).toBe(true);
+    expect(result.report.checks.githubToken.ok).toBe(true);
+    expect(result.report.checks.prCommentPermission.ok).toBe(true);
+    expect(result.report.checks.prCommentPermission.repository).toBe('owner/repo');
+    expect(result.report.checks.prCommentPermission.pullNumber).toBe(42);
+    expect(result.report.checks.prContext.ok).toBe(true);
+    expect(result.report.checks.branchHead.ok).toBe(true);
+    expect(result.report.checks.branchHead.branchHead).toBe('feature/test');
+    expect(result.report.checks.checkoutHistory.ok).toBe(true);
+    expect(result.report.checks.checkoutHistory.baseRef).toBe('main');
+    expect(result.report.checks.checkoutHistory.shallow).toBe(false);
+    expect(result.report.checks.config.ok).toBe(true);
   });
 
   it('returns BLOCKED when required env is missing', async () => {
     const outputDir = await tempDir();
     const result = await makeService().run(outputDir);
 
-    expect(result.status).toBe('BLOCKED');
-    expect(result.checks.clickupToken.ok).toBe(false);
-    expect(result.checks.clickupTaskId.ok).toBe(false);
-    expect(result.checks.githubToken.ok).toBe(false);
-    expect(result.checks.githubToken.warning).toBeTruthy();
-    expect(result.checks.config.ok).toBe(false);
+    expect(result.report.status).toBe('BLOCKED');
+    expect(result.report.checks.clickupToken.ok).toBe(false);
+    expect(result.report.checks.clickupTaskId.ok).toBe(false);
+    expect(result.report.checks.githubToken.ok).toBe(false);
+    expect(result.report.checks.githubToken.warning).toBeTruthy();
+    expect(result.report.checks.config.ok).toBe(false);
   });
 
   it('returns BLOCKED when PR context is missing', async () => {
@@ -160,13 +178,13 @@ describe('PipelinePreflightService', () => {
     const outputDir = await tempDir();
     const result = await makeService().run(outputDir);
 
-    expect(result.status).toBe('BLOCKED');
-    expect(result.checks.prContext.ok).toBe(false);
-    expect(result.checks.prContext.missing).toContain('GITHUB_EVENT_NAME');
-    expect(result.checks.prContext.missing).toContain('GITHUB_REF');
-    expect(result.checks.prContext.missing).toContain('GITHUB_HEAD_REF');
-    expect(result.checks.prContext.missing).toContain('GITHUB_BASE_REF');
-    expect(result.checks.config.ok).toBe(true);
+    expect(result.report.status).toBe('BLOCKED');
+    expect(result.report.checks.prContext.ok).toBe(false);
+    expect(result.report.checks.prContext.missing).toContain('GITHUB_EVENT_NAME');
+    expect(result.report.checks.prContext.missing).toContain('GITHUB_REF');
+    expect(result.report.checks.prContext.missing).toContain('GITHUB_HEAD_REF');
+    expect(result.report.checks.prContext.missing).toContain('GITHUB_BASE_REF');
+    expect(result.report.checks.config.ok).toBe(true);
   });
 
   it('returns BLOCKED when clickup env is empty strings', async () => {
@@ -179,11 +197,11 @@ describe('PipelinePreflightService', () => {
     const outputDir = await tempDir();
     const result = await makeService().run(outputDir);
 
-    expect(result.status).toBe('BLOCKED');
-    expect(result.checks.githubToken.ok).toBe(false);
-    expect(result.checks.githubToken.warning).toBeTruthy();
-    expect(result.checks.clickupToken.ok).toBe(false);
-    expect(result.checks.clickupTaskId.ok).toBe(false);
+    expect(result.report.status).toBe('BLOCKED');
+    expect(result.report.checks.githubToken.ok).toBe(false);
+    expect(result.report.checks.githubToken.warning).toBeTruthy();
+    expect(result.report.checks.clickupToken.ok).toBe(false);
+    expect(result.report.checks.clickupTaskId.ok).toBe(false);
   });
 
   describe('PRJ-11350 — CLICKUP_TASK_ID validation', () => {
@@ -201,7 +219,7 @@ describe('PipelinePreflightService', () => {
 
       const result = await makeService().run(outputDir);
 
-      expect(result.checks.clickupTaskId.ok).toBe(true);
+      expect(result.report.checks.clickupTaskId.ok).toBe(true);
     });
 
     it('clickupTaskId check fails when CLICKUP_TASK_ID is missing', async () => {
@@ -210,8 +228,8 @@ describe('PipelinePreflightService', () => {
       const outputDir = await tempDir();
       const result = await makeService().run(outputDir);
 
-      expect(result.checks.clickupTaskId.ok).toBe(false);
-      expect(result.status).toBe('BLOCKED');
+      expect(result.report.checks.clickupTaskId.ok).toBe(false);
+      expect(result.report.status).toBe('BLOCKED');
     });
 
     it('clickupTaskId check fails when CLICKUP_TASK_ID is whitespace', async () => {
@@ -221,8 +239,8 @@ describe('PipelinePreflightService', () => {
       const outputDir = await tempDir();
       const result = await makeService().run(outputDir);
 
-      expect(result.checks.clickupTaskId.ok).toBe(false);
-      expect(result.status).toBe('BLOCKED');
+      expect(result.report.checks.clickupTaskId.ok).toBe(false);
+      expect(result.report.status).toBe('BLOCKED');
     });
 
     it('status is BLOCKED when only CLICKUP_TASK_ID is missing', async () => {
@@ -231,12 +249,12 @@ describe('PipelinePreflightService', () => {
       const outputDir = await tempDir();
       const result = await makeService().run(outputDir);
 
-      expect(result.status).toBe('BLOCKED');
-      expect(result.checks.clickupTaskId.ok).toBe(false);
-      expect(result.checks.clickupToken.ok).toBe(true);
-      expect(result.checks.githubToken.ok).toBe(true);
-      expect(result.checks.prContext.ok).toBe(true);
-      expect(result.checks.config.ok).toBe(true);
+      expect(result.report.status).toBe('BLOCKED');
+      expect(result.report.checks.clickupTaskId.ok).toBe(false);
+      expect(result.report.checks.clickupToken.ok).toBe(true);
+      expect(result.report.checks.githubToken.ok).toBe(true);
+      expect(result.report.checks.prContext.ok).toBe(true);
+      expect(result.report.checks.config.ok).toBe(true);
     });
 
     it('preflight-report.json does not contain CLICKUP_TASK_ID value', async () => {
@@ -269,7 +287,7 @@ describe('PipelinePreflightService', () => {
       const outputDir = await setupPreflightPassEnv();
       const result = await makeService().run(outputDir);
 
-      expect(result.checks.clickupToken.ok).toBe(true);
+      expect(result.report.checks.clickupToken.ok).toBe(true);
     });
 
     it('clickupToken check fails when CLICKUP_TOKEN is missing', async () => {
@@ -278,8 +296,8 @@ describe('PipelinePreflightService', () => {
       const outputDir = await tempDir();
       const result = await makeService().run(outputDir);
 
-      expect(result.checks.clickupToken.ok).toBe(false);
-      expect(result.status).toBe('BLOCKED');
+      expect(result.report.checks.clickupToken.ok).toBe(false);
+      expect(result.report.status).toBe('BLOCKED');
     });
 
     it('clickupToken check fails when CLICKUP_TOKEN is whitespace', async () => {
@@ -289,8 +307,8 @@ describe('PipelinePreflightService', () => {
       const outputDir = await tempDir();
       const result = await makeService().run(outputDir);
 
-      expect(result.checks.clickupToken.ok).toBe(false);
-      expect(result.status).toBe('BLOCKED');
+      expect(result.report.checks.clickupToken.ok).toBe(false);
+      expect(result.report.status).toBe('BLOCKED');
     });
 
     it('status is BLOCKED when only CLICKUP_TOKEN is missing', async () => {
@@ -299,11 +317,11 @@ describe('PipelinePreflightService', () => {
       const outputDir = await tempDir();
       const result = await makeService().run(outputDir);
 
-      expect(result.status).toBe('BLOCKED');
-      expect(result.checks.clickupToken.ok).toBe(false);
-      expect(result.checks.githubToken.ok).toBe(true);
-      expect(result.checks.prContext.ok).toBe(true);
-      expect(result.checks.config.ok).toBe(true);
+      expect(result.report.status).toBe('BLOCKED');
+      expect(result.report.checks.clickupToken.ok).toBe(false);
+      expect(result.report.checks.githubToken.ok).toBe(true);
+      expect(result.report.checks.prContext.ok).toBe(true);
+      expect(result.report.checks.config.ok).toBe(true);
     });
 
     it('preflight-report.json does not contain CLICKUP_TOKEN value', async () => {
@@ -339,8 +357,8 @@ describe('PipelinePreflightService', () => {
 
       const result = await makeService().run(outputDir);
 
-      expect(result.checks.githubToken.ok).toBe(true);
-      expect(result.checks.githubToken.warning).toBeUndefined();
+      expect(result.report.checks.githubToken.ok).toBe(true);
+      expect(result.report.checks.githubToken.warning).toBeUndefined();
     });
 
     it('githubToken check fails with warning when GITHUB_TOKEN is missing', async () => {
@@ -349,8 +367,8 @@ describe('PipelinePreflightService', () => {
       const outputDir = await tempDir();
       const result = await makeService().run(outputDir);
 
-      expect(result.checks.githubToken.ok).toBe(false);
-      expect(result.checks.githubToken.warning).toContain('GITHUB_TOKEN is missing');
+      expect(result.report.checks.githubToken.ok).toBe(false);
+      expect(result.report.checks.githubToken.warning).toContain('GITHUB_TOKEN is missing');
     });
 
     it('githubToken check fails with warning when GITHUB_TOKEN is whitespace', async () => {
@@ -360,8 +378,8 @@ describe('PipelinePreflightService', () => {
       const outputDir = await tempDir();
       const result = await makeService().run(outputDir);
 
-      expect(result.checks.githubToken.ok).toBe(false);
-      expect(result.checks.githubToken.warning).toBeTruthy();
+      expect(result.report.checks.githubToken.ok).toBe(false);
+      expect(result.report.checks.githubToken.warning).toBeTruthy();
     });
 
     it('status remains PASS when only GITHUB_TOKEN is missing', async () => {
@@ -370,12 +388,12 @@ describe('PipelinePreflightService', () => {
       const outputDir = await tempDir();
       const result = await makeService().run(outputDir);
 
-      expect(result.status).toBe('PASS');
-      expect(result.checks.githubToken.ok).toBe(false);
-      expect(result.checks.clickupToken.ok).toBe(true);
-      expect(result.checks.clickupTaskId.ok).toBe(true);
-      expect(result.checks.prContext.ok).toBe(true);
-      expect(result.checks.config.ok).toBe(true);
+      expect(result.report.status).toBe('PASS');
+      expect(result.report.checks.githubToken.ok).toBe(false);
+      expect(result.report.checks.clickupToken.ok).toBe(true);
+      expect(result.report.checks.clickupTaskId.ok).toBe(true);
+      expect(result.report.checks.prContext.ok).toBe(true);
+      expect(result.report.checks.config.ok).toBe(true);
     });
 
     it('preflight-report.json does not contain GITHUB_TOKEN value', async () => {
@@ -410,8 +428,8 @@ describe('PipelinePreflightService', () => {
     const outputDir = await setupPreflightPassEnv();
     const result = await makeService().run(outputDir);
 
-    expect(result.timestamp).toBeTruthy();
-    expect(new Date(result.timestamp).toISOString()).toBe(result.timestamp);
+    expect(result.report.timestamp).toBeTruthy();
+    expect(new Date(result.report.timestamp).toISOString()).toBe(result.report.timestamp);
   });
 
   describe('PRJ-11353 — GitHub Actions PR context validation', () => {
@@ -430,9 +448,9 @@ describe('PipelinePreflightService', () => {
       const outputDir = await setupPreflightPassEnv();
       const result = await makeService().run(outputDir);
 
-      expect(result.checks.prContext.ok).toBe(true);
-      expect(result.checks.prContext.missing).toEqual([]);
-      expect(result.checks.prContext.eventName).toBe('pull_request');
+      expect(result.report.checks.prContext.ok).toBe(true);
+      expect(result.report.checks.prContext.missing).toEqual([]);
+      expect(result.report.checks.prContext.eventName).toBe('pull_request');
     });
 
     it('prContext fails when GITHUB_EVENT_NAME is missing', async () => {
@@ -443,9 +461,9 @@ describe('PipelinePreflightService', () => {
       const outputDir = await tempDir();
       const result = await makeService().run(outputDir);
 
-      expect(result.checks.prContext.ok).toBe(false);
-      expect(result.checks.prContext.missing).toContain('GITHUB_EVENT_NAME');
-      expect(result.status).toBe('BLOCKED');
+      expect(result.report.checks.prContext.ok).toBe(false);
+      expect(result.report.checks.prContext.missing).toContain('GITHUB_EVENT_NAME');
+      expect(result.report.status).toBe('BLOCKED');
     });
 
     it('prContext fails when GITHUB_EVENT_NAME is not pull_request', async () => {
@@ -456,10 +474,10 @@ describe('PipelinePreflightService', () => {
       const outputDir = await tempDir();
       const result = await makeService().run(outputDir);
 
-      expect(result.checks.prContext.ok).toBe(false);
-      expect(result.checks.prContext.missing).toContain('GITHUB_EVENT_NAME');
-      expect(result.checks.prContext.eventName).toBe('push');
-      expect(result.status).toBe('BLOCKED');
+      expect(result.report.checks.prContext.ok).toBe(false);
+      expect(result.report.checks.prContext.missing).toContain('GITHUB_EVENT_NAME');
+      expect(result.report.checks.prContext.eventName).toBe('push');
+      expect(result.report.status).toBe('BLOCKED');
     });
 
     it('prContext fails when GITHUB_HEAD_REF is missing', async () => {
@@ -470,11 +488,11 @@ describe('PipelinePreflightService', () => {
       const outputDir = await tempDir();
       const result = await makeService().run(outputDir);
 
-      expect(result.checks.prContext.ok).toBe(false);
-      expect(result.checks.prContext.missing).toContain('GITHUB_HEAD_REF');
-      expect(result.checks.branchHead.ok).toBe(false);
-      expect(result.checks.branchHead.missing).toContain('GITHUB_HEAD_REF');
-      expect(result.status).toBe('BLOCKED');
+      expect(result.report.checks.prContext.ok).toBe(false);
+      expect(result.report.checks.prContext.missing).toContain('GITHUB_HEAD_REF');
+      expect(result.report.checks.branchHead.ok).toBe(false);
+      expect(result.report.checks.branchHead.missing).toContain('GITHUB_HEAD_REF');
+      expect(result.report.status).toBe('BLOCKED');
     });
 
     it('status is BLOCKED when only PR context is invalid', async () => {
@@ -484,12 +502,12 @@ describe('PipelinePreflightService', () => {
       const outputDir = await tempDir();
       const result = await makeService().run(outputDir);
 
-      expect(result.status).toBe('BLOCKED');
-      expect(result.checks.prContext.ok).toBe(false);
-      expect(result.checks.clickupToken.ok).toBe(true);
-      expect(result.checks.clickupTaskId.ok).toBe(true);
-      expect(result.checks.githubToken.ok).toBe(true);
-      expect(result.checks.config.ok).toBe(true);
+      expect(result.report.status).toBe('BLOCKED');
+      expect(result.report.checks.prContext.ok).toBe(false);
+      expect(result.report.checks.clickupToken.ok).toBe(true);
+      expect(result.report.checks.clickupTaskId.ok).toBe(true);
+      expect(result.report.checks.githubToken.ok).toBe(true);
+      expect(result.report.checks.config.ok).toBe(true);
     });
   });
 
@@ -503,9 +521,9 @@ describe('PipelinePreflightService', () => {
       const outputDir = await setupPreflightPassEnv();
       const result = await makeService().run(outputDir);
 
-      expect(result.checks.config.ok).toBe(true);
-      expect(result.checks.config.errors).toEqual([]);
-      expect(result.checks.config.configPath).toBeTruthy();
+      expect(result.report.checks.config.ok).toBe(true);
+      expect(result.report.checks.config.errors).toEqual([]);
+      expect(result.report.checks.config.configPath).toBeTruthy();
     });
 
     it('config fails when file is missing', async () => {
@@ -515,9 +533,9 @@ describe('PipelinePreflightService', () => {
       const outputDir = await tempDir();
       const result = await makeService().run(outputDir);
 
-      expect(result.checks.config.ok).toBe(false);
-      expect(result.checks.config.errors.some((e) => e.includes('Config file not found'))).toBe(true);
-      expect(result.status).toBe('BLOCKED');
+      expect(result.report.checks.config.ok).toBe(false);
+      expect(result.report.checks.config.errors.some((e) => e.includes('Config file not found'))).toBe(true);
+      expect(result.report.status).toBe('BLOCKED');
     });
 
     it('config fails when file is invalid JSON', async () => {
@@ -528,9 +546,9 @@ describe('PipelinePreflightService', () => {
       const outputDir = await tempDir();
       const result = await makeService().run(outputDir);
 
-      expect(result.checks.config.ok).toBe(false);
-      expect(result.checks.config.errors.length).toBeGreaterThan(0);
-      expect(result.status).toBe('BLOCKED');
+      expect(result.report.checks.config.ok).toBe(false);
+      expect(result.report.checks.config.errors.length).toBeGreaterThan(0);
+      expect(result.report.status).toBe('BLOCKED');
     });
 
     it('config fails when required fields are missing', async () => {
@@ -544,9 +562,9 @@ describe('PipelinePreflightService', () => {
       const outputDir = await tempDir();
       const result = await makeService().run(outputDir);
 
-      expect(result.checks.config.ok).toBe(false);
-      expect(result.checks.config.errors.some((e) => e.includes('demand'))).toBe(true);
-      expect(result.status).toBe('BLOCKED');
+      expect(result.report.checks.config.ok).toBe(false);
+      expect(result.report.checks.config.errors.some((e) => e.includes('demand'))).toBe(true);
+      expect(result.report.status).toBe('BLOCKED');
     });
 
     it('status is BLOCKED when only config is invalid', async () => {
@@ -556,12 +574,12 @@ describe('PipelinePreflightService', () => {
       const outputDir = await tempDir();
       const result = await makeService().run(outputDir);
 
-      expect(result.status).toBe('BLOCKED');
-      expect(result.checks.config.ok).toBe(false);
-      expect(result.checks.clickupToken.ok).toBe(true);
-      expect(result.checks.clickupTaskId.ok).toBe(true);
-      expect(result.checks.githubToken.ok).toBe(true);
-      expect(result.checks.prContext.ok).toBe(true);
+      expect(result.report.status).toBe('BLOCKED');
+      expect(result.report.checks.config.ok).toBe(false);
+      expect(result.report.checks.clickupToken.ok).toBe(true);
+      expect(result.report.checks.clickupTaskId.ok).toBe(true);
+      expect(result.report.checks.githubToken.ok).toBe(true);
+      expect(result.report.checks.prContext.ok).toBe(true);
     });
   });
 
@@ -578,9 +596,9 @@ describe('PipelinePreflightService', () => {
 
       const result = await makeService().run(outputDir);
 
-      expect(result.checks.branchHead.ok).toBe(true);
-      expect(result.checks.branchHead.branchHead).toBe('feature/my-branch');
-      expect(result.checks.branchHead.missing).toEqual([]);
+      expect(result.report.checks.branchHead.ok).toBe(true);
+      expect(result.report.checks.branchHead.branchHead).toBe('feature/my-branch');
+      expect(result.report.checks.branchHead.missing).toEqual([]);
     });
 
     it('branchHead fails when GITHUB_HEAD_REF is missing', async () => {
@@ -589,10 +607,10 @@ describe('PipelinePreflightService', () => {
       const outputDir = await tempDir();
       const result = await makeService().run(outputDir);
 
-      expect(result.checks.branchHead.ok).toBe(false);
-      expect(result.checks.branchHead.missing).toContain('GITHUB_HEAD_REF');
-      expect(result.checks.branchHead.branchHead).toBeUndefined();
-      expect(result.status).toBe('BLOCKED');
+      expect(result.report.checks.branchHead.ok).toBe(false);
+      expect(result.report.checks.branchHead.missing).toContain('GITHUB_HEAD_REF');
+      expect(result.report.checks.branchHead.branchHead).toBeUndefined();
+      expect(result.report.status).toBe('BLOCKED');
     });
 
     it('branchHead fails when GITHUB_HEAD_REF is whitespace', async () => {
@@ -602,9 +620,9 @@ describe('PipelinePreflightService', () => {
       const outputDir = await tempDir();
       const result = await makeService().run(outputDir);
 
-      expect(result.checks.branchHead.ok).toBe(false);
-      expect(result.checks.branchHead.missing).toContain('GITHUB_HEAD_REF');
-      expect(result.status).toBe('BLOCKED');
+      expect(result.report.checks.branchHead.ok).toBe(false);
+      expect(result.report.checks.branchHead.missing).toContain('GITHUB_HEAD_REF');
+      expect(result.report.status).toBe('BLOCKED');
     });
 
     it('preflight-report.json includes branchHead value', async () => {
@@ -632,12 +650,12 @@ describe('PipelinePreflightService', () => {
       const outputDir = await tempDir();
       const result = await makeService().run(outputDir);
 
-      expect(result.status).toBe('BLOCKED');
-      expect(result.checks.branchHead.ok).toBe(false);
-      expect(result.checks.clickupToken.ok).toBe(true);
-      expect(result.checks.clickupTaskId.ok).toBe(true);
-      expect(result.checks.githubToken.ok).toBe(true);
-      expect(result.checks.config.ok).toBe(true);
+      expect(result.report.status).toBe('BLOCKED');
+      expect(result.report.checks.branchHead.ok).toBe(false);
+      expect(result.report.checks.clickupToken.ok).toBe(true);
+      expect(result.report.checks.clickupTaskId.ok).toBe(true);
+      expect(result.report.checks.githubToken.ok).toBe(true);
+      expect(result.report.checks.config.ok).toBe(true);
     });
   });
 
@@ -646,10 +664,10 @@ describe('PipelinePreflightService', () => {
       const outputDir = await setupPreflightPassEnv();
       const result = await makeService().run(outputDir);
 
-      expect(result.checks.checkoutHistory.ok).toBe(true);
-      expect(result.checks.checkoutHistory.errors).toEqual([]);
-      expect(result.checks.checkoutHistory.baseRef).toBe('main');
-      expect(result.checks.checkoutHistory.shallow).toBe(false);
+      expect(result.report.checks.checkoutHistory.ok).toBe(true);
+      expect(result.report.checks.checkoutHistory.errors).toEqual([]);
+      expect(result.report.checks.checkoutHistory.baseRef).toBe('main');
+      expect(result.report.checks.checkoutHistory.shallow).toBe(false);
     });
 
     it('checkoutHistory fails when repository is shallow', async () => {
@@ -657,10 +675,10 @@ describe('PipelinePreflightService', () => {
       const outputDir = await setupPreflightPassEnv();
       const result = await makeService(gitRepo).run(outputDir);
 
-      expect(result.checks.checkoutHistory.ok).toBe(false);
-      expect(result.checks.checkoutHistory.shallow).toBe(true);
-      expect(result.checks.checkoutHistory.errors.some((e) => e.includes('shallow'))).toBe(true);
-      expect(result.status).toBe('BLOCKED');
+      expect(result.report.checks.checkoutHistory.ok).toBe(false);
+      expect(result.report.checks.checkoutHistory.shallow).toBe(true);
+      expect(result.report.checks.checkoutHistory.errors.some((e) => e.includes('shallow'))).toBe(true);
+      expect(result.report.status).toBe('BLOCKED');
     });
 
     it('checkoutHistory fails when base branch is not accessible locally', async () => {
@@ -668,9 +686,9 @@ describe('PipelinePreflightService', () => {
       const outputDir = await setupPreflightPassEnv();
       const result = await makeService(gitRepo).run(outputDir);
 
-      expect(result.checks.checkoutHistory.ok).toBe(false);
-      expect(result.checks.checkoutHistory.errors.some((e) => e.includes('origin/main'))).toBe(true);
-      expect(result.status).toBe('BLOCKED');
+      expect(result.report.checks.checkoutHistory.ok).toBe(false);
+      expect(result.report.checks.checkoutHistory.errors.some((e) => e.includes('origin/main'))).toBe(true);
+      expect(result.report.status).toBe('BLOCKED');
     });
 
     it('checkoutHistory fails when GITHUB_BASE_REF is missing', async () => {
@@ -679,9 +697,9 @@ describe('PipelinePreflightService', () => {
 
       const result = await makeService().run(outputDir);
 
-      expect(result.checks.checkoutHistory.ok).toBe(false);
-      expect(result.checks.checkoutHistory.errors).toContain('GITHUB_BASE_REF is missing');
-      expect(result.status).toBe('BLOCKED');
+      expect(result.report.checks.checkoutHistory.ok).toBe(false);
+      expect(result.report.checks.checkoutHistory.errors).toContain('GITHUB_BASE_REF is missing');
+      expect(result.report.status).toBe('BLOCKED');
     });
 
     it('status is BLOCKED when only checkout history is invalid', async () => {
@@ -689,14 +707,14 @@ describe('PipelinePreflightService', () => {
       const outputDir = await setupPreflightPassEnv();
       const result = await makeService(gitRepo).run(outputDir);
 
-      expect(result.status).toBe('BLOCKED');
-      expect(result.checks.checkoutHistory.ok).toBe(false);
-      expect(result.checks.clickupToken.ok).toBe(true);
-      expect(result.checks.clickupTaskId.ok).toBe(true);
-      expect(result.checks.githubToken.ok).toBe(true);
-      expect(result.checks.prContext.ok).toBe(true);
-      expect(result.checks.branchHead.ok).toBe(true);
-      expect(result.checks.config.ok).toBe(true);
+      expect(result.report.status).toBe('BLOCKED');
+      expect(result.report.checks.checkoutHistory.ok).toBe(false);
+      expect(result.report.checks.clickupToken.ok).toBe(true);
+      expect(result.report.checks.clickupTaskId.ok).toBe(true);
+      expect(result.report.checks.githubToken.ok).toBe(true);
+      expect(result.report.checks.prContext.ok).toBe(true);
+      expect(result.report.checks.branchHead.ok).toBe(true);
+      expect(result.report.checks.config.ok).toBe(true);
     });
   });
 
@@ -705,9 +723,9 @@ describe('PipelinePreflightService', () => {
       const outputDir = await setupPreflightPassEnv();
       const result = await makeService().run(outputDir);
 
-      expect(result.checks.clickupReadAccess.ok).toBe(true);
-      expect(result.checks.clickupReadAccess.statusCode).toBe(200);
-      expect(result.checks.clickupReadAccess.error).toBeUndefined();
+      expect(result.report.checks.clickupReadAccess.ok).toBe(true);
+      expect(result.report.checks.clickupReadAccess.statusCode).toBe(200);
+      expect(result.report.checks.clickupReadAccess.error).toBeUndefined();
     });
 
     it('clickupReadAccess calls verifyReadAccess with CLICKUP_TOKEN', async () => {
@@ -739,9 +757,9 @@ describe('PipelinePreflightService', () => {
       const outputDir = await setupPreflightPassEnv();
       const result = await makeService(createPassingGitRepo(), clickUpApi).run(outputDir);
 
-      expect(result.checks.clickupReadAccess.ok).toBe(false);
-      expect(result.checks.clickupReadAccess.statusCode).toBe(401);
-      expect(result.status).toBe('BLOCKED');
+      expect(result.report.checks.clickupReadAccess.ok).toBe(false);
+      expect(result.report.checks.clickupReadAccess.statusCode).toBe(401);
+      expect(result.report.status).toBe('BLOCKED');
     });
 
     it('clickupReadAccess fails when API returns 403', async () => {
@@ -755,9 +773,9 @@ describe('PipelinePreflightService', () => {
       const outputDir = await setupPreflightPassEnv();
       const result = await makeService(createPassingGitRepo(), clickUpApi).run(outputDir);
 
-      expect(result.checks.clickupReadAccess.ok).toBe(false);
-      expect(result.checks.clickupReadAccess.statusCode).toBe(403);
-      expect(result.status).toBe('BLOCKED');
+      expect(result.report.checks.clickupReadAccess.ok).toBe(false);
+      expect(result.report.checks.clickupReadAccess.statusCode).toBe(403);
+      expect(result.report.status).toBe('BLOCKED');
     });
 
     it('preflight-report.json does not contain CLICKUP_TOKEN value for read access check', async () => {
@@ -784,15 +802,15 @@ describe('PipelinePreflightService', () => {
       const outputDir = await setupPreflightPassEnv();
       const result = await makeService(createPassingGitRepo(), clickUpApi).run(outputDir);
 
-      expect(result.status).toBe('BLOCKED');
-      expect(result.checks.clickupReadAccess.ok).toBe(false);
-      expect(result.checks.clickupToken.ok).toBe(true);
-      expect(result.checks.clickupTaskId.ok).toBe(true);
-      expect(result.checks.githubToken.ok).toBe(true);
-      expect(result.checks.prContext.ok).toBe(true);
-      expect(result.checks.branchHead.ok).toBe(true);
-      expect(result.checks.checkoutHistory.ok).toBe(true);
-      expect(result.checks.config.ok).toBe(true);
+      expect(result.report.status).toBe('BLOCKED');
+      expect(result.report.checks.clickupReadAccess.ok).toBe(false);
+      expect(result.report.checks.clickupToken.ok).toBe(true);
+      expect(result.report.checks.clickupTaskId.ok).toBe(true);
+      expect(result.report.checks.githubToken.ok).toBe(true);
+      expect(result.report.checks.prContext.ok).toBe(true);
+      expect(result.report.checks.branchHead.ok).toBe(true);
+      expect(result.report.checks.checkoutHistory.ok).toBe(true);
+      expect(result.report.checks.config.ok).toBe(true);
     });
   });
 
@@ -801,11 +819,11 @@ describe('PipelinePreflightService', () => {
       const outputDir = await setupPreflightPassEnv();
       const result = await makeService().run(outputDir);
 
-      expect(result.checks.prCommentPermission.ok).toBe(true);
-      expect(result.checks.prCommentPermission.statusCode).toBe(200);
-      expect(result.checks.prCommentPermission.warning).toBeUndefined();
-      expect(result.checks.prCommentPermission.repository).toBe('owner/repo');
-      expect(result.checks.prCommentPermission.pullNumber).toBe(42);
+      expect(result.report.checks.prCommentPermission.ok).toBe(true);
+      expect(result.report.checks.prCommentPermission.statusCode).toBe(200);
+      expect(result.report.checks.prCommentPermission.warning).toBeUndefined();
+      expect(result.report.checks.prCommentPermission.repository).toBe('owner/repo');
+      expect(result.report.checks.prCommentPermission.pullNumber).toBe(42);
     });
 
     it('prCommentPermission calls verifyPrCommentPermission with token and PR metadata', async () => {
@@ -843,9 +861,9 @@ describe('PipelinePreflightService', () => {
       const outputDir = await setupPreflightPassEnv();
       const result = await makeService(createPassingGitRepo(), createPassingClickUpApi(), githubApi).run(outputDir);
 
-      expect(result.checks.prCommentPermission.ok).toBe(false);
-      expect(result.checks.prCommentPermission.statusCode).toBe(403);
-      expect(result.checks.prCommentPermission.warning).toContain('403');
+      expect(result.report.checks.prCommentPermission.ok).toBe(false);
+      expect(result.report.checks.prCommentPermission.statusCode).toBe(403);
+      expect(result.report.checks.prCommentPermission.warning).toContain('403');
     });
 
     it('prCommentPermission fails with warning when GITHUB_TOKEN is missing', async () => {
@@ -854,8 +872,8 @@ describe('PipelinePreflightService', () => {
 
       const result = await makeService().run(outputDir);
 
-      expect(result.checks.prCommentPermission.ok).toBe(false);
-      expect(result.checks.prCommentPermission.warning).toContain('GITHUB_TOKEN is missing');
+      expect(result.report.checks.prCommentPermission.ok).toBe(false);
+      expect(result.report.checks.prCommentPermission.warning).toContain('GITHUB_TOKEN is missing');
     });
 
     it('status remains PASS when only pr comment permission fails', async () => {
@@ -869,16 +887,16 @@ describe('PipelinePreflightService', () => {
       const outputDir = await setupPreflightPassEnv();
       const result = await makeService(createPassingGitRepo(), createPassingClickUpApi(), githubApi).run(outputDir);
 
-      expect(result.status).toBe('PASS');
-      expect(result.checks.prCommentPermission.ok).toBe(false);
-      expect(result.checks.clickupToken.ok).toBe(true);
-      expect(result.checks.clickupReadAccess.ok).toBe(true);
-      expect(result.checks.clickupTaskId.ok).toBe(true);
-      expect(result.checks.githubToken.ok).toBe(true);
-      expect(result.checks.prContext.ok).toBe(true);
-      expect(result.checks.branchHead.ok).toBe(true);
-      expect(result.checks.checkoutHistory.ok).toBe(true);
-      expect(result.checks.config.ok).toBe(true);
+      expect(result.report.status).toBe('PASS');
+      expect(result.report.checks.prCommentPermission.ok).toBe(false);
+      expect(result.report.checks.clickupToken.ok).toBe(true);
+      expect(result.report.checks.clickupReadAccess.ok).toBe(true);
+      expect(result.report.checks.clickupTaskId.ok).toBe(true);
+      expect(result.report.checks.githubToken.ok).toBe(true);
+      expect(result.report.checks.prContext.ok).toBe(true);
+      expect(result.report.checks.branchHead.ok).toBe(true);
+      expect(result.report.checks.checkoutHistory.ok).toBe(true);
+      expect(result.report.checks.config.ok).toBe(true);
     });
 
     it('preflight-report.json does not contain GITHUB_TOKEN value for pr comment permission check', async () => {
@@ -911,11 +929,11 @@ describe('PipelinePreflightService', () => {
       const result = await makeService(createPassingGitRepo(), clickUpApi).run(outputDir);
       const raw = await readFile(join(outputDir, 'preflight-report.json'), 'utf8');
 
-      expect(result.status).toBe('BLOCKED');
+      expect(result.report.status).toBe('BLOCKED');
       expect(raw).not.toContain(secret);
       expect(raw).toContain('***REDACTED***');
-      expect(result.checks.clickupReadAccess.error).toContain('***REDACTED***');
-      expect(result.checks.clickupReadAccess.error).not.toContain(secret);
+      expect(result.report.checks.clickupReadAccess.error).toContain('***REDACTED***');
+      expect(result.report.checks.clickupReadAccess.error).not.toContain(secret);
     });
 
     it('preflight-report.json masks Authorization Bearer header in GitHub error', async () => {
@@ -934,8 +952,8 @@ describe('PipelinePreflightService', () => {
 
       expect(raw).not.toContain(bearer);
       expect(raw).toContain('***REDACTED***');
-      expect(result.checks.prCommentPermission.warning).toContain('***REDACTED***');
-      expect(result.checks.prCommentPermission.warning).not.toContain(bearer);
+      expect(result.report.checks.prCommentPermission.warning).toContain('***REDACTED***');
+      expect(result.report.checks.prCommentPermission.warning).not.toContain(bearer);
     });
 
     it('run() return value matches sanitized preflight-report.json on disk', async () => {
@@ -953,30 +971,18 @@ describe('PipelinePreflightService', () => {
       const raw = await readFile(join(outputDir, 'preflight-report.json'), 'utf8');
       const parsed = JSON.parse(raw);
 
-      expect(result).toEqual(parsed);
-      expect(JSON.stringify(result)).not.toContain(secret);
+      expect(result.report).toEqual(parsed);
+      expect(result.reportPath).toContain('preflight-report.json');
+      expect(JSON.stringify(result.report)).not.toContain(secret);
     });
 
-    it('logPreflight masks tokens in console output', async () => {
-      const secret = 'ghp_test_console_leak_99999999';
-      const logs: string[] = [];
-      const originalLog = console.log;
-      console.log = (...args: unknown[]) => {
-        logs.push(args.map(String).join(' '));
-      };
+    it('run() returns reportPath for persisted artifact', async () => {
+      const outputDir = await setupPreflightPassEnv();
+      const result = await makeService().run(outputDir);
 
-      try {
-        process.env.GITHUB_TOKEN = secret;
-        const outputDir = await setupPreflightPassEnv();
-        process.env.GITHUB_TOKEN = secret;
-
-        await makeService().run(outputDir);
-
-        expect(logs.some((line) => line.includes('Preflight PASS'))).toBe(true);
-        expect(logs.join('\n')).not.toContain(secret);
-      } finally {
-        console.log = originalLog;
-      }
+      expect(result.reportPath).toContain('preflight-report.json');
+      const raw = await readFile(result.reportPath, 'utf8');
+      expect(JSON.parse(raw).status).toBe('PASS');
     });
   });
 
@@ -1006,9 +1012,9 @@ describe('PipelinePreflightService', () => {
       const outputDir = await setupPreflightPassEnv();
       const result = await makeService().run(outputDir);
 
-      expect(result.checkItems).toHaveLength(PREFLIGHT_CHECK_NAMES.length);
-      expect(result.checkItems.map((item) => item.name)).toEqual([...PREFLIGHT_CHECK_NAMES]);
-      for (const item of result.checkItems) {
+      expect(result.report.checkItems).toHaveLength(PREFLIGHT_CHECK_NAMES.length);
+      expect(result.report.checkItems.map((item) => item.name)).toEqual([...PREFLIGHT_CHECK_NAMES]);
+      for (const item of result.report.checkItems) {
         expect(item.status).toMatch(/^(PASS|FAIL|WARN)$/);
         expect(item.message.length).toBeGreaterThan(0);
       }
@@ -1018,9 +1024,9 @@ describe('PipelinePreflightService', () => {
       const outputDir = await setupPreflightPassEnv();
       const result = await makeService().run(outputDir);
 
-      expect(result.status).toBe('PASS');
-      expect(result.schemaVersion).toBe('preflight-report.v1');
-      expect(result.tokensMasked).toBe(true);
+      expect(result.report.status).toBe('PASS');
+      expect(result.report.schemaVersion).toBe('preflight-report.v1');
+      expect(result.report.tokensMasked).toBe(true);
     });
 
     it('global status is BLOCKED when CLICKUP_TOKEN is missing', async () => {
@@ -1029,8 +1035,8 @@ describe('PipelinePreflightService', () => {
 
       const result = await makeService().run(outputDir);
 
-      expect(result.status).toBe('BLOCKED');
-      const clickupTokenItem = result.checkItems.find((item) => item.name === 'clickupToken');
+      expect(result.report.status).toBe('BLOCKED');
+      const clickupTokenItem = result.report.checkItems.find((item) => item.name === 'clickupToken');
       expect(clickupTokenItem?.status).toBe('FAIL');
     });
 
@@ -1040,8 +1046,8 @@ describe('PipelinePreflightService', () => {
 
       const result = await makeService().run(outputDir);
 
-      expect(result.status).toBe('PASS');
-      const githubTokenItem = result.checkItems.find((item) => item.name === 'githubToken');
+      expect(result.report.status).toBe('PASS');
+      const githubTokenItem = result.report.checkItems.find((item) => item.name === 'githubToken');
       expect(githubTokenItem?.status).toBe('WARN');
     });
 
@@ -1059,9 +1065,62 @@ describe('PipelinePreflightService', () => {
       const result = await makeService(createPassingGitRepo(), clickUpApi).run(outputDir);
       const raw = await readFile(join(outputDir, 'preflight-report.json'), 'utf8');
 
-      expect(result.tokensMasked).toBe(true);
+      expect(result.report.tokensMasked).toBe(true);
       expect(raw).not.toContain(secret);
       expect(raw).toContain('***REDACTED***');
+    });
+  });
+
+  describe('PRJ-11360 — interrupt execution on BLOCKED', () => {
+    it('runOrThrow() resolves when all blocking checks pass', async () => {
+      const outputDir = await setupPreflightPassEnv();
+      const result = await makeService().runOrThrow(outputDir);
+
+      expect(result.report.status).toBe('PASS');
+    });
+
+    it('runOrThrow() throws PreflightBlockedError when CLICKUP_TOKEN is missing', async () => {
+      const outputDir = await setupPreflightPassEnv();
+      delete process.env.CLICKUP_TOKEN;
+
+      await expect(makeService().runOrThrow(outputDir)).rejects.toBeInstanceOf(PreflightBlockedError);
+    });
+
+    it('preflight-report.json exists with BLOCKED status before runOrThrow throws', async () => {
+      const outputDir = await tempDir();
+      delete process.env.CLICKUP_TOKEN;
+
+      await expect(makeService().runOrThrow(outputDir)).rejects.toBeInstanceOf(PreflightBlockedError);
+
+      const raw = await readFile(join(outputDir, 'preflight-report.json'), 'utf8');
+      expect(JSON.parse(raw).status).toBe('BLOCKED');
+    });
+
+    it('runOrThrow() resolves when only GITHUB_TOKEN is missing', async () => {
+      const outputDir = await setupPreflightPassEnv();
+      delete process.env.GITHUB_TOKEN;
+
+      const result = await makeService().runOrThrow(outputDir);
+
+      expect(result.report.status).toBe('PASS');
+      expect(result.report.checks.githubToken.ok).toBe(false);
+    });
+
+    it('report writer persists report before runOrThrow throws', async () => {
+      const write = vi.fn(async (dir: string, report: import('../src/domain/schemas/preflight-report.schema.js').PreflightReport) => {
+        const path = join(dir, 'preflight-report.json');
+        await writeFile(path, JSON.stringify(report, null, 2), 'utf8');
+        return path;
+      });
+      const outputDir = await tempDir();
+      delete process.env.CLICKUP_TOKEN;
+
+      await expect(
+        makeService(createPassingGitRepo(), createPassingClickUpApi(), createPassingGitHubApi(), new SanitizerService(), { write }).runOrThrow(outputDir),
+      ).rejects.toBeInstanceOf(PreflightBlockedError);
+
+      expect(write).toHaveBeenCalledTimes(1);
+      expect(write.mock.calls[0]?.[1]?.status).toBe('BLOCKED');
     });
   });
 });

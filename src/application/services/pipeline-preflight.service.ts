@@ -1,13 +1,15 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
 
 import type { ConfigLoaderPort } from '../ports/config-loader.port.js';
 import type { ClickUpApiPort, ClickUpReadAccessResult } from '../ports/clickup-api.port.js';
 import type { GitHubApiPort, GitHubPrCommentPermissionResult } from '../ports/github-api.port.js';
 import type { GitRepositoryPort } from '../ports/git-repository.port.js';
+import type { PreflightReportWriterPort } from '../ports/preflight-report-writer.port.js';
+import type { PipelinePreflightRunResult } from '../dto/pipeline-preflight-result.dto.js';
+import { ValidateConfigUseCase } from '../use-cases/validate-config.usecase.js';
 import { RunConfigSchema } from '../../domain/schemas/config.schema.js';
 import {
+  BLOCKING_PREFLIGHT_CHECKS,
   PREFLIGHT_CHECK_NAMES,
   PreflightReportSchema,
   type PreflightCheckItem,
@@ -15,9 +17,8 @@ import {
   type PreflightChecksDetail,
   type PreflightReport,
 } from '../../domain/schemas/preflight-report.schema.js';
+import { ConfigError, PreflightBlockedError } from '../../domain/errors.js';
 import { SanitizerService } from './sanitizer.service.js';
-
-export type { PreflightReport };
 
 type PreflightCheckStatus = PreflightCheckItem['status'];
 
@@ -33,16 +34,26 @@ export class PipelinePreflightService {
     @Inject('ClickUpApiPort') private readonly clickUpApi: ClickUpApiPort,
     @Inject('GitHubApiPort') private readonly githubApi: GitHubApiPort,
     @Inject(SanitizerService) private readonly sanitizer: SanitizerService,
+    @Inject(ValidateConfigUseCase) private readonly validateConfigUseCase: ValidateConfigUseCase,
+    @Inject('PreflightReportWriterPort') private readonly reportWriter: PreflightReportWriterPort,
   ) {}
 
-  async run(outputDir: string): Promise<PreflightReport> {
+  async run(outputDir: string): Promise<PipelinePreflightRunResult> {
     const checks = await this.runChecks();
     const allOk = this.isBlockingChecksOk(checks);
     const report = this.buildPreflightReport(checks, allOk);
     const safeReport = this.sanitizeReport(report);
     const validated = PreflightReportSchema.parse(safeReport);
-    await this.writeReport(outputDir, validated);
-    return validated;
+    const reportPath = await this.reportWriter.write(outputDir, validated);
+    return { report: validated, reportPath };
+  }
+
+  async runOrThrow(outputDir: string): Promise<PipelinePreflightRunResult> {
+    const result = await this.run(outputDir);
+    if (result.report.status === 'BLOCKED') {
+      throw new PreflightBlockedError(result.report, result.reportPath);
+    }
+    return result;
   }
 
   private async runChecks(): Promise<PreflightChecksDetail> {
@@ -60,15 +71,7 @@ export class PipelinePreflightService {
   }
 
   private isBlockingChecksOk(checks: PreflightChecksDetail): boolean {
-    return (
-      checks.clickupToken.ok &&
-      checks.clickupReadAccess.ok &&
-      checks.clickupTaskId.ok &&
-      checks.prContext.ok &&
-      checks.branchHead.ok &&
-      checks.checkoutHistory.ok &&
-      checks.config.ok
-    );
+    return BLOCKING_PREFLIGHT_CHECKS.every((name) => checks[name].ok);
   }
 
   private buildPreflightReport(checks: PreflightChecksDetail, allOk: boolean): PreflightReport {
@@ -247,6 +250,14 @@ export class PipelinePreflightService {
       const parsed = RunConfigSchema.safeParse(raw);
       if (!parsed.success) {
         errors.push(...parsed.error.issues.map((issue) => `${issue.path.join('.') || 'root'}: ${issue.message}`));
+        return { ok: false, errors, configPath };
+      }
+
+      try {
+        await this.validateConfigUseCase.validateLoaded(parsed.data, { skipHealthCheck: true });
+      } catch (error) {
+        const message = error instanceof ConfigError ? error.message : String(error);
+        errors.push(message);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -274,15 +285,5 @@ export class PipelinePreflightService {
   private sanitizeReport(report: PreflightReport): PreflightReport {
     const sanitized = this.sanitizer.sanitizeForOutput(report, this.collectKnownSecrets());
     return { ...sanitized, tokensMasked: true as const };
-  }
-
-  private logPreflight(message: string): void {
-    console.log(this.sanitizer.sanitizeForOutput(message, this.collectKnownSecrets()));
-  }
-
-  private async writeReport(outputDir: string, report: PreflightReport): Promise<void> {
-    const path = join(outputDir, 'preflight-report.json');
-    await writeFile(path, JSON.stringify(report, null, 2), 'utf8');
-    this.logPreflight(`Preflight ${report.status} → preflight-report.json`);
   }
 }

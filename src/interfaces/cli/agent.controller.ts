@@ -32,4 +32,8 @@ export class AgentController {
   onboard(configPath: string, projectDir?: string, outputDir?: string, headed?: boolean) {
     return this.service.onboard(configPath, projectDir, outputDir, headed);
   }
+
+  preflight(outputDir: string) {
+    return this.service.preflight(outputDir);
+  }
 }

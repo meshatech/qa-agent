@@ -14,6 +14,16 @@ export const PREFLIGHT_CHECK_NAMES = [
 
 export type PreflightCheckName = (typeof PREFLIGHT_CHECK_NAMES)[number];
 
+export const BLOCKING_PREFLIGHT_CHECKS = [
+  'clickupToken',
+  'clickupReadAccess',
+  'clickupTaskId',
+  'prContext',
+  'branchHead',
+  'checkoutHistory',
+  'config',
+] as const satisfies readonly PreflightCheckName[];
+
 export const PreflightCheckStatusSchema = z.enum(['PASS', 'FAIL', 'WARN']);
 
 export const PreflightCheckItemSchema = z.object({

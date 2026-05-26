@@ -15,7 +15,8 @@ Runtime de QA guiado por LLM para executar fluxos web via Playwright, com observ
 O projeto ja entrega hoje:
 
 - parse e validacao de config com `JSON`, `YAML` e `TS/JS`
-- preflight antes da run com validacao de envs e `HEAD` no `baseUrl`
+- preflight de runtime antes da run com validacao de envs e `HEAD` no `baseUrl` (`validate-config`)
+- preflight de pipeline CI com checks ClickUp/GitHub/git e `preflight-report.json` (`preflight`)
 - loop `observe -> decide -> act -> validate -> recover`
 - protecao contra `stale observation`
 - data harness para placeholders dinamicos
@@ -325,6 +326,14 @@ Validar config:
 npm run qa-agent -- validate-config --config ./agent-qa.config.json
 ```
 
+Preflight de pipeline (CI — ClickUp, GitHub, git, config sem `HEAD`):
+
+```bash
+npm run qa-agent -- preflight --output-dir ./.agent-qa/pipeline
+```
+
+Emite `preflight-report.json` no diretorio de saida. Exit code `6` quando `status` e `BLOCKED`.
+
 Executar uma run:
 
 ```bash
@@ -355,6 +364,18 @@ Gerar relatorio markdown ou JSON:
 npm run qa-agent -- report --runs-dir ./qa-agent-runs --format md
 npm run qa-agent -- report --runs-dir ./qa-agent-runs --run-id 2026-05-20T01-00-00__abcd1234 --format json
 ```
+
+### Exit codes da CLI
+
+| Codigo | Significado |
+|--------|-------------|
+| `0` | Sucesso |
+| `1` | Bugs encontrados na run |
+| `2` | Erro de config |
+| `3` | Erro fatal do harness |
+| `4` | Timeout |
+| `5` | Onboarding bloqueado |
+| `6` | Preflight de pipeline bloqueado (`qa-agent preflight`) |
 
 ## Fluxo Da Run
 

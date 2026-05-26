@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { ExitCodes, classifyError, classifyResult } from '../src/interfaces/cli/exit-codes.js';
-import { ConfigError, HarnessFatalError, RunTimeoutError } from '../src/domain/errors.js';
+import { ExitCodes, classifyError, classifyPreflightReport, classifyResult } from '../src/interfaces/cli/exit-codes.js';
+import { ConfigError, HarnessFatalError, PreflightBlockedError, RunTimeoutError } from '../src/domain/errors.js';
 import type { QaRunResult } from '../src/domain/models/run.model.js';
+import { PREFLIGHT_CHECK_NAMES } from '../src/domain/schemas/preflight-report.schema.js';
 
 const baseResult: QaRunResult = {
   status: 'PASSED',
@@ -42,5 +43,57 @@ describe('CLI exit codes', () => {
 
   it('3 HARNESS_FATAL for unknown errors', () => {
     expect(classifyError(new Error('boom'))).toBe(ExitCodes.HARNESS_FATAL);
+  });
+
+  it('6 PREFLIGHT_BLOCKED for PreflightBlockedError', () => {
+    const report = {
+      schemaVersion: 'preflight-report.v1' as const,
+      status: 'BLOCKED' as const,
+      timestamp: new Date().toISOString(),
+      tokensMasked: true as const,
+      checkItems: PREFLIGHT_CHECK_NAMES.map((name) => ({
+        name,
+        status: 'FAIL' as const,
+        message: `${name} failed`,
+      })),
+      checks: {
+        clickupToken: { ok: false },
+        clickupReadAccess: { ok: false },
+        clickupTaskId: { ok: false },
+        githubToken: { ok: false },
+        prCommentPermission: { ok: false },
+        prContext: { ok: false, missing: ['GITHUB_EVENT_NAME'] },
+        branchHead: { ok: false, missing: ['GITHUB_HEAD_REF'] },
+        checkoutHistory: { ok: false, errors: ['missing base'] },
+        config: { ok: false, errors: ['invalid'] },
+      },
+    };
+    expect(classifyError(new PreflightBlockedError(report))).toBe(ExitCodes.PREFLIGHT_BLOCKED);
+  });
+
+  it('0 OK for preflight PASS report', () => {
+    expect(
+      classifyPreflightReport({
+        schemaVersion: 'preflight-report.v1',
+        status: 'PASS',
+        timestamp: new Date().toISOString(),
+        tokensMasked: true,
+        checkItems: [],
+        checks: {} as never,
+      }),
+    ).toBe(ExitCodes.OK);
+  });
+
+  it('6 PREFLIGHT_BLOCKED for preflight BLOCKED report', () => {
+    expect(
+      classifyPreflightReport({
+        schemaVersion: 'preflight-report.v1',
+        status: 'BLOCKED',
+        timestamp: new Date().toISOString(),
+        tokensMasked: true,
+        checkItems: [],
+        checks: {} as never,
+      }),
+    ).toBe(ExitCodes.PREFLIGHT_BLOCKED);
   });
 });

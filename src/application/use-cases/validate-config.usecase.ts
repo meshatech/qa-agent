@@ -26,7 +26,7 @@ export class ValidateConfigUseCase {
     return config;
   }
 
-  async validateLoaded(config: RunConfig): Promise<void> {
+  async validateLoaded(config: RunConfig, options?: { skipHealthCheck?: boolean }): Promise<void> {
     if (config.llm.provider !== 'fake' && !process.env[config.llm.apiKeyEnv]) {
       throw new ConfigError(`Missing env ${config.llm.apiKeyEnv} for llm.provider=${config.llm.provider}`);
     }
@@ -35,6 +35,7 @@ export class ValidateConfigUseCase {
         if (!process.env[key]) throw new ConfigError(`Missing env ${key} for formLogin auth`);
       }
     }
+    if (options?.skipHealthCheck) return;
     const res = await fetch(config.baseUrl, { method: 'HEAD' }).catch(() => undefined);
     if (res && res.status >= 500) throw new ConfigError(`baseUrl health check failed: ${res.status}`);
   }
