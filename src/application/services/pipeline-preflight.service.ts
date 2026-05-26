@@ -9,7 +9,7 @@ export interface PreflightReport {
     clickupToken: { ok: boolean };
     clickupTaskId: { ok: boolean };
     githubToken: { ok: boolean; warning?: string };
-    prContext: { ok: boolean; missing: string[] };
+    prContext: { ok: boolean; missing: string[]; eventName?: string };
     config: { ok: boolean; errors: string[] };
   };
 }
@@ -65,10 +65,21 @@ export class PipelinePreflightService {
     };
   }
 
-  private validatePrContext(): { ok: boolean; missing: string[] } {
-    const required = ['GITHUB_REPOSITORY', 'GITHUB_REF_NAME', 'GITHUB_SHA'];
-    const missing = required.filter((key) => !process.env[key] || process.env[key]!.trim().length === 0);
-    return { ok: missing.length === 0, missing };
+  private validatePrContext(): { ok: boolean; missing: string[]; eventName?: string } {
+    const missing: string[] = [];
+    const eventName = process.env.GITHUB_EVENT_NAME?.trim() ?? '';
+
+    if (eventName !== 'pull_request') {
+      missing.push('GITHUB_EVENT_NAME');
+    }
+
+    for (const key of ['GITHUB_REF', 'GITHUB_HEAD_REF', 'GITHUB_BASE_REF'] as const) {
+      if (!process.env[key]?.trim()) {
+        missing.push(key);
+      }
+    }
+
+    return { ok: missing.length === 0, missing, eventName: eventName || undefined };
   }
 
   private validateConfig(): { ok: boolean; errors: string[] } {

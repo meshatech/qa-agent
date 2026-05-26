@@ -31,14 +31,23 @@ function makeService() {
   return new PipelinePreflightService();
 }
 
+function setPullRequestContextEnv(): void {
+  process.env.GITHUB_EVENT_NAME = 'pull_request';
+  process.env.GITHUB_REF = 'refs/pull/42/merge';
+  process.env.GITHUB_HEAD_REF = 'feature/test';
+  process.env.GITHUB_BASE_REF = 'main';
+}
+
+function setFullPreflightEnv(): void {
+  process.env.CLICKUP_TOKEN = 'pk_live_valid_token';
+  process.env.GITHUB_TOKEN = 'ghp_xxx';
+  process.env.CLICKUP_TASK_ID = '12345';
+  setPullRequestContextEnv();
+}
+
 describe('PipelinePreflightService', () => {
   it('returns PASS when all checks succeed', async () => {
-    process.env.CLICKUP_TOKEN = 'token';
-    process.env.GITHUB_TOKEN = 'ghp_xxx';
-    process.env.CLICKUP_TASK_ID = '12345';
-    process.env.GITHUB_REPOSITORY = 'owner/repo';
-    process.env.GITHUB_REF_NAME = 'feature/test';
-    process.env.GITHUB_SHA = 'abc123';
+    setFullPreflightEnv();
 
     const outputDir = await tempDir();
     const service = makeService();
@@ -77,18 +86,17 @@ describe('PipelinePreflightService', () => {
 
     expect(result.status).toBe('BLOCKED');
     expect(result.checks.prContext.ok).toBe(false);
-    expect(result.checks.prContext.missing).toContain('GITHUB_REPOSITORY');
-    expect(result.checks.prContext.missing).toContain('GITHUB_REF_NAME');
-    expect(result.checks.prContext.missing).toContain('GITHUB_SHA');
+    expect(result.checks.prContext.missing).toContain('GITHUB_EVENT_NAME');
+    expect(result.checks.prContext.missing).toContain('GITHUB_REF');
+    expect(result.checks.prContext.missing).toContain('GITHUB_HEAD_REF');
+    expect(result.checks.prContext.missing).toContain('GITHUB_BASE_REF');
   });
 
   it('returns BLOCKED when clickup env is empty strings', async () => {
     process.env.CLICKUP_TOKEN = '';
     process.env.GITHUB_TOKEN = '   ';
     process.env.CLICKUP_TASK_ID = '';
-    process.env.GITHUB_REPOSITORY = 'owner/repo';
-    process.env.GITHUB_REF_NAME = 'feature/test';
-    process.env.GITHUB_SHA = 'abc123';
+    setPullRequestContextEnv();
 
     const outputDir = await tempDir();
     const service = makeService();
@@ -106,18 +114,12 @@ describe('PipelinePreflightService', () => {
       process.env.CLICKUP_TOKEN = 'pk_live_valid_token';
       process.env.GITHUB_TOKEN = 'ghp_xxx';
       delete process.env.CLICKUP_TASK_ID;
-      process.env.GITHUB_REPOSITORY = 'owner/repo';
-      process.env.GITHUB_REF_NAME = 'feature/test';
-      process.env.GITHUB_SHA = 'abc123';
+      setPullRequestContextEnv();
     }
 
     it('clickupTaskId check passes when CLICKUP_TASK_ID is set', async () => {
-      process.env.CLICKUP_TOKEN = 'pk_live_valid_token';
-      process.env.GITHUB_TOKEN = 'ghp_xxx';
+      setFullPreflightEnv();
       process.env.CLICKUP_TASK_ID = '86ahmgfc0';
-      process.env.GITHUB_REPOSITORY = 'owner/repo';
-      process.env.GITHUB_REF_NAME = 'feature/test';
-      process.env.GITHUB_SHA = 'abc123';
 
       const outputDir = await tempDir();
       const result = await makeService().run(outputDir);
@@ -164,9 +166,7 @@ describe('PipelinePreflightService', () => {
       process.env.CLICKUP_TOKEN = 'pk_live_valid_token';
       process.env.GITHUB_TOKEN = 'ghp_xxx';
       process.env.CLICKUP_TASK_ID = taskId;
-      process.env.GITHUB_REPOSITORY = 'owner/repo';
-      process.env.GITHUB_REF_NAME = 'feature/test';
-      process.env.GITHUB_SHA = 'abc123';
+      setPullRequestContextEnv();
 
       const outputDir = await tempDir();
       await makeService().run(outputDir);
@@ -182,18 +182,11 @@ describe('PipelinePreflightService', () => {
       delete process.env.CLICKUP_TOKEN;
       process.env.GITHUB_TOKEN = 'ghp_xxx';
       process.env.CLICKUP_TASK_ID = '12345';
-      process.env.GITHUB_REPOSITORY = 'owner/repo';
-      process.env.GITHUB_REF_NAME = 'feature/test';
-      process.env.GITHUB_SHA = 'abc123';
+      setPullRequestContextEnv();
     }
 
     it('clickupToken check passes when CLICKUP_TOKEN is set', async () => {
-      process.env.CLICKUP_TOKEN = 'pk_live_valid_token';
-      process.env.GITHUB_TOKEN = 'ghp_xxx';
-      process.env.CLICKUP_TASK_ID = '12345';
-      process.env.GITHUB_REPOSITORY = 'owner/repo';
-      process.env.GITHUB_REF_NAME = 'feature/test';
-      process.env.GITHUB_SHA = 'abc123';
+      setFullPreflightEnv();
 
       const outputDir = await tempDir();
       const result = await makeService().run(outputDir);
@@ -239,9 +232,7 @@ describe('PipelinePreflightService', () => {
       process.env.CLICKUP_TOKEN = secret;
       process.env.GITHUB_TOKEN = 'ghp_xxx';
       process.env.CLICKUP_TASK_ID = '12345';
-      process.env.GITHUB_REPOSITORY = 'owner/repo';
-      process.env.GITHUB_REF_NAME = 'feature/test';
-      process.env.GITHUB_SHA = 'abc123';
+      setPullRequestContextEnv();
 
       const outputDir = await tempDir();
       await makeService().run(outputDir);
@@ -257,18 +248,13 @@ describe('PipelinePreflightService', () => {
       process.env.CLICKUP_TOKEN = 'pk_live_valid_token';
       delete process.env.GITHUB_TOKEN;
       process.env.CLICKUP_TASK_ID = '86ahmgfc0';
-      process.env.GITHUB_REPOSITORY = 'owner/repo';
-      process.env.GITHUB_REF_NAME = 'feature/test';
-      process.env.GITHUB_SHA = 'abc123';
+      setPullRequestContextEnv();
     }
 
     it('githubToken check passes when GITHUB_TOKEN is set', async () => {
-      process.env.CLICKUP_TOKEN = 'pk_live_valid_token';
+      setFullPreflightEnv();
       process.env.GITHUB_TOKEN = 'ghp_live_valid_token';
       process.env.CLICKUP_TASK_ID = '86ahmgfc0';
-      process.env.GITHUB_REPOSITORY = 'owner/repo';
-      process.env.GITHUB_REF_NAME = 'feature/test';
-      process.env.GITHUB_SHA = 'abc123';
 
       const outputDir = await tempDir();
       const result = await makeService().run(outputDir);
@@ -316,9 +302,7 @@ describe('PipelinePreflightService', () => {
       process.env.CLICKUP_TOKEN = 'pk_live_valid_token';
       process.env.GITHUB_TOKEN = secret;
       process.env.CLICKUP_TASK_ID = '86ahmgfc0';
-      process.env.GITHUB_REPOSITORY = 'owner/repo';
-      process.env.GITHUB_REF_NAME = 'feature/test';
-      process.env.GITHUB_SHA = 'abc123';
+      setPullRequestContextEnv();
 
       const outputDir = await tempDir();
       await makeService().run(outputDir);
@@ -330,12 +314,7 @@ describe('PipelinePreflightService', () => {
   });
 
   it('writes preflight-report.json to outputDir', async () => {
-    process.env.CLICKUP_TOKEN = 'token';
-    process.env.GITHUB_TOKEN = 'ghp_xxx';
-    process.env.CLICKUP_TASK_ID = '12345';
-    process.env.GITHUB_REPOSITORY = 'owner/repo';
-    process.env.GITHUB_REF_NAME = 'feature/test';
-    process.env.GITHUB_SHA = 'abc123';
+    setFullPreflightEnv();
 
     const outputDir = await tempDir();
     const service = makeService();
@@ -349,12 +328,7 @@ describe('PipelinePreflightService', () => {
   });
 
   it('report includes timestamp', async () => {
-    process.env.CLICKUP_TOKEN = 'token';
-    process.env.GITHUB_TOKEN = 'ghp_xxx';
-    process.env.CLICKUP_TASK_ID = '12345';
-    process.env.GITHUB_REPOSITORY = 'owner/repo';
-    process.env.GITHUB_REF_NAME = 'feature/test';
-    process.env.GITHUB_SHA = 'abc123';
+    setFullPreflightEnv();
 
     const outputDir = await tempDir();
     const service = makeService();
@@ -362,5 +336,82 @@ describe('PipelinePreflightService', () => {
 
     expect(result.timestamp).toBeTruthy();
     expect(new Date(result.timestamp).toISOString()).toBe(result.timestamp);
+  });
+
+  describe('PRJ-11353 — GitHub Actions PR context validation', () => {
+    function setFullEnvExceptPrContext(): void {
+      process.env.CLICKUP_TOKEN = 'pk_live_valid_token';
+      process.env.GITHUB_TOKEN = 'ghp_xxx';
+      process.env.CLICKUP_TASK_ID = '86ahmgfc0';
+      delete process.env.GITHUB_EVENT_NAME;
+      delete process.env.GITHUB_REF;
+      delete process.env.GITHUB_HEAD_REF;
+      delete process.env.GITHUB_BASE_REF;
+    }
+
+    it('prContext passes when pull_request event and refs are set', async () => {
+      setFullPreflightEnv();
+
+      const outputDir = await tempDir();
+      const result = await makeService().run(outputDir);
+
+      expect(result.checks.prContext.ok).toBe(true);
+      expect(result.checks.prContext.missing).toEqual([]);
+      expect(result.checks.prContext.eventName).toBe('pull_request');
+    });
+
+    it('prContext fails when GITHUB_EVENT_NAME is missing', async () => {
+      setFullEnvExceptPrContext();
+      setPullRequestContextEnv();
+      delete process.env.GITHUB_EVENT_NAME;
+
+      const outputDir = await tempDir();
+      const result = await makeService().run(outputDir);
+
+      expect(result.checks.prContext.ok).toBe(false);
+      expect(result.checks.prContext.missing).toContain('GITHUB_EVENT_NAME');
+      expect(result.status).toBe('BLOCKED');
+    });
+
+    it('prContext fails when GITHUB_EVENT_NAME is not pull_request', async () => {
+      setFullEnvExceptPrContext();
+      setPullRequestContextEnv();
+      process.env.GITHUB_EVENT_NAME = 'push';
+
+      const outputDir = await tempDir();
+      const result = await makeService().run(outputDir);
+
+      expect(result.checks.prContext.ok).toBe(false);
+      expect(result.checks.prContext.missing).toContain('GITHUB_EVENT_NAME');
+      expect(result.checks.prContext.eventName).toBe('push');
+      expect(result.status).toBe('BLOCKED');
+    });
+
+    it('prContext fails when GITHUB_HEAD_REF is missing', async () => {
+      setFullEnvExceptPrContext();
+      setPullRequestContextEnv();
+      delete process.env.GITHUB_HEAD_REF;
+
+      const outputDir = await tempDir();
+      const result = await makeService().run(outputDir);
+
+      expect(result.checks.prContext.ok).toBe(false);
+      expect(result.checks.prContext.missing).toContain('GITHUB_HEAD_REF');
+      expect(result.status).toBe('BLOCKED');
+    });
+
+    it('status is BLOCKED when only PR context is invalid', async () => {
+      setFullEnvExceptPrContext();
+      process.env.GITHUB_EVENT_NAME = 'workflow_dispatch';
+
+      const outputDir = await tempDir();
+      const result = await makeService().run(outputDir);
+
+      expect(result.status).toBe('BLOCKED');
+      expect(result.checks.prContext.ok).toBe(false);
+      expect(result.checks.clickupToken.ok).toBe(true);
+      expect(result.checks.clickupTaskId.ok).toBe(true);
+      expect(result.checks.githubToken.ok).toBe(true);
+    });
   });
 });
