@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { Logger } from '@nestjs/common';
 
 import {
   mapClickUpTaskAttachments,
@@ -15,7 +16,7 @@ describe('mapClickUpTaskAttachments', () => {
       },
     ];
 
-    expect(mapClickUpTaskAttachments(attachments)).toEqual([
+    expect(mapClickUpTaskAttachments(attachments).attachments).toEqual([
       {
         name: 'spec.pdf',
         url: 'https://example.com/spec.pdf',
@@ -34,7 +35,7 @@ describe('mapClickUpTaskAttachments', () => {
       },
     ];
 
-    expect(mapClickUpTaskAttachments(attachments)).toEqual([
+    expect(mapClickUpTaskAttachments(attachments).attachments).toEqual([
       {
         name: 'error-logs.txt',
         url: 'https://t123456.p.clickup-attachments.com/t123456/error-logs.txt',
@@ -51,7 +52,7 @@ describe('mapClickUpTaskAttachments', () => {
       },
     ];
 
-    expect(mapClickUpTaskAttachments(attachments)).toEqual([
+    expect(mapClickUpTaskAttachments(attachments).attachments).toEqual([
       {
         name: 'report.pdf',
         url: 'https://example.com/files/report.pdf',
@@ -60,7 +61,8 @@ describe('mapClickUpTaskAttachments', () => {
     ]);
   });
 
-  it('ignores deleted attachments', () => {
+  it('ignores deleted attachments and records warnings', () => {
+    const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     const attachments: ClickUpTaskAttachmentSource[] = [
       {
         title: 'removed.pdf',
@@ -75,16 +77,22 @@ describe('mapClickUpTaskAttachments', () => {
       },
     ];
 
-    expect(mapClickUpTaskAttachments(attachments)).toEqual([
+    const result = mapClickUpTaskAttachments(attachments);
+
+    expect(result.attachments).toEqual([
       {
         name: 'active.pdf',
         url: 'https://example.com/active.pdf',
         type: 'application/pdf',
       },
     ]);
+    expect(result.warnings).toEqual(['ClickUp attachment skipped: marked as deleted']);
+    expect(warnSpy).toHaveBeenCalledWith('ClickUp attachment skipped: marked as deleted');
+    warnSpy.mockRestore();
   });
 
-  it('ignores attachments without url or with invalid url', () => {
+  it('ignores attachments without url or with invalid url and records warnings', () => {
+    const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     const attachments: ClickUpTaskAttachmentSource[] = [
       { title: 'missing-url.pdf', mimetype: 'application/pdf' },
       { title: 'bad-url.pdf', url: 'not-a-url', mimetype: 'application/pdf' },
@@ -95,18 +103,25 @@ describe('mapClickUpTaskAttachments', () => {
       },
     ];
 
-    expect(mapClickUpTaskAttachments(attachments)).toEqual([
+    const result = mapClickUpTaskAttachments(attachments);
+
+    expect(result.attachments).toEqual([
       {
         name: 'valid.pdf',
         url: 'https://example.com/valid.pdf',
         type: 'application/pdf',
       },
     ]);
+    expect(result.warnings).toEqual([
+      'ClickUp attachment skipped: missing url',
+      'ClickUp attachment skipped: validation failed',
+    ]);
+    warnSpy.mockRestore();
   });
 
-  it('returns empty array for empty or undefined input', () => {
-    expect(mapClickUpTaskAttachments([])).toEqual([]);
-    expect(mapClickUpTaskAttachments(undefined)).toEqual([]);
+  it('returns empty arrays for empty or undefined input', () => {
+    expect(mapClickUpTaskAttachments([])).toEqual({ attachments: [], warnings: [] });
+    expect(mapClickUpTaskAttachments(undefined)).toEqual({ attachments: [], warnings: [] });
   });
 
   it('preserves attachment order', () => {
@@ -123,7 +138,7 @@ describe('mapClickUpTaskAttachments', () => {
       },
     ];
 
-    expect(mapClickUpTaskAttachments(attachments)).toEqual([
+    expect(mapClickUpTaskAttachments(attachments).attachments).toEqual([
       {
         name: 'first.png',
         url: 'https://example.com/first.png',

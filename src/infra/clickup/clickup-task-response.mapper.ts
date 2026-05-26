@@ -26,13 +26,18 @@ export type { ClickUpTaskPayload } from './clickup-task-response.schema.js';
 
 export function mapClickUpTaskToReadResult(payload: ClickUpTaskPayload): ClickUpTaskReadResult {
   const description = extractClickUpDescription(payload);
+  const warnings: string[] = [];
+  const { attachments, warnings: attachmentWarnings } = mapClickUpTaskAttachments(
+    payload.attachments,
+  );
+  warnings.push(...attachmentWarnings);
 
   const demand = DemandContextSchema.parse({
     taskId: payload.custom_id?.trim() || payload.id,
     title: extractClickUpTitle(payload.name),
     description,
     acceptanceCriteria: extractClickUpAcceptanceCriteria(description),
-    attachments: mapClickUpTaskAttachments(payload.attachments),
+    attachments,
     status: payload.status?.status?.trim() || 'unknown',
     assignees: (payload.assignees ?? [])
       .map((assignee) => assignee.username?.trim())
@@ -57,8 +62,14 @@ export function mapClickUpTaskToReadResult(payload: ClickUpTaskPayload): ClickUp
     if (bugParse.success) {
       result.bug = bugParse.data;
     } else {
+      const warning = 'Bug context validation failed';
       logger.warn('ClickUp bug context ignored due to validation failure');
+      warnings.push(warning);
     }
+  }
+
+  if (warnings.length > 0) {
+    result.warnings = warnings;
   }
 
   return result;

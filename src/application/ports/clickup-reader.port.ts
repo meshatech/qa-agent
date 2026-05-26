@@ -5,6 +5,7 @@ import type { DemandContext } from '../../domain/schemas/demand-context.schema.j
 export interface ClickUpTaskReadResult {
   demand: DemandContext;
   bug?: BugContext;
+  warnings?: string[];
 }
 
 export interface ClickUpReaderPort {

@@ -24,6 +24,7 @@ describe('mapClickUpTaskToReadResult', () => {
     expect(result.demand.taskId).toBe('PRJ-11369');
     expect(result.demand.title).toBe('Optional bug context');
     expect(result.bug).toBeUndefined();
+    expect(result.warnings).toEqual(['Bug context validation failed']);
     expect(warnSpy).toHaveBeenCalledWith(
       'ClickUp bug context ignored due to validation failure',
     );

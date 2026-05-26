@@ -1,3 +1,5 @@
+import { Logger } from '@nestjs/common';
+
 import {
   DemandAttachmentSchema,
   type DemandAttachment,
@@ -12,6 +14,8 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   json: 'application/json',
 };
 
+const logger = new Logger('ClickUpTaskAttachmentsMapper');
+
 export interface ClickUpTaskAttachmentSource {
   title?: string;
   url?: string;
@@ -21,22 +25,34 @@ export interface ClickUpTaskAttachmentSource {
   hidden?: boolean;
 }
 
+export interface ClickUpTaskAttachmentsMapResult {
+  attachments: DemandAttachment[];
+  warnings: string[];
+}
+
 export function mapClickUpTaskAttachments(
   attachments: ClickUpTaskAttachmentSource[] | undefined,
-): DemandAttachment[] {
+): ClickUpTaskAttachmentsMapResult {
   if (!attachments?.length) {
-    return [];
+    return { attachments: [], warnings: [] };
   }
 
   const mapped: DemandAttachment[] = [];
+  const warnings: string[] = [];
 
   for (const attachment of attachments) {
     if (attachment.deleted === true) {
+      const warning = 'ClickUp attachment skipped: marked as deleted';
+      logger.warn(warning);
+      warnings.push(warning);
       continue;
     }
 
     const url = attachment.url?.trim();
     if (!url) {
+      const warning = 'ClickUp attachment skipped: missing url';
+      logger.warn(warning);
+      warnings.push(warning);
       continue;
     }
 
@@ -49,10 +65,15 @@ export function mapClickUpTaskAttachments(
     const parsed = DemandAttachmentSchema.safeParse(candidate);
     if (parsed.success) {
       mapped.push(parsed.data);
+      continue;
     }
+
+    const warning = 'ClickUp attachment skipped: validation failed';
+    logger.warn(warning);
+    warnings.push(warning);
   }
 
-  return mapped;
+  return { attachments: mapped, warnings };
 }
 
 function resolveAttachmentName(
