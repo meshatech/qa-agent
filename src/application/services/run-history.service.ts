@@ -1,7 +1,7 @@
 import { appendFile, access, mkdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 
 import { SanitizerService } from './sanitizer.service.js';
 
@@ -16,7 +16,7 @@ export interface RunHistoryEntry {
 
 @Injectable()
 export class RunHistoryService {
-  constructor(private readonly sanitizer: SanitizerService) {}
+  constructor(@Inject(SanitizerService) private readonly sanitizer: SanitizerService) {}
 
   resolveHistoryPath(projectPath: string): string {
     return join(projectPath, '.agent-qa', 'run-history.jsonl');

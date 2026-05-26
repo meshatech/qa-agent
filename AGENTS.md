@@ -22,3 +22,13 @@ Do **not** edit [`.windsurf/agents.md`](.windsurf/agents.md). Canonical source f
 ```bash
 npm run check
 ```
+
+## Pipeline preflight (CI)
+
+Validates ClickUp/GitHub/git context before PR pipeline steps. Writes `preflight-report.json` via `PreflightReportWriterPort`.
+
+```bash
+npm run qa-agent -- preflight --output-dir ./.agent-qa/pipeline
+```
+
+Exit code `6` when the report status is `BLOCKED`. Config validation reuses `ValidateConfigUseCase` with `skipHealthCheck` (no `HEAD` fetch in CI).

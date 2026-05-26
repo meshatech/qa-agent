@@ -1,5 +1,10 @@
 import { Module } from '@nestjs/common';
 import { FileConfigLoader } from './config/file-config.loader.js';
+import { FilePreflightReportWriterAdapter } from './persistence/file-preflight-report-writer.adapter.js';
+import { FetchClickUpApiAdapter } from './clickup/fetch-clickup-api.adapter.js';
+import { FetchGitHubApiAdapter } from './github/fetch-github-api.adapter.js';
+import { FileGitHubEventContextAdapter } from './github/file-github-event-context.adapter.js';
+import { ExecGitRepositoryAdapter } from './git/exec-git-repository.adapter.js';
 import { DecisionRouterProvider } from './llm/decision-router.provider.js';
 import { FakeDecisionProvider } from './llm/fake-decision.provider.js';
 import { GroqDecisionProvider } from './llm/groq-decision.provider.js';
@@ -38,10 +43,20 @@ export const INFRA_PROVIDERS = [
   OpenAiLangChainDecisionProvider,
   DecisionRouterProvider,
   FileConfigLoader,
+  FilePreflightReportWriterAdapter,
+  ExecGitRepositoryAdapter,
+  FetchClickUpApiAdapter,
+  FetchGitHubApiAdapter,
+  FileGitHubEventContextAdapter,
   { provide: 'BrowserHarnessPort', useExisting: PlaywrightHarness },
   { provide: 'RunRepositoryPort', useExisting: FileRunRepository },
   { provide: 'DecisionProviderPort', useExisting: DecisionRouterProvider },
   { provide: 'ConfigLoaderPort', useExisting: FileConfigLoader },
+  { provide: 'PreflightReportWriterPort', useExisting: FilePreflightReportWriterAdapter },
+  { provide: 'GitRepositoryPort', useExisting: ExecGitRepositoryAdapter },
+  { provide: 'ClickUpApiPort', useExisting: FetchClickUpApiAdapter },
+  { provide: 'GitHubApiPort', useExisting: FetchGitHubApiAdapter },
+  { provide: 'GitHubEventContextPort', useExisting: FileGitHubEventContextAdapter },
 ];
 
 @Module({ providers: INFRA_PROVIDERS, exports: INFRA_PROVIDERS })
