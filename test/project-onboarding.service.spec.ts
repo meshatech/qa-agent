@@ -499,4 +499,64 @@ describe('ProjectOnboardingService', () => {
 
     expect(result.warnings.some((w) => w.includes('/empty') && w.includes('DOM empty'))).toBe(true);
   });
+
+  it('executes baseline via PlanExecutorService', async () => {
+    const outputDir = await tempDir();
+    const projectPath = await tempDir();
+    const config = RunConfigSchema.parse({
+      baseUrl: 'https://app.local',
+      appDomains: ['app.local'],
+      demand: { id: 'D', title: 'T', description: 'D' },
+    });
+
+    const executor = makePlanExecutor();
+    const executeSpy = vi.spyOn(executor, 'execute');
+    const service = makeService({ executor });
+
+    await service.execute(config, outputDir, projectPath);
+
+    expect(executeSpy).toHaveBeenCalledTimes(1);
+    const plan = executeSpy.mock.calls[0]?.[0];
+    expect(plan.planId).toBe('onboarding-smoke');
+    expect(plan.schemaVersion).toBe('execution-plan.v1');
+  });
+
+  it('captures PlanExecutionResult correctly', async () => {
+    const outputDir = await tempDir();
+    const projectPath = await tempDir();
+    const config = RunConfigSchema.parse({
+      baseUrl: 'https://app.local',
+      appDomains: ['app.local'],
+      demand: { id: 'D', title: 'T', description: 'D' },
+    });
+
+    const executor = makePlanExecutor({
+      ok: true,
+      warnings: [{ stepId: 'ONB-001', message: 'Minor console warning' }],
+    });
+
+    const service = makeService({ executor });
+    const result = await service.execute(config, outputDir, projectPath);
+
+    expect(result.readiness).toBe('READY');
+    expect(result.warnings).toContain('ONB-001: Minor console warning');
+    expect(result.baselineReportPath).not.toBeNull();
+  });
+
+  it('reuses existing PlanExecutorService infrastructure', async () => {
+    const outputDir = await tempDir();
+    const projectPath = await tempDir();
+    const config = RunConfigSchema.parse({
+      baseUrl: 'https://app.local',
+      appDomains: ['app.local'],
+      demand: { id: 'D', title: 'T', description: 'D' },
+    });
+
+    const executor = makePlanExecutor();
+    const service = makeService({ executor });
+    const result = await service.execute(config, outputDir, projectPath);
+
+    // Should NOT duplicate execution logic; result comes from the injected executor
+    expect(result.readiness).toBe('READY');
+  });
 });
