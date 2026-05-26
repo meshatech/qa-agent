@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ZodError } from 'zod';
 
 import type {
   ClickUpReaderPort,
@@ -13,10 +14,8 @@ import {
   sanitizeClickUpErrorMessage,
   sleep,
 } from './clickup-http-error.handler.js';
-import {
-  mapClickUpTaskToReadResult,
-  type ClickUpTaskPayload,
-} from './clickup-task-response.mapper.js';
+import { mapClickUpTaskToReadResult } from './clickup-task-response.mapper.js';
+import { ClickUpTaskResponseSchema } from './clickup-task-response.schema.js';
 import { resolveClickUpTaskId } from './clickup-task-id.resolver.js';
 import { resolveClickUpTeamId } from './clickup-team-id.resolver.js';
 import { buildClickUpTaskUrl, isCustomClickUpTaskId } from './clickup-task-url.builder.js';
@@ -29,8 +28,21 @@ export class ClickUpHttpReaderAdapter implements ClickUpReaderPort {
     options?: { configTeamId?: string },
   ): Promise<ClickUpTaskReadResult> {
     const response = await this.fetchTask(taskId, token, options?.configTeamId);
-    const payload = (await response.json()) as ClickUpTaskPayload;
-    return mapClickUpTaskToReadResult(payload);
+    try {
+      const raw: unknown = await response.json();
+      const payload = ClickUpTaskResponseSchema.parse(raw);
+      return mapClickUpTaskToReadResult(payload);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        throw new ClickUpReaderError(
+          sanitizeClickUpErrorMessage('ClickUp API returned an invalid task payload', token),
+          undefined,
+          error,
+          'API_ERROR',
+        );
+      }
+      throw error;
+    }
   }
 
   async readConfiguredTask(

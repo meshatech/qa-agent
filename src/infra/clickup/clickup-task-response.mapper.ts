@@ -4,15 +4,12 @@ import { DemandContextSchema } from '../../domain/schemas/demand-context.schema.
 import { extractClickUpAcceptanceCriteria } from './clickup-acceptance-criteria.parser.js';
 import { extractClickUpBugResults } from './clickup-bug-results.parser.js';
 import { extractClickUpReproductionSteps } from './clickup-reproduction-steps.parser.js';
-import {
-  mapClickUpTaskAttachments,
-  type ClickUpTaskAttachmentSource,
-} from './clickup-task-attachments.mapper.js';
+import { mapClickUpTaskAttachments } from './clickup-task-attachments.mapper.js';
 import {
   extractClickUpDescription,
   extractClickUpTitle,
-  type ClickUpTaskContentSource,
 } from './clickup-task-content.mapper.js';
+import type { ClickUpTaskPayload } from './clickup-task-response.schema.js';
 
 const PRIORITY_BY_ID: Record<string, string> = {
   '1': 'urgent',
@@ -21,16 +18,7 @@ const PRIORITY_BY_ID: Record<string, string> = {
   '4': 'low',
 };
 
-export interface ClickUpTaskPayload extends ClickUpTaskContentSource {
-  id: string;
-  custom_id?: string | null;
-  name: string;
-  status?: { status?: string };
-  assignees?: Array<{ username?: string | null }>;
-  priority?: { id?: string | number | null; priority?: string | null } | null;
-  due_date?: string | number | null;
-  attachments?: ClickUpTaskAttachmentSource[];
-}
+export type { ClickUpTaskPayload } from './clickup-task-response.schema.js';
 
 export function mapClickUpTaskToReadResult(payload: ClickUpTaskPayload): ClickUpTaskReadResult {
   const description = extractClickUpDescription(payload);
@@ -57,11 +45,14 @@ export function mapClickUpTaskToReadResult(payload: ClickUpTaskPayload): ClickUp
     reproductionSteps.length > 0 || expectedResult !== null || actualResult !== null;
 
   if (hasBugContext) {
-    result.bug = BugContextSchema.parse({
+    const bugParse = BugContextSchema.safeParse({
       reproductionSteps,
       expectedResult,
       actualResult,
     });
+    if (bugParse.success) {
+      result.bug = bugParse.data;
+    }
   }
 
   return result;

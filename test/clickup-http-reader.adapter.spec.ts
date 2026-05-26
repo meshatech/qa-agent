@@ -341,6 +341,19 @@ Tela em branco`,
     });
   });
 
+  it('throws API_ERROR when ClickUp task payload is invalid', async () => {
+    mockFetch(200, { id: '86ahmgh5e' });
+    const reader = new ClickUpHttpReaderAdapter();
+
+    await expect(
+      reader.readTask('PRJ-11364', 'pk_test_token', { configTeamId: '459806' }),
+    ).rejects.toMatchObject({
+      name: 'ClickUpReaderError',
+      code: 'API_ERROR',
+      message: 'ClickUp API returned an invalid task payload',
+    });
+  });
+
   it.each([
     [401, 'AUTH_FAILED', 'ClickUp authentication failed (401)'],
     [403, 'PERMISSION_DENIED', 'ClickUp permission denied (403)'],

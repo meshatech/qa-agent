@@ -29,8 +29,9 @@ export class DemandContextPersistenceService {
   ): Promise<DemandContextPersistResult> {
     const validated = DemandContextSchema.parse(demand);
     const sanitized = this.sanitizer.sanitizeForOutput(validated, knownSecrets);
+    const parsedSanitized = DemandContextSchema.parse(sanitized);
     const path = await this.writer.write(runDir, sanitized);
-    return { path, demand: DemandContextSchema.parse(sanitized) };
+    return { path, demand: parsedSanitized };
   }
 
   async persistFromClickUpTask(
