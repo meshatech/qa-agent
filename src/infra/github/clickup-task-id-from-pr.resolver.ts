@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import safeRegex from 'safe-regex';
 
 import { isCustomClickUpTaskId } from '../clickup/clickup-task-url.builder.js';
 
@@ -7,6 +8,8 @@ const logger = new Logger('ClickUpCustomIdPattern');
 export const DEFAULT_CLICKUP_CUSTOM_ID_PATTERN = /PRJ-\d+/g;
 
 const CLICKUP_CUSTOM_ID_PATTERN_ENV = 'CLICKUP_CUSTOM_ID_PATTERN';
+const MAX_PATTERN_SOURCE_LENGTH = 100;
+const SAFE_PATTERN_CHARS = /^[\w\d\\\[\]\(\)\{\}\^\$\.\|\?\*\+\-]+$/;
 
 export type ClickUpCustomIdPatternResult = {
   pattern: RegExp;
@@ -14,29 +17,57 @@ export type ClickUpCustomIdPatternResult = {
   invalidSource?: string;
 };
 
+function defaultPatternResult(): ClickUpCustomIdPatternResult {
+  return {
+    pattern: new RegExp(DEFAULT_CLICKUP_CUSTOM_ID_PATTERN.source, 'g'),
+    usedFallback: false,
+  };
+}
+
+function fallbackPatternResult(invalidSource: string, reason: string | Error): ClickUpCustomIdPatternResult {
+  logger.warn(
+    'Invalid CLICKUP_CUSTOM_ID_PATTERN, falling back to default PRJ-\\d+',
+    reason instanceof Error ? reason.stack : reason,
+  );
+  return {
+    pattern: new RegExp(DEFAULT_CLICKUP_CUSTOM_ID_PATTERN.source, 'g'),
+    usedFallback: true,
+    invalidSource,
+  };
+}
+
+export function validatePatternSource(source: string): string | undefined {
+  const trimmed = source.trim();
+  if (trimmed.length > MAX_PATTERN_SOURCE_LENGTH) {
+    return 'pattern exceeds 100 characters';
+  }
+  if (!SAFE_PATTERN_CHARS.test(trimmed)) {
+    return 'pattern contains disallowed characters';
+  }
+  if (!safeRegex(trimmed)) {
+    return 'pattern is potentially unsafe (ReDoS)';
+  }
+  return undefined;
+}
+
 export function compileClickUpCustomIdPattern(source?: string): ClickUpCustomIdPatternResult {
   if (!source?.trim()) {
-    return {
-      pattern: new RegExp(DEFAULT_CLICKUP_CUSTOM_ID_PATTERN.source, 'g'),
-      usedFallback: false,
-    };
+    return defaultPatternResult();
+  }
+
+  const trimmed = source.trim();
+  const validationError = validatePatternSource(trimmed);
+  if (validationError) {
+    return fallbackPatternResult(trimmed, validationError);
   }
 
   try {
     return {
-      pattern: new RegExp(source.trim(), 'g'),
+      pattern: new RegExp(trimmed, 'g'),
       usedFallback: false,
     };
   } catch (error) {
-    logger.warn(
-      'Invalid CLICKUP_CUSTOM_ID_PATTERN, falling back to default PRJ-\\d+',
-      error instanceof Error ? error.stack : String(error),
-    );
-    return {
-      pattern: new RegExp(DEFAULT_CLICKUP_CUSTOM_ID_PATTERN.source, 'g'),
-      usedFallback: true,
-      invalidSource: source.trim(),
-    };
+    return fallbackPatternResult(trimmed, error instanceof Error ? error : String(error));
   }
 }
 

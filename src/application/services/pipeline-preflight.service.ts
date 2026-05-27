@@ -21,7 +21,7 @@ import {
 } from '../../domain/schemas/preflight-report.schema.js';
 import { ConfigError, PreflightBlockedError } from '../../domain/errors.js';
 import { resolveHeadBranchFromEnv } from '../../infra/github/github-actions-pr-refs.resolver.js';
-import { extractClickUpTaskIdFromGitHubEvent } from '../../infra/github/github-actions-pr-context.mapper.js';
+import { extractClickUpTaskIdFromGitHubEvent, sanitizePrContextErrorMessage } from '../../infra/github/github-actions-pr-context.mapper.js';
 import {
   compileClickUpCustomIdPattern,
   resolveClickUpCustomIdPattern,
@@ -213,7 +213,10 @@ export class PipelinePreflightService {
     } catch (error) {
       return {
         ok: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: sanitizePrContextErrorMessage(
+          error instanceof Error ? error.message : String(error),
+          process.env,
+        ),
         warning: patternWarning,
       };
     }

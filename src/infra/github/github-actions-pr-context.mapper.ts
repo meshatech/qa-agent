@@ -26,7 +26,7 @@ export function resolveGitHubWorkspace(env: NodeJS.ProcessEnv = process.env): st
 }
 
 function sanitizePrContextErrorMessage(message: string, env: NodeJS.ProcessEnv): string {
-  let sanitized = message;
+  let sanitized = message.replace(/\/[^\s'"]+/g, '<redacted>');
   for (const key of GITHUB_TOKEN_ENV_KEYS) {
     const token = env[key]?.trim();
     if (token) {
@@ -35,6 +35,16 @@ function sanitizePrContextErrorMessage(message: string, env: NodeJS.ProcessEnv):
   }
   return sanitized;
 }
+
+export function sanitizePullRequestBodyForExtraction(body?: string): string | undefined {
+  const trimmed = body?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  return trimmed.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '').slice(0, 10000);
+}
+
+export { sanitizePrContextErrorMessage };
 
 function sanitizePrContextErrorCause(error: unknown, env: NodeJS.ProcessEnv): Error | undefined {
   if (!(error instanceof Error)) {
@@ -88,7 +98,8 @@ export async function extractClickUpTaskIdFromGitHubEvent(
     if (!title) {
       return undefined;
     }
-    return extractClickUpTaskIdFromPullRequestText(title, body, pattern);
+    const safeBody = sanitizePullRequestBodyForExtraction(body);
+    return extractClickUpTaskIdFromPullRequestText(title, safeBody, pattern);
   } catch {
     return undefined;
   }
@@ -100,7 +111,7 @@ async function readPullRequestMetadata(
   const event = await readGitHubPullRequestEvent(env);
   const title = event.pull_request?.title?.trim();
   const author = event.pull_request?.user?.login?.trim();
-  const body = event.pull_request?.body?.trim() || undefined;
+  const body = sanitizePullRequestBodyForExtraction(event.pull_request?.body?.trim() || undefined);
 
   if (!title || !author) {
     throw new PrContextReaderError(

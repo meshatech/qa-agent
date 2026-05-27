@@ -19,6 +19,7 @@ import { ValidateConfigUseCase } from '../src/application/use-cases/validate-con
 import { FileConfigLoader } from '../src/infra/config/file-config.loader.js';
 import { FilePreflightReportWriterAdapter } from '../src/infra/persistence/file-preflight-report-writer.adapter.js';
 import { FileGitHubEventContextAdapter } from '../src/infra/github/file-github-event-context.adapter.js';
+import * as githubPrContextMapper from '../src/infra/github/github-actions-pr-context.mapper.js';
 
 let tempDirs: string[] = [];
 let originalEnv: NodeJS.ProcessEnv;
@@ -361,6 +362,23 @@ describe('PipelinePreflightService', () => {
       expect(result.report.checkItems.find((item) => item.name === 'clickupTaskId')?.message).toContain(
         'Invalid custom ID pattern',
       );
+    });
+
+    it('sanitizes clickupTaskId extraction errors in preflight report', async () => {
+      const outputDir = await setupPreflightPassEnv();
+      process.env.GITHUB_TOKEN = 'ghp_super_secret_token';
+      vi.spyOn(githubPrContextMapper, 'extractClickUpTaskIdFromGitHubEvent').mockRejectedValueOnce(
+        new Error('Failed reading /home/user/secret/event.json with ghp_super_secret_token'),
+      );
+
+      const result = await makeService().run(outputDir);
+
+      expect(result.report.checks.clickupTaskId.ok).toBe(false);
+      expect(result.report.checks.clickupTaskId.error).toBe(
+        'Failed reading <redacted> with ***REDACTED***',
+      );
+
+      vi.restoreAllMocks();
     });
   });
 

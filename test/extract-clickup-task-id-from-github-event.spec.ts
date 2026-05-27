@@ -70,4 +70,33 @@ describe('extractClickUpTaskIdFromGitHubEvent', () => {
       extractClickUpTaskIdFromGitHubEvent({ GITHUB_EVENT_PATH: eventPath }),
     ).resolves.toBe('PRJ-11552');
   });
+
+  it('extracts task ID from body after stripping control characters', async () => {
+    const eventPath = await writeEvent({
+      pull_request: {
+        title: 'Fix login flow',
+        body: 'Related to \x07PRJ-11392',
+        user: { login: 'octocat' },
+      },
+    });
+
+    await expect(
+      extractClickUpTaskIdFromGitHubEvent({ GITHUB_EVENT_PATH: eventPath }),
+    ).resolves.toBe('PRJ-11392');
+  });
+
+  it('does not extract task ID from body content beyond 10000 characters', async () => {
+    const padding = 'x'.repeat(10001);
+    const eventPath = await writeEvent({
+      pull_request: {
+        title: 'Fix login flow',
+        body: `${padding} PRJ-99999`,
+        user: { login: 'octocat' },
+      },
+    });
+
+    await expect(
+      extractClickUpTaskIdFromGitHubEvent({ GITHUB_EVENT_PATH: eventPath }),
+    ).resolves.toBeUndefined();
+  });
 });

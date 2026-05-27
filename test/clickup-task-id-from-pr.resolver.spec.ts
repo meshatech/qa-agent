@@ -70,4 +70,52 @@ describe('compileClickUpCustomIdPattern', () => {
 
     warnSpy.mockRestore();
   });
+
+  it('falls back when pattern exceeds 100 characters', () => {
+    const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const longPattern = 'P'.repeat(101);
+
+    const result = compileClickUpCustomIdPattern(longPattern);
+
+    expect(result.usedFallback).toBe(true);
+    expect(warnSpy).toHaveBeenCalledWith(
+      'Invalid CLICKUP_CUSTOM_ID_PATTERN, falling back to default PRJ-\\d+',
+      'pattern exceeds 100 characters',
+    );
+
+    warnSpy.mockRestore();
+  });
+
+  it('falls back when pattern is potentially unsafe (ReDoS)', () => {
+    const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+    const result = compileClickUpCustomIdPattern('(a+)+');
+
+    expect(result.usedFallback).toBe(true);
+    expect(warnSpy).toHaveBeenCalledWith(
+      'Invalid CLICKUP_CUSTOM_ID_PATTERN, falling back to default PRJ-\\d+',
+      'pattern is potentially unsafe (ReDoS)',
+    );
+
+    warnSpy.mockRestore();
+  });
+
+  it('falls back when pattern contains disallowed characters', () => {
+    const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+    const result = compileClickUpCustomIdPattern('PRJ \\d+');
+
+    expect(result.usedFallback).toBe(true);
+    expect(warnSpy).toHaveBeenCalledWith(
+      'Invalid CLICKUP_CUSTOM_ID_PATTERN, falling back to default PRJ-\\d+',
+      'pattern contains disallowed characters',
+    );
+
+    warnSpy.mockRestore();
+  });
+
+  it('accepts valid custom patterns', () => {
+    expect(compileClickUpCustomIdPattern('TASK-\\d+').usedFallback).toBe(false);
+    expect(compileClickUpCustomIdPattern('PRJ-\\d+').usedFallback).toBe(false);
+  });
 });

@@ -4,7 +4,10 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { PrContextReaderError } from '../src/domain/errors.js';
-import { mapGitHubActionsToPullRequestContext } from '../src/infra/github/github-actions-pr-context.mapper.js';
+import {
+  mapGitHubActionsToPullRequestContext,
+  sanitizePrContextErrorMessage,
+} from '../src/infra/github/github-actions-pr-context.mapper.js';
 
 let tempDirs: string[] = [];
 let originalEnv: NodeJS.ProcessEnv;
@@ -159,6 +162,17 @@ describe('mapGitHubActionsToPullRequestContext', () => {
       (error: unknown) =>
         error instanceof PrContextReaderError &&
         (error.code === 'VALIDATION_FAILED' || error.code === 'MISSING_CONTEXT'),
+    );
+  });
+});
+
+describe('sanitizePrContextErrorMessage', () => {
+  it('redacts absolute paths and GitHub tokens from error messages', () => {
+    const env = { GITHUB_TOKEN: 'ghp_super_secret_token' };
+    const message = 'Failed reading /home/user/secret/event.json with ghp_super_secret_token';
+
+    expect(sanitizePrContextErrorMessage(message, env)).toBe(
+      'Failed reading <redacted> with ***REDACTED***',
     );
   });
 });
