@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import { correlateCriterionWithDiff } from '../../domain/helpers/criterion-diff-correlator.js';
+import { correlateNegativeDiffRegressions } from '../../domain/helpers/negative-diff-regression-correlator.js';
 import { consumeDemandContext } from '../../domain/helpers/demand-context-consumer.js';
 import type { ConsumedMemorySearchContext } from '../../domain/helpers/memory-search-consumer.js';
 import { consumeMemorySearchResults } from '../../domain/helpers/memory-search-consumer.js';
@@ -55,7 +56,7 @@ export class DemandDiffMemoryCorrelatorService {
 
     const memory = consumeMemorySearchResults(input.memoryResults);
 
-    const risks = this.collectRegressionRisks(prDiff);
+    const risks = correlateNegativeDiffRegressions({ prDiff, memory });
     const correlations: CorrelationItem[] = [];
     const scenarios: RequiredScenario[] = [];
 
@@ -115,24 +116,6 @@ export class DemandDiffMemoryCorrelatorService {
       risks,
       warnings,
     };
-  }
-
-  private collectRegressionRisks(prDiff: ConsumedPrDiffContext): RiskItem[] {
-    const risks: RiskItem[] = [];
-    for (const file of prDiff.changedFiles) {
-      if (!file.negativeLines.length) {
-        continue;
-      }
-      risks.push(
-        createRiskItem({
-          severity: file.negativeLines.length > 5 ? 'HIGH' : 'MEDIUM',
-          description: `${file.negativeLines.length} removed line(s) in ${file.path} may indicate regression risk`,
-          relatedFile: file.path,
-          type: 'regression',
-        }),
-      );
-    }
-    return risks;
   }
 
   private buildRouteFallbackScenarios(
