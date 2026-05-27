@@ -1,5 +1,5 @@
-import type { CorrelationResult } from '../../domain/schemas/correlation.schema.js';
-import { truncate } from '../../domain/helpers/correlation-lexical.js';
+import type { CorrelationResult } from '../schemas/correlation.schema.js';
+import { truncate } from './correlation-lexical.js';
 
 export interface CorrelationReportContext {
   demandTitle?: string;

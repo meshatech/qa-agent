@@ -4,8 +4,8 @@ import type {
   CorrelationArtifactsWriterPort,
   CorrelationArtifactsWriteResult,
 } from '../../application/ports/correlation-artifacts-writer.port.js';
+import { prepareRequiredScenariosArtifact } from '../../domain/helpers/required-scenarios-artifact.js';
 import type { CorrelationResult } from '../../domain/schemas/correlation.schema.js';
-import { CorrelationResultSchema } from '../../domain/schemas/correlation.schema.js';
 import { writeAtomicFile } from './atomic-file-write.js';
 
 const REQUIRED_SCENARIOS_FILE = 'required-scenarios.json';
@@ -18,9 +18,8 @@ export class FileCorrelationArtifactsWriterAdapter implements CorrelationArtifac
     result: CorrelationResult,
     reportMarkdown: string,
   ): Promise<CorrelationArtifactsWriteResult> {
-    const validated = CorrelationResultSchema.parse(result);
     const [requiredScenariosPath, correlationReportPath] = await Promise.all([
-      writeAtomicFile(outputDir, REQUIRED_SCENARIOS_FILE, JSON.stringify(validated, null, 2)),
+      writeAtomicFile(outputDir, REQUIRED_SCENARIOS_FILE, prepareRequiredScenariosArtifact(result)),
       writeAtomicFile(outputDir, CORRELATION_REPORT_FILE, reportMarkdown),
     ]);
 

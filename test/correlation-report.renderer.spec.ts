@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { DemandDiffMemoryCorrelatorService } from '../src/application/services/demand-diff-memory-correlator.service.js';
 import { createBlockedCorrelationResult } from '../src/domain/schemas/correlation.schema.js';
-import { renderCorrelationReport } from '../src/infra/persistence/correlation-report.renderer.js';
+import { renderCorrelationReport } from '../src/domain/helpers/correlation-report.renderer.js';
 
 describe('renderCorrelationReport', () => {
   it('includes scenarios and block reason', () => {
@@ -58,6 +58,7 @@ describe('renderCorrelationReport', () => {
     const markdown = renderCorrelationReport(result);
     expect(markdown).toContain('## Required Scenarios');
     expect(markdown).toContain('## Correlations');
+    expect(markdown).toContain('## Risks');
   });
 
   it('renders demand_diff_mismatch risk in markdown report', () => {
