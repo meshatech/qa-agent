@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
+import { ZodError } from 'zod';
 
 import { correlateCriterionWithDiff } from '../../domain/helpers/criterion-diff-correlator.js';
 import { detectDemandDiffMismatch } from '../../domain/helpers/demand-diff-mismatch-detector.js';
 import { correlateNegativeDiffRegressions } from '../../domain/helpers/negative-diff-regression-correlator.js';
-import { consumeDemandContext } from '../../domain/helpers/demand-context-consumer.js';
+import { consumeDemandContext, type ConsumedDemandContext } from '../../domain/helpers/demand-context-consumer.js';
 import type { ConsumedMemorySearchContext } from '../../domain/helpers/memory-search-consumer.js';
 import { consumeMemorySearchResults } from '../../domain/helpers/memory-search-consumer.js';
 import type { ConsumedPrDiffContext } from '../../domain/helpers/pr-diff-context-consumer.js';
@@ -33,7 +34,18 @@ export class DemandDiffMemoryCorrelatorService {
   correlate(input: DemandDiffMemoryCorrelatorInput): CorrelationResult {
     const warnings = [...(input.warnings ?? [])];
 
-    const demand = consumeDemandContext(input.demand);
+    let demand: ConsumedDemandContext;
+    try {
+      demand = consumeDemandContext(input.demand);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        return createBlockedCorrelationResult(
+          `Invalid demand context schema: ${error.message}`,
+          warnings,
+        );
+      }
+      throw error;
+    }
 
     if (!demand.acceptanceCriteria.length) {
       return createBlockedCorrelationResult(
@@ -42,7 +54,18 @@ export class DemandDiffMemoryCorrelatorService {
       );
     }
 
-    const prDiff = consumePrDiffContext(input.prDiff);
+    let prDiff: ConsumedPrDiffContext;
+    try {
+      prDiff = consumePrDiffContext(input.prDiff);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        return createBlockedCorrelationResult(
+          `Invalid PR diff context schema: ${error.message}`,
+          warnings,
+        );
+      }
+      throw error;
+    }
 
     if (!prDiff.hasDiffSignal) {
       return createBlockedCorrelationResult(
@@ -51,7 +74,18 @@ export class DemandDiffMemoryCorrelatorService {
       );
     }
 
-    const memory = consumeMemorySearchResults(input.memoryResults);
+    let memory: ConsumedMemorySearchContext;
+    try {
+      memory = consumeMemorySearchResults(input.memoryResults);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        return createBlockedCorrelationResult(
+          `Invalid memory search results schema: ${error.message}`,
+          warnings,
+        );
+      }
+      throw error;
+    }
 
     const risks = [
       ...correlateNegativeDiffRegressions({ prDiff, memory }),

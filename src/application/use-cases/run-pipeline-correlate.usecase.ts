@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { ZodError } from 'zod';
 
 import type { PipelineCorrelateRunResult } from '../dto/pipeline-correlate-result.dto.js';
 import { buildMemorySearchQuery } from '../helpers/build-memory-search-query.js';
@@ -84,19 +85,45 @@ export class RunPipelineCorrelateUseCase {
           blockReason: `Failed to fetch demand from ClickUp: ${error.message}`,
         });
       }
+      if (error instanceof ZodError) {
+        return this.blockAndThrow(outputDir, {
+          prNumber: prDiff.pullRequest.prNumber,
+          blockReason: `Invalid demand context schema: ${error.message}`,
+        });
+      }
       throw new HarnessFatalError(
         error instanceof Error ? error.message : String(error),
         error,
       );
     }
 
-    const memoryQuery = buildMemorySearchQuery(demand, prDiff);
-    const memoryResponse = await this.memorySearch.search({
-      query: memoryQuery,
-      limit: 10,
-      projectPath: options?.projectPath ?? process.cwd(),
-      types: ['route', 'flow', 'scenario', 'semantic_locator'],
-    });
+    let memoryQuery: string;
+    try {
+      memoryQuery = buildMemorySearchQuery(demand, prDiff);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        return this.blockAndThrow(outputDir, {
+          prNumber: prDiff.pullRequest.prNumber,
+          blockReason: `Invalid correlation input schema: ${error.message}`,
+        });
+      }
+      throw error;
+    }
+
+    let memoryResponse;
+    try {
+      memoryResponse = await this.memorySearch.search({
+        query: memoryQuery,
+        limit: 10,
+        projectPath: options?.projectPath ?? process.cwd(),
+        types: ['route', 'flow', 'scenario', 'semantic_locator'],
+      });
+    } catch (error) {
+      return this.blockAndThrow(outputDir, {
+        prNumber: prDiff.pullRequest.prNumber,
+        blockReason: `Failed to search BM25 memory: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
 
     const result = this.correlator.correlate({
       demand,

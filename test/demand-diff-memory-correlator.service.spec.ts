@@ -125,4 +125,37 @@ describe('DemandDiffMemoryCorrelatorService', () => {
 
     expect(result.risks.some((risk) => risk.type === 'demand_diff_mismatch')).toBe(true);
   });
+
+  it('returns BLOCKED when demand context schema is invalid', () => {
+    const result = service.correlate({
+      demand: { taskId: '' } as DemandContext,
+      prDiff: BASE_PR_DIFF,
+      memoryResults: [],
+    });
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockReason).toContain('Invalid demand context schema');
+  });
+
+  it('returns BLOCKED when PR diff context schema is invalid', () => {
+    const result = service.correlate({
+      demand: BASE_DEMAND,
+      prDiff: { ...BASE_PR_DIFF, schemaVersion: 'wrong-version' } as unknown as PrDiffContext,
+      memoryResults: [],
+    });
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockReason).toContain('Invalid PR diff context schema');
+  });
+
+  it('returns BLOCKED when memory search results schema is invalid', () => {
+    const result = service.correlate({
+      demand: BASE_DEMAND,
+      prDiff: BASE_PR_DIFF,
+      memoryResults: [{ chunk: { id: 'bad' } }] as never,
+    });
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockReason).toContain('Invalid memory search results schema');
+  });
 });

@@ -24,6 +24,7 @@ afterEach(async () => {
   await Promise.all(tempDirs.map((dir) => rm(dir, { recursive: true, force: true })));
   tempDirs = [];
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 describe('RunPipelineCorrelateUseCase', () => {
@@ -135,6 +136,28 @@ describe('RunPipelineCorrelateUseCase', () => {
     });
 
     await expect(useCase.execute(outputDir)).rejects.toBeInstanceOf(HarnessFatalError);
+  });
+
+  it('throws CorrelationBlockedError when BM25 memory search fails', async () => {
+    const outputDir = await prepareOutputDir();
+    vi.stubEnv('CLICKUP_TOKEN', 'pk_test_token');
+
+    const useCase = buildUseCase({
+      readTask: vi.fn(),
+      readConfiguredTask: vi.fn(async () => ({
+        demand: JSON.parse(await readFile(join(FIXTURES_DIR, 'demand-context.json'), 'utf8')),
+      })),
+    });
+
+    vi.spyOn(MemorySearchService.prototype, 'search').mockRejectedValue(new Error('permission denied'));
+
+    await expect(
+      useCase.execute(outputDir, { projectPath: process.cwd(), env: process.env }),
+    ).rejects.toBeInstanceOf(CorrelationBlockedError);
+
+    const scenarios = JSON.parse(await readFile(join(outputDir, 'required-scenarios.json'), 'utf8'));
+    expect(scenarios.status).toBe('BLOCKED');
+    expect(scenarios.blockReason).toContain('Failed to search BM25 memory');
   });
 });
 
