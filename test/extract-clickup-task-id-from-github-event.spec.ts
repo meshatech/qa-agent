@@ -25,12 +25,15 @@ describe('extractClickUpTaskIdFromGitHubEvent', () => {
     await expect(extractClickUpTaskIdFromGitHubEvent({})).resolves.toBeUndefined();
   });
 
-  it('returns undefined when the event file does not exist', async () => {
+  it('throws PrContextReaderError when the event file does not exist', async () => {
     await expect(
       extractClickUpTaskIdFromGitHubEvent({
         GITHUB_EVENT_PATH: join(tmpdir(), 'missing-event.json'),
       }),
-    ).resolves.toBeUndefined();
+    ).rejects.toMatchObject({
+      name: 'PrContextReaderError',
+      code: 'INVALID_EVENT',
+    });
   });
 
   it('returns undefined when pull_request.title is missing', async () => {
@@ -46,7 +49,7 @@ describe('extractClickUpTaskIdFromGitHubEvent', () => {
     ).resolves.toBeUndefined();
   });
 
-  it('returns undefined when event payload is malformed JSON', async () => {
+  it('throws PrContextReaderError when event payload is malformed JSON', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'agent-qa-github-event-'));
     tempDirs.push(dir);
     const eventPath = join(dir, 'event.json');
@@ -54,7 +57,10 @@ describe('extractClickUpTaskIdFromGitHubEvent', () => {
 
     await expect(
       extractClickUpTaskIdFromGitHubEvent({ GITHUB_EVENT_PATH: eventPath }),
-    ).resolves.toBeUndefined();
+    ).rejects.toMatchObject({
+      name: 'PrContextReaderError',
+      code: 'INVALID_EVENT',
+    });
   });
 
   it('extracts task ID from a valid GitHub pull_request event', async () => {

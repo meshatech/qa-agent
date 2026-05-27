@@ -364,6 +364,22 @@ describe('PipelinePreflightService', () => {
       );
     });
 
+    it('fails clickupTaskId check when GITHUB_EVENT_PATH contains invalid JSON', async () => {
+      const outputDir = await setupPreflightPassEnv();
+      const dir = await tempDir();
+      const eventPath = join(dir, 'invalid-event.json');
+      await writeFile(eventPath, '{not-json', 'utf8');
+      process.env.GITHUB_EVENT_PATH = eventPath;
+
+      const result = await makeService().run(outputDir);
+
+      expect(result.report.status).toBe('BLOCKED');
+      expect(result.report.checks.clickupTaskId.ok).toBe(false);
+      expect(result.report.checks.clickupTaskId.error).toBe('GitHub Actions event payload is invalid');
+      expect(result.report.checks.clickupTaskId.skipped).toBeUndefined();
+      expect(result.report.checkItems.find((item) => item.name === 'clickupTaskId')?.status).toBe('FAIL');
+    });
+
     it('sanitizes clickupTaskId extraction errors in preflight report', async () => {
       const outputDir = await setupPreflightPassEnv();
       process.env.GITHUB_TOKEN = 'ghp_super_secret_token';

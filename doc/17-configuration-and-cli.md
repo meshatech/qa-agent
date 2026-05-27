@@ -195,8 +195,8 @@ Convenção Sprint Labs: incluir custom ID ClickUp no **título** do PR, ex.: `P
 - Pipeline (preflight + prepare): `clickUpTaskId` extraído do evento GitHub (`GITHUB_EVENT_PATH`)
 - Preflight local sem GHA: check `clickupTaskId` **skipped** (`WARN` no report; não bloqueia sozinho)
 - `qa-agent run` local: `config.clickup.taskId` (fallback deprecado `CLICKUP_TASK_ID` env com warning)
-- Saída: campo `pullRequest.clickUpTaskId` em `pr-diff-context.json` (opcional no schema; obrigatório no fluxo GHA)
-- Ausência no PR (modo pipeline): preflight `BLOCKED` / `read-pr-context` falha com `CLICKUP_TASK_ID_NOT_FOUND`
+- Saída: campo `pullRequest.clickUpTaskId` em `pr-diff-context.json` (opcional no schema)
+- Ausência no PR (modo pipeline): preflight `BLOCKED`; `read-pr-context` isolado não falha por ID ausente (omite o campo)
 
 ### Flags principais
 

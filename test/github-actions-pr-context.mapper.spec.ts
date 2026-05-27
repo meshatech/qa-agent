@@ -167,12 +167,21 @@ describe('mapGitHubActionsToPullRequestContext', () => {
 });
 
 describe('sanitizePrContextErrorMessage', () => {
-  it('redacts absolute paths and GitHub tokens from error messages', () => {
+  it('redacts multi-segment absolute paths and GitHub tokens from error messages', () => {
     const env = { GITHUB_TOKEN: 'ghp_super_secret_token' };
     const message = 'Failed reading /home/user/secret/event.json with ghp_super_secret_token';
 
     expect(sanitizePrContextErrorMessage(message, env)).toBe(
       'Failed reading <redacted> with ***REDACTED***',
+    );
+  });
+
+  it('does not redact single-segment paths like /api', () => {
+    const env = { GITHUB_TOKEN: 'ghp_super_secret_token' };
+    const message = 'Request to /api failed with ghp_super_secret_token';
+
+    expect(sanitizePrContextErrorMessage(message, env)).toBe(
+      'Request to /api failed with ***REDACTED***',
     );
   });
 });

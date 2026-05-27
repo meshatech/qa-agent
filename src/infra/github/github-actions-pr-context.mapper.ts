@@ -12,6 +12,7 @@ import { resolveGitHubActionsPrRefs, resolveHeadBranchFromEnv, resolveBaseBranch
 const ALLOWED_PR_EVENT_NAMES = ['pull_request', 'pull_request_target'] as const;
 
 const GITHUB_TOKEN_ENV_KEYS = ['GITHUB_TOKEN', 'GH_TOKEN', 'INPUT_GITHUB_TOKEN'] as const;
+const ABSOLUTE_PATH_PATTERN = /\/[\w./-]+\/[\w./-]+(?:\/[\w./-]+)*/g;
 
 type GitHubPullRequestEvent = {
   pull_request?: {
@@ -26,7 +27,7 @@ export function resolveGitHubWorkspace(env: NodeJS.ProcessEnv = process.env): st
 }
 
 function sanitizePrContextErrorMessage(message: string, env: NodeJS.ProcessEnv): string {
-  let sanitized = message.replace(/\/[^\s'"]+/g, '<redacted>');
+  let sanitized = message.replace(ABSOLUTE_PATH_PATTERN, '<redacted>');
   for (const key of GITHUB_TOKEN_ENV_KEYS) {
     const token = env[key]?.trim();
     if (token) {
@@ -91,18 +92,14 @@ export async function extractClickUpTaskIdFromGitHubEvent(
     return undefined;
   }
 
-  try {
-    const event = await readGitHubPullRequestEvent(env);
-    const title = event.pull_request?.title?.trim() ?? '';
-    const body = event.pull_request?.body?.trim() || undefined;
-    if (!title) {
-      return undefined;
-    }
-    const safeBody = sanitizePullRequestBodyForExtraction(body);
-    return extractClickUpTaskIdFromPullRequestText(title, safeBody, pattern);
-  } catch {
+  const event = await readGitHubPullRequestEvent(env);
+  const title = event.pull_request?.title?.trim() ?? '';
+  const body = event.pull_request?.body?.trim() || undefined;
+  if (!title) {
     return undefined;
   }
+  const safeBody = sanitizePullRequestBodyForExtraction(body);
+  return extractClickUpTaskIdFromPullRequestText(title, safeBody, pattern);
 }
 
 async function readPullRequestMetadata(
