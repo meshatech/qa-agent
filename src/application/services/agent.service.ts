@@ -8,8 +8,10 @@ import { CaptureAuthUseCase } from '../use-cases/capture-auth.usecase.js';
 import { RunOnboardingUseCase } from '../use-cases/run-onboarding.usecase.js';
 import { RunPipelinePreflightUseCase } from '../use-cases/run-pipeline-preflight.usecase.js';
 import { RunPrDiffContextUseCase } from '../use-cases/run-pr-diff-context.usecase.js';
+import { RunPipelinePrepareUseCase } from '../use-cases/run-pipeline-prepare.usecase.js';
 import type { PipelinePreflightRunResult } from '../dto/pipeline-preflight-result.dto.js';
 import type { PrDiffContextRunResult } from '../dto/pr-diff-context-result.dto.js';
+import type { PipelinePrepareRunResult } from '../dto/pipeline-prepare-result.dto.js';
 import type { OnboardingResult } from '../../domain/models/readiness.model.js';
 
 @Injectable()
@@ -23,6 +25,7 @@ export class AgentService {
     @Inject(RunOnboardingUseCase) private readonly runOnboarding: RunOnboardingUseCase,
     @Inject(RunPipelinePreflightUseCase) private readonly runPipelinePreflight: RunPipelinePreflightUseCase,
     @Inject(RunPrDiffContextUseCase) private readonly runPrDiffContext: RunPrDiffContextUseCase,
+    @Inject(RunPipelinePrepareUseCase) private readonly runPipelinePrepare: RunPipelinePrepareUseCase,
   ) {}
 
   execute(dto: RunAgentDto) {
@@ -59,5 +62,9 @@ export class AgentService {
 
   readPrContext(outputDir: string): Promise<PrDiffContextRunResult> {
     return this.runPrDiffContext.execute(outputDir);
+  }
+
+  pipelinePrepare(outputDir: string): Promise<PipelinePrepareRunResult> {
+    return this.runPipelinePrepare.execute(outputDir);
   }
 }

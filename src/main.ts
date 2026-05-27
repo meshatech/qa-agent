@@ -132,6 +132,43 @@ program
     }
   });
 
+const pipeline = program.command('pipeline').description('Pipeline orchestration commands');
+
+pipeline
+  .command('prepare')
+  .description('Run preflight checks then read PR diff context into the pipeline output dir')
+  .option('--output-dir <path>', 'output directory for pipeline artifacts', './.agent-qa/pipeline')
+  .action(async (opts) => {
+    try {
+      const result = await withApp((c) => c.pipelinePrepare(opts.outputDir));
+      if (result.tokensMasked) {
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        console.log(
+          JSON.stringify(
+            {
+              preflightReportPath: result.preflightReportPath,
+              prDiffContextPath: result.prDiffContextPath,
+              tokensMasked: false,
+              warning: 'PR diff context output redacted due to potential secret leak',
+            },
+            null,
+            2,
+          ),
+        );
+      }
+      process.exitCode = classifyPreflightReport(result.preflightReport);
+    } catch (err) {
+      if (err instanceof PreflightBlockedError) {
+        console.log(JSON.stringify({ report: err.report, reportPath: err.reportPath ?? null }, null, 2));
+        process.exitCode = classifyPreflightReport(err.report);
+        return;
+      }
+      console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err), kind: err instanceof Error ? err.constructor.name : 'Error' }, null, 2));
+      process.exitCode = classifyError(err);
+    }
+  });
+
 program
   .command('onboard')
   .description('Run project onboarding with baseline smoke test')

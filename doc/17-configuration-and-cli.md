@@ -172,12 +172,15 @@ Comando:
 qa-agent run --config ./agent-qa.config.json [flags]
 qa-agent preflight --output-dir ./.agent-qa/pipeline
 qa-agent read-pr-context --output-dir ./.agent-qa/pipeline
+qa-agent pipeline prepare --output-dir ./.agent-qa/pipeline
 qa-agent inspect --runId <id>
 qa-agent report --runId <id> --format md|json
 qa-agent validate-config --config ./agent-qa.config.json
 ```
 
 `read-pr-context` executa `git diff origin/<base>...HEAD` com limite de **50MB** de stdout. Se o diff exceder esse buffer, o comando falha com `GIT_DIFF_FAILED` e mensagem explícita (`Git diff output exceeded 50MB buffer limit`).
+
+`pipeline prepare` executa **preflight** (gate obrigatório) e só então **read-pr-context**, gravando `preflight-report.json` e `pr-diff-context.json` no mesmo `--output-dir`. Preflight `BLOCKED` interrompe antes do diff (exit code 6).
 
 ### Flags principais
 
