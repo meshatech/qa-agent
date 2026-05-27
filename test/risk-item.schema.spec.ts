@@ -15,6 +15,12 @@ const VALID_UNCOVERED_RISK = {
   type: 'uncovered_criterion' as const,
 };
 
+const VALID_MISMATCH_RISK = {
+  severity: 'MEDIUM' as const,
+  description: 'Demand "Billing export" has low lexical overlap with PR diff (score 0.00); PR may not cover the demand',
+  type: 'demand_diff_mismatch' as const,
+};
+
 describe('RiskItemSchema', () => {
   it('accepts a valid regression risk with relatedFile', () => {
     expect(RiskItemSchema.parse(VALID_REGRESSION_RISK)).toEqual(VALID_REGRESSION_RISK);
@@ -22,6 +28,10 @@ describe('RiskItemSchema', () => {
 
   it('accepts a valid uncovered_criterion risk without relatedFile', () => {
     expect(RiskItemSchema.parse(VALID_UNCOVERED_RISK)).toEqual(VALID_UNCOVERED_RISK);
+  });
+
+  it('accepts a valid demand_diff_mismatch risk without relatedFile', () => {
+    expect(RiskItemSchema.parse(VALID_MISMATCH_RISK)).toEqual(VALID_MISMATCH_RISK);
   });
 
   it('rejects empty description', () => {

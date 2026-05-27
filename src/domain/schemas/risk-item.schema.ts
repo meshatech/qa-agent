@@ -5,6 +5,7 @@ export const RiskSeveritySchema = z.enum(['LOW', 'MEDIUM', 'HIGH']);
 export const RiskTypeSchema = z.enum([
   'regression',
   'uncovered_criterion',
+  'demand_diff_mismatch',
   'missing_memory',
   'other',
 ]);

@@ -110,4 +110,19 @@ describe('DemandDiffMemoryCorrelatorService', () => {
 
     expect(result.risks.some((risk) => risk.type === 'uncovered_criterion')).toBe(true);
   });
+
+  it('flags demand_diff_mismatch when demand topic does not match diff', () => {
+    const result = service.correlate({
+      demand: {
+        ...BASE_DEMAND,
+        title: 'Billing export improvements',
+        description: 'Invoice billing dashboard export',
+        acceptanceCriteria: ['Billing invoice export supports CSV format'],
+      },
+      prDiff: BASE_PR_DIFF,
+      memoryResults: [],
+    });
+
+    expect(result.risks.some((risk) => risk.type === 'demand_diff_mismatch')).toBe(true);
+  });
 });

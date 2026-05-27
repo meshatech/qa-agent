@@ -6,6 +6,7 @@ import {
 export interface ConsumedDemandContext {
   taskId: string;
   title: string;
+  description: string;
   acceptanceCriteria: string[];
 }
 
@@ -26,6 +27,7 @@ export function consumeDemandContext(demand: DemandContext): ConsumedDemandConte
   return {
     taskId: validated.taskId,
     title: validated.title,
+    description: validated.description.trim(),
     acceptanceCriteria,
   };
 }

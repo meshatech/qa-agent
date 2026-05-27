@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import { correlateCriterionWithDiff } from '../../domain/helpers/criterion-diff-correlator.js';
+import { detectDemandDiffMismatch } from '../../domain/helpers/demand-diff-mismatch-detector.js';
 import { correlateNegativeDiffRegressions } from '../../domain/helpers/negative-diff-regression-correlator.js';
 import { consumeDemandContext } from '../../domain/helpers/demand-context-consumer.js';
 import type { ConsumedMemorySearchContext } from '../../domain/helpers/memory-search-consumer.js';
@@ -56,7 +57,10 @@ export class DemandDiffMemoryCorrelatorService {
 
     const memory = consumeMemorySearchResults(input.memoryResults);
 
-    const risks = correlateNegativeDiffRegressions({ prDiff, memory });
+    const risks = [
+      ...correlateNegativeDiffRegressions({ prDiff, memory }),
+      ...detectDemandDiffMismatch({ demand, prDiff }),
+    ];
     const correlations: CorrelationItem[] = [];
     const scenarios: RequiredScenario[] = [];
 

@@ -23,11 +23,21 @@ describe('consumeDemandContext', () => {
     expect(consumeDemandContext(BASE_DEMAND)).toEqual({
       taskId: 'PRJ-11396',
       title: 'Consumir DemandContext',
+      description: 'Extract acceptance criteria for correlation.',
       acceptanceCriteria: [
         'Login route validates user credentials',
         'Invalid login shows error message',
       ],
     });
+  });
+
+  it('trims whitespace from description', () => {
+    const result = consumeDemandContext({
+      ...BASE_DEMAND,
+      description: '  Extract acceptance criteria for correlation.  ',
+    });
+
+    expect(result.description).toBe('Extract acceptance criteria for correlation.');
   });
 
   it('trims whitespace from criteria', () => {
