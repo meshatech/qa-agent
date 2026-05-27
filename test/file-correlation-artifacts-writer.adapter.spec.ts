@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { access, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { access, mkdir, mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -8,6 +8,7 @@ import { prepareCorrelationReportArtifact } from '../src/domain/helpers/correlat
 import { CorrelationResultSchema } from '../src/domain/schemas/correlation.schema.js';
 import type { DemandContext } from '../src/domain/schemas/demand-context.schema.js';
 import type { PrDiffContext } from '../src/domain/schemas/pr-diff-context.schema.js';
+import * as atomicFileWrite from '../src/infra/persistence/atomic-file-write.js';
 import { FileCorrelationArtifactsWriterAdapter } from '../src/infra/persistence/file-correlation-artifacts-writer.adapter.js';
 
 const BASE_DEMAND: DemandContext = {
@@ -51,6 +52,7 @@ let tempDirs: string[] = [];
 afterEach(async () => {
   await Promise.all(tempDirs.map((dir) => rm(dir, { recursive: true, force: true })));
   tempDirs = [];
+  vi.restoreAllMocks();
 });
 
 describe('FileCorrelationArtifactsWriterAdapter', () => {
@@ -116,5 +118,33 @@ describe('FileCorrelationArtifactsWriterAdapter', () => {
 
     await expect(adapter.write(dir, result)).rejects.toThrow();
     await expect(access(tmpPath)).rejects.toThrow();
+  });
+
+  it('does not leave final artifacts when the second staged write fails', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'agent-qa-correlation-artifacts-writer-'));
+    tempDirs.push(dir);
+    const adapter = new FileCorrelationArtifactsWriterAdapter();
+    const result = new DemandDiffMemoryCorrelatorService().correlate({
+      demand: BASE_DEMAND,
+      prDiff: BASE_PR_DIFF,
+      memoryResults: [],
+    });
+    const originalWrite = atomicFileWrite.writeAtomicFile;
+    let callCount = 0;
+
+    vi.spyOn(atomicFileWrite, 'writeAtomicFile').mockImplementation(async (...args) => {
+      callCount += 1;
+      if (callCount === 2) {
+        throw new Error('report write failed');
+      }
+      return originalWrite(...args);
+    });
+
+    await expect(adapter.write(dir, result)).rejects.toThrow('report write failed');
+    await expect(access(join(dir, 'required-scenarios.json'))).rejects.toThrow();
+    await expect(access(join(dir, 'correlation-report.md'))).rejects.toThrow();
+    expect((await readdir(dir)).every((entry) => !entry.startsWith('.correlation-artifacts-'))).toBe(
+      true,
+    );
   });
 });

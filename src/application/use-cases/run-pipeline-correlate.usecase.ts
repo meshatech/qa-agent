@@ -7,6 +7,7 @@ import {
   describePipelineArtifactError,
   readPipelineArtifact,
 } from '../helpers/read-pipeline-artifact.js';
+import { redactSecretsInMessage } from '../helpers/sanitize-token.js';
 import type { CorrelationArtifactsWriterPort } from '../ports/correlation-artifacts-writer.port.js';
 import { DemandContextPersistenceService } from '../services/demand-context-persistence.service.js';
 import { DemandDiffMemoryCorrelatorService } from '../services/demand-diff-memory-correlator.service.js';
@@ -75,6 +76,8 @@ export class RunPipelineCorrelateUseCase {
       });
     }
 
+    const safeUserMessage = (message: string) => redactSecretsInMessage(message, [token]);
+
     let demandContextPath: string;
     let demand;
     try {
@@ -87,17 +90,17 @@ export class RunPipelineCorrelateUseCase {
       if (error instanceof ClickUpReaderError) {
         return this.blockAndThrow(outputDir, {
           prNumber: prDiff.pullRequest.prNumber,
-          blockReason: `Failed to fetch demand from ClickUp: ${error.message}`,
+          blockReason: safeUserMessage(`Failed to fetch demand from ClickUp: ${error.message}`),
         });
       }
       if (error instanceof ZodError) {
         return this.blockAndThrow(outputDir, {
           prNumber: prDiff.pullRequest.prNumber,
-          blockReason: `Invalid demand context schema: ${error.message}`,
+          blockReason: safeUserMessage(`Invalid demand context schema: ${error.message}`),
         });
       }
       throw new HarnessFatalError(
-        error instanceof Error ? error.message : String(error),
+        safeUserMessage(error instanceof Error ? error.message : String(error)),
         error,
       );
     }
@@ -109,7 +112,7 @@ export class RunPipelineCorrelateUseCase {
       if (error instanceof ZodError) {
         return this.blockAndThrow(outputDir, {
           prNumber: prDiff.pullRequest.prNumber,
-          blockReason: `Invalid correlation input schema: ${error.message}`,
+          blockReason: safeUserMessage(`Invalid correlation input schema: ${error.message}`),
         });
       }
       throw error;
@@ -126,16 +129,28 @@ export class RunPipelineCorrelateUseCase {
     } catch (error) {
       return this.blockAndThrow(outputDir, {
         prNumber: prDiff.pullRequest.prNumber,
-        blockReason: `Failed to search BM25 memory: ${error instanceof Error ? error.message : String(error)}`,
+        blockReason: safeUserMessage(
+          `Failed to search BM25 memory: ${error instanceof Error ? error.message : String(error)}`,
+        ),
       });
     }
 
-    const result = this.correlator.correlate({
-      demand,
-      prDiff,
-      memoryResults: memoryResponse.chunks,
-      warnings: memoryResponse.warnings,
-    });
+    let result: CorrelationResult;
+    try {
+      result = this.correlator.correlate({
+        demand,
+        prDiff,
+        memoryResults: memoryResponse.chunks,
+        warnings: memoryResponse.warnings,
+      });
+    } catch (error) {
+      return this.blockAndThrow(outputDir, {
+        prNumber: prDiff.pullRequest.prNumber,
+        blockReason: safeUserMessage(
+          `Correlation failed: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      });
+    }
 
     const paths = await this.persistArtifacts(outputDir, result, {
       demandTitle: demand.title,

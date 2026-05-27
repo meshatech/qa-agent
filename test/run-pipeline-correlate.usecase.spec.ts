@@ -161,6 +161,74 @@ describe('RunPipelineCorrelateUseCase', () => {
     expect(scenarios.blockReason).toContain('Failed to fetch demand from ClickUp');
   });
 
+  it('redacts CLICKUP_TOKEN from ClickUp blockReason when token appears in error message', async () => {
+    const outputDir = await prepareOutputDir();
+    const secretToken = 'pk_leaked_secret_token_value';
+    vi.stubEnv('CLICKUP_TOKEN', secretToken);
+
+    const useCase = buildUseCase({
+      readTask: vi.fn(),
+      readConfiguredTask: vi.fn(async () => {
+        throw new ClickUpReaderError(`Authorization failed for ${secretToken}`);
+      }),
+    });
+
+    await expect(useCase.execute(outputDir, { env: process.env })).rejects.toBeInstanceOf(
+      CorrelationBlockedError,
+    );
+
+    const scenarios = JSON.parse(await readFile(join(outputDir, 'required-scenarios.json'), 'utf8'));
+    expect(scenarios.blockReason).not.toContain(secretToken);
+    expect(scenarios.blockReason).toContain('***REDACTED***');
+  });
+
+  it('redacts CLICKUP_TOKEN from HarnessFatalError when token appears in error message', async () => {
+    const outputDir = await prepareOutputDir();
+    const secretToken = 'pk_leaked_secret_token_value';
+    vi.stubEnv('CLICKUP_TOKEN', secretToken);
+
+    const useCase = buildUseCase({
+      readTask: vi.fn(),
+      readConfiguredTask: vi.fn(async () => {
+        throw new Error(`disk write failed with ${secretToken}`);
+      }),
+    });
+
+    try {
+      await useCase.execute(outputDir, { env: process.env });
+      expect.fail('expected HarnessFatalError');
+    } catch (error) {
+      expect(error).toBeInstanceOf(HarnessFatalError);
+      expect((error as HarnessFatalError).message).not.toContain(secretToken);
+      expect((error as HarnessFatalError).message).toContain('***REDACTED***');
+    }
+  });
+
+  it('throws CorrelationBlockedError when correlator throws unexpectedly', async () => {
+    const outputDir = await prepareOutputDir();
+    vi.stubEnv('CLICKUP_TOKEN', 'pk_test_token');
+
+    const useCase = buildUseCase({
+      readTask: vi.fn(),
+      readConfiguredTask: vi.fn(async () => ({
+        demand: JSON.parse(await readFile(join(FIXTURES_DIR, 'demand-context.json'), 'utf8')),
+      })),
+    });
+
+    vi.spyOn(DemandDiffMemoryCorrelatorService.prototype, 'correlate').mockImplementation(() => {
+      throw new Error('logic bug');
+    });
+
+    await expect(
+      useCase.execute(outputDir, { projectPath: process.cwd(), env: process.env }),
+    ).rejects.toBeInstanceOf(CorrelationBlockedError);
+
+    const scenarios = JSON.parse(await readFile(join(outputDir, 'required-scenarios.json'), 'utf8'));
+    expect(scenarios.status).toBe('BLOCKED');
+    expect(scenarios.blockReason).toContain('Correlation failed');
+    expect(scenarios.blockReason).toContain('logic bug');
+  });
+
   it('throws HarnessFatalError for infrastructure failures during demand persistence', async () => {
     const outputDir = await prepareOutputDir();
     vi.stubEnv('CLICKUP_TOKEN', 'pk_test_token');

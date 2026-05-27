@@ -92,6 +92,18 @@ describe('detectDemandDiffMismatch', () => {
     expect(detectDemandDiffMismatch({ demand, prDiff })).toEqual([]);
   });
 
+  it('returns no mismatch when one acceptance criterion aligns even if title is generic', () => {
+    const demand = consumeDemandContext({
+      ...LOGIN_DEMAND,
+      title: 'General platform improvements for users and system',
+      description: 'Broad maintenance work across modules',
+      acceptanceCriteria: ['Login routes validates user credentials on /login path'],
+    });
+    const prDiff = consumePrDiffContext(LOGIN_PR_DIFF);
+
+    expect(detectDemandDiffMismatch({ demand, prDiff })).toEqual([]);
+  });
+
   it('returns no risks when demand has no tokenizable text', () => {
     const demand = consumeDemandContext({
       ...LOGIN_DEMAND,

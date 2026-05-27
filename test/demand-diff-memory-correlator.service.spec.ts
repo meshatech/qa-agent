@@ -158,4 +158,43 @@ describe('DemandDiffMemoryCorrelatorService', () => {
     expect(result.status).toBe('BLOCKED');
     expect(result.blockReason).toContain('Invalid memory search results schema');
   });
+
+  it('returns BLOCKED when route fallback cannot derive scenarios without changed files', () => {
+    const result = service.correlate({
+      demand: {
+        ...BASE_DEMAND,
+        acceptanceCriteria: ['Billing invoice export supports CSV format'],
+      },
+      prDiff: {
+        ...BASE_PR_DIFF,
+        changedFiles: [],
+        affectedRoutes: ['/billing'],
+        affectedSchemas: [],
+      },
+      memoryResults: [],
+    });
+
+    expect(result.status).toBe('BLOCKED');
+    expect(result.blockReason).toContain('No required scenarios could be derived');
+    expect(result.scenarios).toEqual([]);
+  });
+
+  it('adds warning when route fallback scenarios are used', () => {
+    const result = service.correlate({
+      demand: {
+        ...BASE_DEMAND,
+        acceptanceCriteria: ['Billing invoice export supports CSV format'],
+      },
+      prDiff: BASE_PR_DIFF,
+      memoryResults: [],
+    });
+
+    expect(result.status).toBe('OK');
+    expect(result.scenarios.some((scenario) => scenario.title.includes('/login'))).toBe(true);
+    expect(
+      result.warnings.some((warning) =>
+        warning.includes('scenarios derived from affected routes only'),
+      ),
+    ).toBe(true);
+  });
 });

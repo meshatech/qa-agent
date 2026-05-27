@@ -12,12 +12,24 @@ export interface DemandDiffMismatchInput {
 }
 
 export function detectDemandDiffMismatch(input: DemandDiffMismatchInput): RiskItem[] {
+  const diffTokens = buildDiffTokens(input.prDiff);
+
+  if (!diffTokens.size) {
+    return [];
+  }
+
+  for (const criterion of input.demand.acceptanceCriteria) {
+    const criterionTokens = tokenize(criterion);
+    if (criterionTokens.size && overlapScore(criterionTokens, diffTokens) >= MISMATCH_THRESHOLD) {
+      return [];
+    }
+  }
+
   const demandTokens = tokenize(
     [input.demand.title, input.demand.description, ...input.demand.acceptanceCriteria].join(' '),
   );
-  const diffTokens = buildDiffTokens(input.prDiff);
 
-  if (!demandTokens.size || !diffTokens.size) {
+  if (!demandTokens.size) {
     return [];
   }
 

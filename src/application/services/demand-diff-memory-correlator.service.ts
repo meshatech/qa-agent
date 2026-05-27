@@ -134,6 +134,11 @@ export class DemandDiffMemoryCorrelatorService {
 
     if (!scenarios.length) {
       const routeScenarios = this.buildRouteFallbackScenarios(prDiff, memory);
+      if (routeScenarios.length > 0) {
+        warnings.push(
+          'No acceptance criterion reached minimum correlation score; scenarios derived from affected routes only',
+        );
+      }
       scenarios.push(...routeScenarios.slice(0, MAX_SCENARIOS));
     }
 
@@ -162,6 +167,10 @@ export class DemandDiffMemoryCorrelatorService {
     prDiff: ConsumedPrDiffContext,
     memory: ConsumedMemorySearchContext,
   ): RequiredScenario[] {
+    if (prDiff.changedFiles.length === 0) {
+      return [];
+    }
+
     const scenarios: RequiredScenario[] = [];
     for (const route of prDiff.affectedRoutes) {
       const relatedFiles = prDiff.changedFiles
