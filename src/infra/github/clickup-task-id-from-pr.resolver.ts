@@ -93,8 +93,17 @@ export function resolveClickUpCustomIdPattern(options?: {
   return compileClickUpCustomIdPattern();
 }
 
+function cloneGlobalPattern(pattern: RegExp): RegExp {
+  const clone = new RegExp(
+    pattern.source,
+    pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`,
+  );
+  clone.lastIndex = 0;
+  return clone;
+}
+
 function findFirstValidClickUpTaskId(text: string, pattern: RegExp): string | undefined {
-  const globalPattern = new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`);
+  const globalPattern = cloneGlobalPattern(pattern);
   const matches = text.match(globalPattern);
   if (!matches) {
     return undefined;

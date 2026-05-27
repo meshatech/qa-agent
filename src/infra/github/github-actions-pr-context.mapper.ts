@@ -93,6 +93,28 @@ async function readGitHubPullRequestEvent(
   }
 }
 
+function parsePullRequestMetadataFromEvent(
+  event: GitHubPullRequestEvent,
+  env: NodeJS.ProcessEnv,
+): { title: string; author: string; body?: string } {
+  const title = event.pull_request?.title?.trim();
+  const author = event.pull_request?.user?.login?.trim();
+  const body = sanitizePullRequestBodyForExtraction(event.pull_request?.body?.trim() || undefined);
+
+  if (!title || !author) {
+    throw new PrContextReaderError(
+      'GitHub Actions pull request metadata is incomplete',
+      sanitizePrContextErrorCause(
+        new Error('GitHub Actions pull request metadata is incomplete'),
+        env,
+      ),
+      'INVALID_EVENT',
+    );
+  }
+
+  return { title, author, body };
+}
+
 export async function extractClickUpTaskIdFromGitHubEvent(
   env: NodeJS.ProcessEnv = process.env,
   pattern: RegExp = resolveClickUpCustomIdPattern({ env }).pattern,
@@ -116,22 +138,7 @@ async function readPullRequestMetadata(
   env: NodeJS.ProcessEnv,
 ): Promise<{ title: string; author: string; body?: string }> {
   const event = await readGitHubPullRequestEvent(env);
-  const title = event.pull_request?.title?.trim();
-  const author = event.pull_request?.user?.login?.trim();
-  const body = sanitizePullRequestBodyForExtraction(event.pull_request?.body?.trim() || undefined);
-
-  if (!title || !author) {
-    throw new PrContextReaderError(
-      'GitHub Actions pull request metadata is incomplete',
-      sanitizePrContextErrorCause(
-        new Error('GitHub Actions pull request metadata is incomplete'),
-        env,
-      ),
-      'INVALID_EVENT',
-    );
-  }
-
-  return { title, author, body };
+  return parsePullRequestMetadataFromEvent(event, env);
 }
 
 function missingContextError(
@@ -182,7 +189,8 @@ export async function mapGitHubActionsToPullRequestContext(
     );
   }
 
-  const { title, author, body } = await readPullRequestMetadata(env);
+  const event = await readGitHubPullRequestEvent(env);
+  const { title, author, body } = parsePullRequestMetadataFromEvent(event, env);
   const { pattern, warning: patternWarning } = resolveClickUpCustomIdPattern({ env });
   if (patternWarning) {
     logger.warn(patternWarning);

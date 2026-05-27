@@ -143,7 +143,7 @@ Antes do `git diff`, `GitHubActionsPrContextReaderAdapter` chama `GitRepositoryP
 
 <!-- type: runtime_learning | id: LEARN-PR-CLICKUP-TASK-ID-001 -->
 
-`extractClickUpTaskIdFromPullRequestText(title, body?, pattern?)` extrai custom ID do PR (default `PRJ-\d+`; override env/config). Preflight: skipped (`WARN`) sem contexto PR ou sem `GITHUB_EVENT_PATH`; BLOCKED se PR OK mas ID ausente. Erros I/O/parse de `GITHUB_EVENT_PATH` propagam (`PrContextReaderError`) → preflight `FAIL` com `error`. Regex custom: max 100 chars, whitelist, `safe-regex`; inválido → fallback + `warning` centralizado (`INVALID_CUSTOM_ID_PATTERN_WARNING`). Body sanitizado (control chars, max 10k) com `Logger.warn` se truncado. `CLICKUP_TASK_ID` no `collectKnownSecretsFromEnv` (fallback deprecado). Erros preflight sanitizados (paths multi-segmento + tokens). Mapper GHA omite `clickUpTaskId` se ausente. Schema: `clickUpTaskId` opcional.
+`extractClickUpTaskIdFromPullRequestText(title, body?, pattern?)` extrai custom ID do PR (default `PRJ-\d+`; override env/config). `findFirstValidClickUpTaskId` clona RegExp global (`cloneGlobalPattern`) para evitar `lastIndex` stateful. Preflight: skipped (`WARN`) sem contexto PR ou sem `GITHUB_EVENT_PATH`; BLOCKED se PR OK mas ID ausente. Erros I/O/parse propagam (`PrContextReaderError`) → preflight `FAIL`. Regex custom: max 100 chars, whitelist, `safe-regex`; inválido → fallback + `warning`. Body sanitizado (max 10k) com `Logger.warn` se truncado. Mapper GHA: uma leitura de `GITHUB_EVENT_PATH` por execução (`parsePullRequestMetadataFromEvent` + `extractClickUpTaskIdFromPullRequestText`). `CLICKUP_TASK_ID` no `collectKnownSecretsFromEnv`. Schema: `clickUpTaskId` opcional.
 
 <!-- type: runtime_learning | id: LEARN-PLACEHOLDER-001 -->
 

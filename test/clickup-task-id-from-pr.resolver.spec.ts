@@ -52,6 +52,24 @@ describe('extractClickUpTaskIdFromPullRequestText', () => {
     const { pattern } = compileClickUpCustomIdPattern('EPIC-\\d+');
     expect(extractClickUpTaskIdFromPullRequestText('PRJ-11552 — title', undefined, pattern)).toBeUndefined();
   });
+
+  it('extracts consistently when the same global RegExp is reused across calls', () => {
+    const sharedPattern = /PRJ-\d+/g;
+
+    expect(extractClickUpTaskIdFromPullRequestText('PRJ-111 PRJ-222', undefined, sharedPattern)).toBe('PRJ-111');
+    expect(extractClickUpTaskIdFromPullRequestText('PRJ-111 PRJ-222', undefined, sharedPattern)).toBe('PRJ-111');
+  });
+
+  it('finds task ID in body on repeated calls with the same global RegExp', () => {
+    const sharedPattern = /PRJ-\d+/g;
+
+    expect(extractClickUpTaskIdFromPullRequestText('Fix login', 'Related to PRJ-11392', sharedPattern)).toBe(
+      'PRJ-11392',
+    );
+    expect(extractClickUpTaskIdFromPullRequestText('Fix login', 'Related to PRJ-11392', sharedPattern)).toBe(
+      'PRJ-11392',
+    );
+  });
 });
 
 describe('compileClickUpCustomIdPattern', () => {
