@@ -1,8 +1,19 @@
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import type { z } from 'zod';
+import { ZodError, type z } from 'zod';
 
 import { ConfigError } from '../../domain/errors.js';
+
+export function describePipelineArtifactError(error: ConfigError): string {
+  const cause = error.cause;
+  if (cause instanceof ZodError) {
+    return `${error.message}: ${cause.message}`;
+  }
+  if (cause instanceof Error) {
+    return `${error.message}: ${cause.message}`;
+  }
+  return error.message;
+}
 
 export async function readPipelineArtifact<T>(
   outputDir: string,

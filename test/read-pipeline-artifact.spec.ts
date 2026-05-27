@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { ZodError } from 'zod';
 
 import { readPipelineArtifact } from '../src/application/helpers/read-pipeline-artifact.js';
 import { ConfigError } from '../src/domain/errors.js';
@@ -43,24 +44,28 @@ describe('readPipelineArtifact', () => {
     const outputDir = await createOutputDir();
     await writeFile(join(outputDir, ARTIFACT_FILENAME), '{ broken', 'utf8');
 
-    await expect(
-      readPipelineArtifact(outputDir, ARTIFACT_FILENAME, PrDiffContextSchema),
-    ).rejects.toSatisfy(
-      (error: unknown) =>
-        error instanceof ConfigError && error.message.includes('Pipeline artifact invalid JSON'),
-    );
+    try {
+      await readPipelineArtifact(outputDir, ARTIFACT_FILENAME, PrDiffContextSchema);
+      expect.fail('expected ConfigError');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConfigError);
+      expect((error as ConfigError).message).toContain('Pipeline artifact invalid JSON');
+      expect((error as ConfigError).cause).toBeInstanceOf(SyntaxError);
+    }
   });
 
   it('throws ConfigError when the artifact fails schema validation', async () => {
     const outputDir = await createOutputDir();
     await writeFile(join(outputDir, ARTIFACT_FILENAME), JSON.stringify({}), 'utf8');
 
-    await expect(
-      readPipelineArtifact(outputDir, ARTIFACT_FILENAME, PrDiffContextSchema),
-    ).rejects.toSatisfy(
-      (error: unknown) =>
-        error instanceof ConfigError && error.message.includes('Pipeline artifact validation failed'),
-    );
+    try {
+      await readPipelineArtifact(outputDir, ARTIFACT_FILENAME, PrDiffContextSchema);
+      expect.fail('expected ConfigError');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConfigError);
+      expect((error as ConfigError).message).toContain('Pipeline artifact validation failed');
+      expect((error as ConfigError).cause).toBeInstanceOf(ZodError);
+    }
   });
 });
 

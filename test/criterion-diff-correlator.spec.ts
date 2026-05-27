@@ -161,6 +161,79 @@ describe('correlateCriterionWithDiff', () => {
     expect(result.correlation.file).toBe('src/domain/schemas/user.schema.ts');
   });
 
+  it('includes all changed files with lexical overlap in relatedFiles', () => {
+    const prDiff = consumePrDiffContext({
+      ...BASE_PR_DIFF,
+      changedFiles: [
+        {
+          path: 'src/filters/filter-status.ts',
+          status: 'modified',
+          kind: 'other',
+          positiveLines: [],
+          negativeLines: [],
+          contextLines: [],
+        },
+        {
+          path: 'src/filters/filter-date.ts',
+          status: 'modified',
+          kind: 'other',
+          positiveLines: [],
+          negativeLines: [],
+          contextLines: [],
+        },
+        {
+          path: 'src/components/unrelated.tsx',
+          status: 'modified',
+          kind: 'other',
+          positiveLines: [],
+          negativeLines: [],
+          contextLines: [],
+        },
+      ],
+      affectedRoutes: [],
+      affectedSchemas: [],
+    });
+    const memory = consumeMemorySearchResults([]);
+
+    const result = correlateCriterionWithDiff({
+      criterion: 'filter status and filter date validation',
+      prDiff,
+      memory,
+    });
+
+    expect(result.relatedFiles).toEqual([
+      'src/filters/filter-status.ts',
+      'src/filters/filter-date.ts',
+    ]);
+    expect(result.correlation.file).toBeDefined();
+    expect(result.relatedFiles).toContain(result.correlation.file);
+  });
+
+  it('caps relatedFiles at five paths when many files overlap', () => {
+    const prDiff = consumePrDiffContext({
+      ...BASE_PR_DIFF,
+      changedFiles: Array.from({ length: 6 }, (_, index) => ({
+        path: `src/filters/filter-term-${index}.ts`,
+        status: 'modified' as const,
+        kind: 'other' as const,
+        positiveLines: [],
+        negativeLines: [],
+        contextLines: [],
+      })),
+      affectedRoutes: [],
+      affectedSchemas: [],
+    });
+    const memory = consumeMemorySearchResults([]);
+
+    const result = correlateCriterionWithDiff({
+      criterion: 'filter term filter-term',
+      prDiff,
+      memory,
+    });
+
+    expect(result.relatedFiles).toHaveLength(5);
+  });
+
   it('boosts score and sets memoryChunk when memory aligns with criterion', () => {
     const prDiff = consumePrDiffContext(BASE_PR_DIFF);
     const memory = consumeMemorySearchResults([ROUTE_MEMORY_CHUNK]);

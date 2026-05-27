@@ -3,7 +3,10 @@ import { ZodError } from 'zod';
 
 import type { PipelineCorrelateRunResult } from '../dto/pipeline-correlate-result.dto.js';
 import { buildMemorySearchQuery } from '../helpers/build-memory-search-query.js';
-import { readPipelineArtifact } from '../helpers/read-pipeline-artifact.js';
+import {
+  describePipelineArtifactError,
+  readPipelineArtifact,
+} from '../helpers/read-pipeline-artifact.js';
 import type { CorrelationArtifactsWriterPort } from '../ports/correlation-artifacts-writer.port.js';
 import { DemandContextPersistenceService } from '../services/demand-context-persistence.service.js';
 import { DemandDiffMemoryCorrelatorService } from '../services/demand-diff-memory-correlator.service.js';
@@ -48,7 +51,9 @@ export class RunPipelineCorrelateUseCase {
         });
       }
       if (error instanceof ConfigError) {
-        throw new HarnessFatalError(error.message, error);
+        return this.blockAndThrow(outputDir, {
+          blockReason: describePipelineArtifactError(error),
+        });
       }
       throw error;
     }

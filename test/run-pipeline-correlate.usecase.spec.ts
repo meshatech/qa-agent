@@ -106,6 +106,43 @@ describe('RunPipelineCorrelateUseCase', () => {
     expect(report).not.toContain('PR: #');
   });
 
+  it('throws CorrelationBlockedError with Zod details when pr-diff-context.json fails schema validation', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'agent-qa-pipeline-correlate-'));
+    tempDirs.push(outputDir);
+    await writeFile(join(outputDir, 'pr-diff-context.json'), JSON.stringify({}), 'utf8');
+    vi.stubEnv('CLICKUP_TOKEN', 'pk_test_token');
+
+    const useCase = buildUseCase({
+      readTask: vi.fn(),
+      readConfiguredTask: vi.fn(),
+    });
+
+    await expect(useCase.execute(outputDir)).rejects.toBeInstanceOf(CorrelationBlockedError);
+
+    const scenarios = JSON.parse(await readFile(join(outputDir, 'required-scenarios.json'), 'utf8'));
+    expect(scenarios.status).toBe('BLOCKED');
+    expect(scenarios.blockReason).toContain('Pipeline artifact validation failed');
+    expect(scenarios.blockReason).toContain('schemaVersion');
+  });
+
+  it('throws CorrelationBlockedError with parse details when pr-diff-context.json has invalid JSON', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'agent-qa-pipeline-correlate-'));
+    tempDirs.push(outputDir);
+    await writeFile(join(outputDir, 'pr-diff-context.json'), '{ broken', 'utf8');
+    vi.stubEnv('CLICKUP_TOKEN', 'pk_test_token');
+
+    const useCase = buildUseCase({
+      readTask: vi.fn(),
+      readConfiguredTask: vi.fn(),
+    });
+
+    await expect(useCase.execute(outputDir)).rejects.toBeInstanceOf(CorrelationBlockedError);
+
+    const scenarios = JSON.parse(await readFile(join(outputDir, 'required-scenarios.json'), 'utf8'));
+    expect(scenarios.status).toBe('BLOCKED');
+    expect(scenarios.blockReason).toContain('Pipeline artifact invalid JSON');
+  });
+
   it('throws CorrelationBlockedError when ClickUp fetch fails', async () => {
     const outputDir = await prepareOutputDir();
     vi.stubEnv('CLICKUP_TOKEN', 'pk_test_token');

@@ -5,6 +5,8 @@ import { createCorrelationItem } from '../schemas/correlation-item.schema.js';
 import type { CorrelationItem } from '../schemas/correlation.schema.js';
 import type { ChangedFile } from '../schemas/changed-file.schema.js';
 
+const MAX_RELATED_FILES = 5;
+
 export interface CriterionDiffCorrelationInput {
   criterion: string;
   prDiff: ConsumedPrDiffContext;
@@ -61,7 +63,7 @@ export function correlateCriterionWithDiff(
     bestRationale = `${bestRationale}; ${memoryBoost.rationale}`;
   }
 
-  const relatedFiles = bestFile ? [bestFile] : [];
+  const relatedFiles = collectRelatedFiles(criterionTokens, input.prDiff);
   return {
     correlation: createCorrelationItem({
       criterion: input.criterion,
@@ -72,6 +74,45 @@ export function correlateCriterionWithDiff(
     }),
     relatedFiles,
   };
+}
+
+function collectRelatedFiles(
+  criterionTokens: Set<string>,
+  prDiff: ConsumedPrDiffContext,
+): string[] {
+  const scored = new Map<string, number>();
+
+  for (const file of prDiff.changedFiles) {
+    const score = overlapScore(criterionTokens, pathTokens(file.path));
+    if (score > 0) {
+      scored.set(file.path, Math.max(scored.get(file.path) ?? 0, score));
+    }
+  }
+
+  for (const route of prDiff.affectedRoutes) {
+    const score = overlapScore(criterionTokens, tokenize(route));
+    if (score > 0) {
+      const routeFile = findChangedFileForRoute(prDiff.changedFiles, route);
+      if (routeFile) {
+        scored.set(routeFile, Math.max(scored.get(routeFile) ?? 0, score));
+      }
+    }
+  }
+
+  for (const schema of prDiff.affectedSchemas) {
+    const score = overlapScore(criterionTokens, pathTokens(schema));
+    if (score > 0) {
+      const schemaFile = findChangedFileForSchema(prDiff.changedFiles, schema);
+      if (schemaFile) {
+        scored.set(schemaFile, Math.max(scored.get(schemaFile) ?? 0, score));
+      }
+    }
+  }
+
+  return [...scored.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, MAX_RELATED_FILES)
+    .map(([path]) => path);
 }
 
 function applyMemoryBoost(
