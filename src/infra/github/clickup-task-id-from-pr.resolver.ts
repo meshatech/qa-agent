@@ -9,7 +9,7 @@ export const DEFAULT_CLICKUP_CUSTOM_ID_PATTERN = /PRJ-\d+/g;
 
 const CLICKUP_CUSTOM_ID_PATTERN_ENV = 'CLICKUP_CUSTOM_ID_PATTERN';
 const MAX_PATTERN_SOURCE_LENGTH = 100;
-const SAFE_PATTERN_CHARS = /^[\w\d\\\[\]\(\)\{\}\^\$\.\|\?\*\+\-]+$/;
+const SAFE_PATTERN_CHARS = /^[\w\d\\[\]().^{}$|?*+-]+$/;
 
 export const INVALID_CUSTOM_ID_PATTERN_WARNING =
   'Invalid custom ID pattern; using default PRJ-\\d+';

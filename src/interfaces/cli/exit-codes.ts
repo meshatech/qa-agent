@@ -1,4 +1,5 @@
-import { ConfigError, HarnessFatalError, PreflightBlockedError, RunTimeoutError } from '../../domain/errors.js';
+import { ConfigError, HarnessFatalError, PreflightBlockedError, CorrelationBlockedError, RunTimeoutError } from '../../domain/errors.js';
+import type { CorrelationResult } from '../../domain/schemas/correlation.schema.js';
 import type { QaRunResult } from '../../domain/models/run.model.js';
 import type { PreflightReport } from '../../domain/schemas/preflight-report.schema.js';
 
@@ -19,6 +20,7 @@ export type ExitCode = (typeof ExitCodes)[keyof typeof ExitCodes];
 export function classifyError(err: unknown): ExitCode {
   if (err instanceof ConfigError) return ExitCodes.CONFIG_ERROR;
   if (err instanceof PreflightBlockedError) return ExitCodes.PREFLIGHT_BLOCKED;
+  if (err instanceof CorrelationBlockedError) return ExitCodes.PREFLIGHT_BLOCKED;
   if (err instanceof RunTimeoutError) return ExitCodes.TIMEOUT;
   if (err instanceof HarnessFatalError) return ExitCodes.HARNESS_FATAL;
   return ExitCodes.HARNESS_FATAL;
@@ -26,6 +28,11 @@ export function classifyError(err: unknown): ExitCode {
 
 export function classifyPreflightReport(report: PreflightReport): ExitCode {
   if (report.status === 'BLOCKED') return ExitCodes.PREFLIGHT_BLOCKED;
+  return ExitCodes.OK;
+}
+
+export function classifyCorrelationResult(result: CorrelationResult): ExitCode {
+  if (result.status === 'BLOCKED') return ExitCodes.PREFLIGHT_BLOCKED;
   return ExitCodes.OK;
 }
 

@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { ExitCodes, classifyError, classifyPreflightReport, classifyResult } from '../src/interfaces/cli/exit-codes.js';
-import { ConfigError, HarnessFatalError, PreflightBlockedError, RunTimeoutError } from '../src/domain/errors.js';
+import {
+  ExitCodes,
+  classifyCorrelationResult,
+  classifyError,
+  classifyPreflightReport,
+  classifyResult,
+} from '../src/interfaces/cli/exit-codes.js';
+import {
+  ConfigError,
+  CorrelationBlockedError,
+  HarnessFatalError,
+  PreflightBlockedError,
+  RunTimeoutError,
+} from '../src/domain/errors.js';
+import { createBlockedCorrelationResult } from '../src/domain/schemas/correlation.schema.js';
 import type { QaRunResult } from '../src/domain/models/run.model.js';
 import { PREFLIGHT_CHECK_NAMES } from '../src/domain/schemas/preflight-report.schema.js';
 
@@ -95,5 +108,29 @@ describe('CLI exit codes', () => {
         checks: {} as never,
       }),
     ).toBe(ExitCodes.PREFLIGHT_BLOCKED);
+  });
+
+  it('6 PREFLIGHT_BLOCKED for CorrelationBlockedError', () => {
+    const result = createBlockedCorrelationResult('acceptanceCriteria is empty');
+    expect(classifyError(new CorrelationBlockedError(result))).toBe(ExitCodes.PREFLIGHT_BLOCKED);
+  });
+
+  it('0 OK for correlation OK result', () => {
+    expect(
+      classifyCorrelationResult({
+        schemaVersion: 'correlation-result.v1',
+        status: 'OK',
+        scenarios: [],
+        correlations: [],
+        risks: [],
+        warnings: [],
+      }),
+    ).toBe(ExitCodes.OK);
+  });
+
+  it('6 PREFLIGHT_BLOCKED for correlation BLOCKED result', () => {
+    expect(classifyCorrelationResult(createBlockedCorrelationResult('missing token'))).toBe(
+      ExitCodes.PREFLIGHT_BLOCKED,
+    );
   });
 });

@@ -1,3 +1,4 @@
+import type { CorrelationResult } from './schemas/correlation.schema.js';
 import type { PreflightReport } from './schemas/preflight-report.schema.js';
 
 export class ConfigError extends Error {
@@ -28,6 +29,17 @@ export class PreflightBlockedError extends Error {
     public readonly reportPath?: string,
   ) {
     super('Pipeline preflight blocked');
+  }
+}
+
+export class CorrelationBlockedError extends Error {
+  readonly name = 'CorrelationBlockedError';
+  constructor(
+    public readonly result: CorrelationResult,
+    public readonly requiredScenariosPath?: string,
+    public readonly correlationReportPath?: string,
+  ) {
+    super(result.blockReason ?? 'Pipeline correlation blocked');
   }
 }
 

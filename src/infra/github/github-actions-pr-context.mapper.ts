@@ -48,6 +48,8 @@ export function sanitizePullRequestBodyForExtraction(body?: string): string | un
   if (!trimmed) {
     return undefined;
   }
+  // Strip C0/C1 control chars except TAB (0x09) and LF (0x0A) before task ID extraction.
+  // eslint-disable-next-line no-control-regex -- intentional sanitization of PR body
   const sanitized = trimmed.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
   if (sanitized.length > MAX_PR_BODY_EXTRACTION_LENGTH) {
     logger.warn(PR_BODY_TRUNCATION_WARNING);
@@ -132,13 +134,6 @@ export async function extractClickUpTaskIdFromGitHubEvent(
   }
   const safeBody = sanitizePullRequestBodyForExtraction(body);
   return extractClickUpTaskIdFromPullRequestText(title, safeBody, pattern);
-}
-
-async function readPullRequestMetadata(
-  env: NodeJS.ProcessEnv,
-): Promise<{ title: string; author: string; body?: string }> {
-  const event = await readGitHubPullRequestEvent(env);
-  return parsePullRequestMetadataFromEvent(event, env);
 }
 
 function missingContextError(

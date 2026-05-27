@@ -131,7 +131,11 @@ Princípio: LLM decide, harness executa, orchestrator governa, schemas validam, 
 
 <!-- type: runtime_learning | id: LEARN-GITHUB-PR-DIFF-CONTEXT-001 -->
 
-`PrDiffContextPersistenceService.persistFromGitHubActions(outputDir)` chama `GitHubActionsPrContextReaderPort.read()`, mapeia via `buildPrDiffContextFromReadResult` em `application/mappers/pr-diff-context.mapper.ts` (sem `rawDiff`), valida `PrDiffContextSchema` (`schemaVersion: pr-diff-context.v1`), sanitiza com `SanitizerService` + `collectKnownSecretsFromEnv` (CLICKUP/GITHUB tokens do env) e grava `{outputDir}/pr-diff-context.json` via writer atômico (tmp + rename). CLI: `qa-agent read-pr-context --output-dir ./.agent-qa/pipeline`. Falha propaga `PrContextReaderError`. Consumo pelo correlator fica para PRJ-11392+.
+`PrDiffContextPersistenceService.persistFromGitHubActions(outputDir)` chama `GitHubActionsPrContextReaderPort.read()`, mapeia via `buildPrDiffContextFromReadResult` em `application/mappers/pr-diff-context.mapper.ts` (sem `rawDiff`), valida `PrDiffContextSchema` (`schemaVersion: pr-diff-context.v1`), sanitiza com `SanitizerService` + `collectKnownSecretsFromEnv` (CLICKUP/GITHUB tokens do env) e grava `{outputDir}/pr-diff-context.json` via writer atômico (tmp + rename). CLI: `qa-agent read-pr-context --output-dir ./.agent-qa/pipeline`. Falha propaga `PrContextReaderError`. Consumido por `pipeline correlate` (PRJ-11392).
+
+<!-- type: flow | id: FLOW-PIPELINE-CORRELATE-001 -->
+
+`qa-agent pipeline correlate --output-dir ./.agent-qa/pipeline` (PRJ-11392): lê `pr-diff-context.json`, persiste `demand-context.json` via `clickUpTaskId` + `CLICKUP_TOKEN`, consulta BM25 (`.agent-qa/memory.md`), executa `DemandDiffMemoryCorrelatorService` (heurística v1 determinística) e grava `required-scenarios.json` + `correlation-report.md`. Pré-requisito: `pipeline prepare` no mesmo dir. BLOCKED (exit 6) se task ID/token/demand/critérios/diff signal ausentes; memória vazia → OK com warning. Artefato JSON: `correlation-result.v1`.
 
 <!-- type: runtime_learning | id: LEARN-GITHUB-PR-REFS-001 -->
 

@@ -5,8 +5,8 @@ import { NestFactory } from '@nestjs/core';
 import { Command } from 'commander';
 import { AppModule } from './app.module.js';
 import { AgentController } from './interfaces/cli/agent.controller.js';
-import { ExitCodes as EXIT, classifyError, classifyPreflightReport, classifyResult, classifyOnboardingResult } from './interfaces/cli/exit-codes.js';
-import { PreflightBlockedError } from './domain/errors.js';
+import { ExitCodes as EXIT, classifyError, classifyPreflightReport, classifyCorrelationResult, classifyResult, classifyOnboardingResult } from './interfaces/cli/exit-codes.js';
+import { CorrelationBlockedError, PreflightBlockedError } from './domain/errors.js';
 
 async function withApp<T>(fn: (controller: AgentController) => Promise<T>): Promise<T> {
   const app = await NestFactory.createApplicationContext(AppModule, { logger: false });
@@ -162,6 +162,37 @@ pipeline
       if (err instanceof PreflightBlockedError) {
         console.log(JSON.stringify({ report: err.report, reportPath: err.reportPath ?? null }, null, 2));
         process.exitCode = classifyPreflightReport(err.report);
+        return;
+      }
+      console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err), kind: err instanceof Error ? err.constructor.name : 'Error' }, null, 2));
+      process.exitCode = classifyError(err);
+    }
+  });
+
+pipeline
+  .command('correlate')
+  .description('Correlate ClickUp demand, PR diff, and BM25 memory into required scenarios')
+  .option('--output-dir <path>', 'pipeline artifacts directory', './.agent-qa/pipeline')
+  .option('--project-dir <path>', 'project root for BM25 memory lookup', process.cwd())
+  .action(async (opts) => {
+    try {
+      const result = await withApp((c) => c.pipelineCorrelate(opts.outputDir, opts.projectDir));
+      console.log(JSON.stringify(result, null, 2));
+      process.exitCode = classifyCorrelationResult(result.result);
+    } catch (err) {
+      if (err instanceof CorrelationBlockedError) {
+        console.log(
+          JSON.stringify(
+            {
+              result: err.result,
+              requiredScenariosPath: err.requiredScenariosPath ?? null,
+              correlationReportPath: err.correlationReportPath ?? null,
+            },
+            null,
+            2,
+          ),
+        );
+        process.exitCode = classifyCorrelationResult(err.result);
         return;
       }
       console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err), kind: err instanceof Error ? err.constructor.name : 'Error' }, null, 2));

@@ -2,8 +2,12 @@ import {
   ClickUpReaderError,
   type ClickUpReaderErrorCode,
 } from '../../domain/errors.js';
+import {
+  redactSecretsInMessage,
+  SECRET_REDACTION_MASK,
+} from '../../application/helpers/sanitize-token.js';
 
-const MASK = '***REDACTED***';
+const MASK = SECRET_REDACTION_MASK;
 
 const SECRET_PATTERNS = [
   /Bearer\s+[a-zA-Z0-9._-]+/gi,
@@ -64,7 +68,7 @@ export function sanitizeClickUpErrorMessage(message: string, token?: string): st
 
   const trimmedToken = token?.trim();
   if (trimmedToken) {
-    sanitized = sanitized.split(trimmedToken).join(MASK);
+    sanitized = redactSecretsInMessage(sanitized, [trimmedToken]);
   }
 
   return sanitized;
