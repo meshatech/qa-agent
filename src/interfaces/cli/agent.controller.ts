@@ -36,4 +36,8 @@ export class AgentController {
   preflight(outputDir: string) {
     return this.service.preflight(outputDir);
   }
+
+  readPrContext(outputDir: string) {
+    return this.service.readPrContext(outputDir);
+  }
 }

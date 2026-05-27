@@ -104,6 +104,21 @@ program
   });
 
 program
+  .command('read-pr-context')
+  .description('Read GitHub Actions PR context and emit pr-diff-context.json')
+  .option('--output-dir <path>', 'output directory for pr-diff-context.json', './.agent-qa/pipeline')
+  .action(async (opts) => {
+    try {
+      const result = await withApp((c) => c.readPrContext(opts.outputDir));
+      console.log(JSON.stringify(result, null, 2));
+      process.exitCode = EXIT.OK;
+    } catch (err) {
+      console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err), kind: err instanceof Error ? err.constructor.name : 'Error' }, null, 2));
+      process.exitCode = classifyError(err);
+    }
+  });
+
+program
   .command('onboard')
   .description('Run project onboarding with baseline smoke test')
   .option('-c, --config <path>', 'config path', './agent-qa.config.json')

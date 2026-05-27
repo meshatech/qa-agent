@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { FileConfigLoader } from './config/file-config.loader.js';
 import { FilePreflightReportWriterAdapter } from './persistence/file-preflight-report-writer.adapter.js';
 import { FileDemandContextWriterAdapter } from './persistence/file-demand-context-writer.adapter.js';
+import { FilePrDiffContextWriterAdapter } from './persistence/file-pr-diff-context-writer.adapter.js';
 import { FetchClickUpApiAdapter } from './clickup/fetch-clickup-api.adapter.js';
 import { ClickUpHttpReaderAdapter } from './clickup/clickup-http-reader.adapter.js';
 import { FakeClickUpReaderAdapter } from './clickup/fake-clickup-reader.adapter.js';
@@ -49,6 +50,7 @@ export const INFRA_PROVIDERS = [
   FileConfigLoader,
   FilePreflightReportWriterAdapter,
   FileDemandContextWriterAdapter,
+  FilePrDiffContextWriterAdapter,
   ExecGitRepositoryAdapter,
   FetchClickUpApiAdapter,
   ClickUpHttpReaderAdapter,
@@ -62,6 +64,7 @@ export const INFRA_PROVIDERS = [
   { provide: 'ConfigLoaderPort', useExisting: FileConfigLoader },
   { provide: 'PreflightReportWriterPort', useExisting: FilePreflightReportWriterAdapter },
   { provide: 'DemandContextWriterPort', useExisting: FileDemandContextWriterAdapter },
+  { provide: 'PrDiffContextWriterPort', useExisting: FilePrDiffContextWriterAdapter },
   { provide: 'GitRepositoryPort', useExisting: ExecGitRepositoryAdapter },
   { provide: 'ClickUpApiPort', useExisting: FetchClickUpApiAdapter },
   { provide: 'ClickUpReaderPort', useExisting: ClickUpHttpReaderAdapter },
