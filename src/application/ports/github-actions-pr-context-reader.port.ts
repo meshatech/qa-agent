@@ -5,6 +5,7 @@ export interface PrContextReadResult {
   pullRequest: PullRequestContext;
   rawDiff: string;
   changedFiles: ChangedFile[];
+  affectedRoutes: string[];
 }
 
 export interface GitHubActionsPrContextReaderPort {

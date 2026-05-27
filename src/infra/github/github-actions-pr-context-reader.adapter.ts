@@ -5,6 +5,7 @@ import type {
   PrContextReadResult,
 } from '../../application/ports/github-actions-pr-context-reader.port.js';
 import type { GitRepositoryPort } from '../../application/ports/git-repository.port.js';
+import { detectAffectedRoutes } from './git-diff-affected-routes.detector.js';
 import { classifyChangedFiles } from './git-diff-changed-file-classifier.js';
 import { parseGitDiffChangedFiles } from './git-diff-changed-files.parser.js';
 import {
@@ -26,7 +27,8 @@ export class GitHubActionsPrContextReaderAdapter implements GitHubActionsPrConte
     await this.git.ensureBaseBranchAvailable(pullRequest.baseBranch, cwd);
     const rawDiff = await this.git.diffPullRequest(pullRequest.baseBranch, cwd);
     const changedFiles = classifyChangedFiles(parseGitDiffChangedFiles(rawDiff));
+    const affectedRoutes = detectAffectedRoutes(changedFiles);
 
-    return { pullRequest, rawDiff, changedFiles };
+    return { pullRequest, rawDiff, changedFiles, affectedRoutes };
   }
 }

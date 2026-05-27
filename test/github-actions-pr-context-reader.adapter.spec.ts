@@ -96,7 +96,33 @@ describe('GitHubActionsPrContextReaderAdapter', () => {
           contextLines: [],
         },
       ],
+      affectedRoutes: [],
     });
+  });
+
+  it('detects affected routes from classified route files in the diff', async () => {
+    const { dir, eventPath } = await writePullRequestEvent();
+    const env = buildPrEnv(eventPath, dir);
+    const rawDiff = [
+      'diff --git a/src/routes/foo.ts b/src/routes/foo.ts',
+      '--- a/src/routes/foo.ts',
+      '+++ b/src/routes/foo.ts',
+      '@@ -1 +1 @@',
+      '-old',
+      '+new',
+    ].join('\n');
+    const git: GitRepositoryPort = {
+      isShallowRepository: async () => false,
+      hasRemoteBranch: async () => true,
+      ensureBaseBranchAvailable: vi.fn().mockResolvedValue(undefined),
+      diffPullRequest: vi.fn().mockResolvedValue(rawDiff),
+    };
+    const adapter = new GitHubActionsPrContextReaderAdapter(git);
+
+    const result = await adapter.read({ cwd: dir, env });
+
+    expect(result.affectedRoutes).toEqual(['/foo']);
+    expect(result.changedFiles[0]?.kind).toBe('route');
   });
 
   it('propagates base branch ensure failures', async () => {
@@ -174,5 +200,6 @@ describe('GitHubActionsPrContextReaderAdapter', () => {
         contextLines: [],
       },
     ]);
+    expect(result.affectedRoutes).toEqual([]);
   });
 });
