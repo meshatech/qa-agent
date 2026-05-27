@@ -179,6 +179,34 @@ describe('DemandDiffMemoryCorrelatorService', () => {
     expect(result.scenarios).toEqual([]);
   });
 
+  it('adds warning when some criteria pass and others stay below threshold', () => {
+    const result = service.correlate({
+      demand: {
+        ...BASE_DEMAND,
+        acceptanceCriteria: [
+          'Login route validates user credentials',
+          'Invalid login shows error message',
+          'Billing invoice export supports CSV format',
+          'Billing dashboard reconciles monthly statements',
+          'Billing payment retry handles declined cards',
+        ],
+      },
+      prDiff: BASE_PR_DIFF,
+      memoryResults: [],
+    });
+
+    expect(result.status).toBe('OK');
+    expect(result.scenarios.length).toBeGreaterThan(0);
+    expect(
+      result.warnings.some(
+        (warning) =>
+          !warning.includes('scenarios derived from affected routes only') &&
+          warning.includes('Criteria below correlation threshold') &&
+          warning.includes('Billing invoice export supports CSV format'),
+      ),
+    ).toBe(true);
+  });
+
   it('adds warning when route fallback scenarios are used', () => {
     const result = service.correlate({
       demand: {

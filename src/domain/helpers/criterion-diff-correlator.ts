@@ -167,6 +167,10 @@ function applyMemoryBoost(
   prDiff: ConsumedPrDiffContext,
   memory: ConsumedMemorySearchContext,
 ): { boost: number; chunkId: string; rationale: string } | undefined {
+  let best:
+    | { boost: number; chunkId: string; rationale: string; relevanceScore: number }
+    | undefined;
+
   for (const result of memory.correlationChunks) {
     const chunk = result.chunk;
     const routeHit = prDiff.affectedRoutes.some(
@@ -185,15 +189,33 @@ function applyMemoryBoost(
       ? Math.min(0.35, result.relevanceScore * 0.1 + 0.1)
       : Math.min(0.25, result.relevanceScore * 0.1 + 0.05);
 
-    return {
+    const candidate = {
       boost,
       chunkId: chunk.id,
       rationale: routeHit
         ? `BM25 memory chunk ${chunk.id} (${chunk.type}) aligns with affected routes and criterion`
         : `BM25 memory chunk ${chunk.id} (${chunk.type}) aligns with criterion`,
+      relevanceScore: result.relevanceScore,
     };
+
+    if (
+      !best ||
+      candidate.boost > best.boost ||
+      (candidate.boost === best.boost && candidate.relevanceScore > best.relevanceScore)
+    ) {
+      best = candidate;
+    }
   }
-  return undefined;
+
+  if (!best) {
+    return undefined;
+  }
+
+  return {
+    boost: best.boost,
+    chunkId: best.chunkId,
+    rationale: best.rationale,
+  };
 }
 
 function findChangedFileForRoute(changedFiles: ChangedFile[], route: string): string | undefined {

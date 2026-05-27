@@ -285,6 +285,73 @@ describe('correlateCriterionWithDiff', () => {
     expect(withMemory.correlation.rationale).toContain('BM25 memory chunk route-login');
   });
 
+  it('selects the memory chunk with the highest boost when multiple chunks align', () => {
+    const prDiff = consumePrDiffContext(BASE_PR_DIFF);
+    const weakChunk: MemorySearchResult = {
+      chunk: {
+        id: 'route-login-weak',
+        type: 'route',
+        title: 'Login route',
+        content: 'Route /login validates user credentials',
+        sourceFile: '.agent-qa/memory.md',
+      },
+      relevanceScore: 0.2,
+    };
+    const strongChunk: MemorySearchResult = {
+      chunk: {
+        id: 'route-login-strong',
+        type: 'route',
+        title: 'Login route',
+        content: 'Route /login validates user credentials',
+        sourceFile: '.agent-qa/memory.md',
+      },
+      relevanceScore: 0.9,
+    };
+    const memory = consumeMemorySearchResults([weakChunk, strongChunk]);
+
+    const withBoth = correlateCriterionWithDiff({
+      criterion: 'Login route validates user credentials',
+      prDiff,
+      memory,
+    });
+    const withWeakOnly = correlateCriterionWithDiff({
+      criterion: 'Login route validates user credentials',
+      prDiff,
+      memory: consumeMemorySearchResults([weakChunk]),
+    });
+
+    expect(withBoth.correlation.memoryChunk).toBe('route-login-strong');
+    expect(withBoth.correlation.score).toBeGreaterThan(withWeakOnly.correlation.score);
+  });
+
+  it('correlates PascalCase class names with matching changed file paths', () => {
+    const prDiff = consumePrDiffContext({
+      ...BASE_PR_DIFF,
+      changedFiles: [
+        {
+          path: 'src/services/UserService.ts',
+          status: 'modified',
+          kind: 'other',
+          positiveLines: [],
+          negativeLines: [],
+          contextLines: [],
+        },
+      ],
+      affectedRoutes: [],
+      affectedSchemas: [],
+    });
+    const memory = consumeMemorySearchResults([]);
+
+    const result = correlateCriterionWithDiff({
+      criterion: 'UserService validates user accounts',
+      prDiff,
+      memory,
+    });
+
+    expect(result.correlation.score).toBeGreaterThan(0);
+    expect(result.correlation.file).toBe('src/services/UserService.ts');
+  });
+
   it('does not boost score when memory chunk only matches affected route', () => {
     const prDiff = consumePrDiffContext(BASE_PR_DIFF);
     const memory = consumeMemorySearchResults([ROUTE_MEMORY_CHUNK]);

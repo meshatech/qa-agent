@@ -34,11 +34,29 @@ describe('tokenize', () => {
   it('filters tokens shorter than 3 characters', () => {
     expect(tokenize('go to login page')).toEqual(new Set(['login', 'page']));
   });
+
+  it('splits camelCase and PascalCase before tokenizing', () => {
+    expect(tokenize('UserService')).toEqual(new Set(['user', 'service']));
+    expect(tokenize('validate UserService behavior')).toEqual(
+      expect.objectContaining({ size: expect.any(Number) }),
+    );
+    expect(tokenize('validate UserService behavior').has('user')).toBe(true);
+    expect(tokenize('validate UserService behavior').has('service')).toBe(true);
+    expect(tokenize('XMLHttpRequest')).toEqual(new Set(['xml', 'http', 'request']));
+  });
 });
 
 describe('pathTokens', () => {
   it('extracts tokens from nested paths without file extension segments', () => {
     expect(pathTokens('src/routes/login.ts')).toEqual(new Set(['src', 'routes', 'login']));
+  });
+
+  it('splits camelCase segments in file paths', () => {
+    const tokens = pathTokens('src/services/UserService.ts');
+    expect(tokens.has('user')).toBe(true);
+    expect(tokens.has('service')).toBe(true);
+    expect(tokens.has('src')).toBe(true);
+    expect(tokens.has('services')).toBe(true);
   });
 
   it('returns an empty set for empty path', () => {
@@ -62,5 +80,12 @@ describe('overlapScore', () => {
 
   it('returns 1 when all left tokens appear in the right set', () => {
     expect(overlapScore(new Set(['login']), new Set(['login', 'auth']))).toBe(1);
+  });
+
+  it('matches camelCase criterion tokens against path segments', () => {
+    const criterionTokens = tokenize('UserService validates users');
+    const fileTokens = pathTokens('src/UserService.ts');
+
+    expect(overlapScore(criterionTokens, fileTokens)).toBeGreaterThan(0);
   });
 });

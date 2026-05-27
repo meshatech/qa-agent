@@ -5,9 +5,15 @@ export function truncate(value: string, max: number): string {
   return `${value.slice(0, max - 1)}…`;
 }
 
+function splitCompoundWords(text: string): string {
+  return text
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2');
+}
+
 export function tokenize(text: string): Set<string> {
   return new Set(
-    text
+    splitCompoundWords(text)
       .toLowerCase()
       .replace(/[^a-z0-9/\-_]+/g, ' ')
       .split(/\s+/)

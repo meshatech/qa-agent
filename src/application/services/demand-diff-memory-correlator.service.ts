@@ -133,13 +133,14 @@ export class DemandDiffMemoryCorrelatorService {
       }
     }
 
+    appendCriteriaBelowThresholdWarning(warnings, matches, MIN_OVERLAP_SCORE);
+
     if (!scenarios.length) {
       const routeScenarios = this.buildRouteFallbackScenarios(prDiff, memory);
       if (routeScenarios.length > 0) {
         warnings.push(
           'No acceptance criterion reached minimum correlation score; scenarios derived from affected routes only',
         );
-        appendCriteriaBelowThresholdWarning(warnings, matches, MIN_OVERLAP_SCORE);
       }
       scenarios.push(...routeScenarios.slice(0, MAX_SCENARIOS));
     }
