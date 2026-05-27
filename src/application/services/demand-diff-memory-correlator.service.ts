@@ -8,13 +8,10 @@ import type { ConsumedMemorySearchContext } from '../../domain/helpers/memory-se
 import { consumeMemorySearchResults } from '../../domain/helpers/memory-search-consumer.js';
 import type { ConsumedPrDiffContext } from '../../domain/helpers/pr-diff-context-consumer.js';
 import { consumePrDiffContext } from '../../domain/helpers/pr-diff-context-consumer.js';
+import { computeScenarioRiskScore } from '../../domain/helpers/scenario-risk-scorer.js';
 import { detectUncoveredCriteria } from '../../domain/helpers/uncovered-criterion-detector.js';
 import { pathTokens, truncate } from '../../domain/helpers/correlation-lexical.js';
-import type {
-  CorrelationResult,
-  RequiredScenario,
-  RiskItem,
-} from '../../domain/schemas/correlation.schema.js';
+import type { CorrelationResult, RequiredScenario } from '../../domain/schemas/correlation.schema.js';
 import { createBlockedCorrelationResult } from '../../domain/schemas/correlation.schema.js';
 import { createRequiredScenario } from '../../domain/schemas/required-scenario.schema.js';
 import type { DemandContext } from '../../domain/schemas/demand-context.schema.js';
@@ -87,7 +84,11 @@ export class DemandDiffMemoryCorrelatorService {
           intent: 'POSITIVE',
           rationale: match.correlation.rationale,
           relatedFiles: match.relatedFiles,
-          riskScore: this.computeScenarioRiskScore(match.correlation.score, match.relatedFiles, risks),
+          riskScore: computeScenarioRiskScore({
+            correlation: match.correlation,
+            relatedFiles: match.relatedFiles,
+            risks,
+          }),
         }),
       );
 
@@ -150,19 +151,5 @@ export class DemandDiffMemoryCorrelatorService {
       );
     }
     return scenarios;
-  }
-
-  private computeScenarioRiskScore(
-    correlationScore: number,
-    relatedFiles: string[],
-    risks: RiskItem[],
-  ): number {
-    const base = 1 - Math.min(1, correlationScore);
-    const fileRisk = relatedFiles.some((file) =>
-      risks.some((risk) => risk.relatedFile === file && risk.type === 'regression'),
-    )
-      ? 0.25
-      : 0;
-    return Math.min(1, Math.max(0, base + fileRisk));
   }
 }
