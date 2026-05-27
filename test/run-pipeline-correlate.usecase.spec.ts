@@ -305,6 +305,39 @@ describe('RunPipelineCorrelateUseCase', () => {
     await expectNoCorrelationArtifacts(outputDir);
   });
 
+  it('preserves BM25 warnings when correlator throws unexpectedly', async () => {
+    const outputDir = await prepareOutputDir();
+    vi.stubEnv('CLICKUP_TOKEN', 'pk_test_token');
+
+    const useCase = buildUseCase({
+      readTask: vi.fn(),
+      readConfiguredTask: vi.fn(async () => ({
+        demand: JSON.parse(await readFile(join(FIXTURES_DIR, 'demand-context.json'), 'utf8')),
+      })),
+    });
+
+    vi.spyOn(MemorySearchService.prototype, 'search').mockResolvedValue({
+      chunks: [],
+      warnings: ['BM25 memory context warning'],
+    });
+    vi.spyOn(DemandDiffMemoryCorrelatorService.prototype, 'correlate').mockImplementation(() => {
+      throw new Error('logic bug');
+    });
+
+    try {
+      await useCase.execute(outputDir, { projectPath: process.cwd(), env: process.env });
+      expect.fail('expected CorrelationBlockedError');
+    } catch (error) {
+      expectBlockedError(error, (blocked) => {
+        expect(blocked.result.blockReason).toContain('Correlation failed');
+        expect(blocked.result.blockReason).toContain('logic bug');
+        expect(blocked.result.warnings).toContain('BM25 memory context warning');
+      });
+    }
+
+    await expectNoCorrelationArtifacts(outputDir);
+  });
+
   it('throws HarnessFatalError for infrastructure failures during demand persistence', async () => {
     const outputDir = await prepareOutputDir();
     vi.stubEnv('CLICKUP_TOKEN', 'pk_test_token');

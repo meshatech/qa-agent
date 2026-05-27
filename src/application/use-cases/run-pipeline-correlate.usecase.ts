@@ -142,6 +142,7 @@ export class RunPipelineCorrelateUseCase {
         blockReason: safeUserMessage(
           `Correlation failed: ${error instanceof Error ? error.message : String(error)}`,
         ),
+        warnings: memoryResponse.warnings,
       });
     }
 
@@ -171,8 +172,8 @@ export class RunPipelineCorrelateUseCase {
     return this.artifactsWriter.write(outputDir, result, context);
   }
 
-  private blockAndThrow(input: { blockReason: string }): never {
-    const result = createBlockedCorrelationResult(input.blockReason);
+  private blockAndThrow(input: { blockReason: string; warnings?: string[] }): never {
+    const result = createBlockedCorrelationResult(input.blockReason, input.warnings ?? []);
     throw new CorrelationBlockedError(result);
   }
 }
