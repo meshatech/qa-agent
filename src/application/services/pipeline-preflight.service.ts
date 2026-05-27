@@ -22,6 +22,10 @@ import {
 import { ConfigError, PreflightBlockedError } from '../../domain/errors.js';
 import { resolveHeadBranchFromEnv } from '../../infra/github/github-actions-pr-refs.resolver.js';
 import { extractClickUpTaskIdFromGitHubEvent } from '../../infra/github/github-actions-pr-context.mapper.js';
+import {
+  compileClickUpCustomIdPattern,
+  resolveClickUpCustomIdPattern,
+} from '../../infra/github/clickup-task-id-from-pr.resolver.js';
 import { collectKnownSecretsFromEnv } from './known-secrets.collector.js';
 import { SanitizerService } from './sanitizer.service.js';
 
@@ -82,7 +86,12 @@ export class PipelinePreflightService {
   }
 
   private isBlockingChecksOk(checks: PreflightChecksDetail): boolean {
-    return BLOCKING_PREFLIGHT_CHECKS.every((name) => checks[name].ok);
+    return BLOCKING_PREFLIGHT_CHECKS.every((name) => {
+      if (name === 'clickupTaskId' && checks.clickupTaskId.skipped) {
+        return true;
+      }
+      return checks[name].ok;
+    });
   }
 
   private buildPreflightReport(checks: PreflightChecksDetail, allOk: boolean): PreflightReport {
@@ -99,7 +108,12 @@ export class PipelinePreflightService {
   private buildCheckItem(name: PreflightCheckName, checks: PreflightChecksDetail): PreflightCheckItem {
     const warningChecks: PreflightCheckName[] = ['githubToken', 'prCommentPermission'];
     const raw = checks[name];
-    const status: PreflightCheckStatus = raw.ok ? 'PASS' : warningChecks.includes(name) ? 'WARN' : 'FAIL';
+    let status: PreflightCheckStatus;
+    if (name === 'clickupTaskId' && checks.clickupTaskId.skipped) {
+      status = 'WARN';
+    } else {
+      status = raw.ok ? 'PASS' : warningChecks.includes(name) ? 'WARN' : 'FAIL';
+    }
     return { name, status, message: this.messageForCheck(name, checks) };
   }
 
@@ -112,8 +126,11 @@ export class PipelinePreflightService {
           ? 'ClickUp read access verified'
           : (checks.clickupReadAccess.error ?? 'ClickUp read access check failed');
       case 'clickupTaskId':
-        if (!checks.prContext.ok) {
-          return 'ClickUp task ID check deferred until PR context is complete';
+        if (checks.clickupTaskId.skipped) {
+          if (!checks.prContext.ok) {
+            return 'ClickUp task ID check skipped — PR context incomplete';
+          }
+          return 'ClickUp task ID check skipped — not running in GitHub Actions';
         }
         if (checks.clickupTaskId.ok && checks.clickupTaskId.taskId) {
           return `ClickUp task ID extracted from PR: ${checks.clickupTaskId.taskId}`;
@@ -159,19 +176,47 @@ export class PipelinePreflightService {
 
   private async validateClickUpTaskId(): Promise<{
     ok: boolean;
+    skipped?: boolean;
     source?: 'pr';
     taskId?: string;
   }> {
     const prContext = this.validatePrContext();
     if (!prContext.ok) {
-      return { ok: true };
+      return { ok: true, skipped: true };
     }
 
-    const taskId = await extractClickUpTaskIdFromGitHubEvent(process.env);
+    if (!process.env.GITHUB_EVENT_PATH?.trim()) {
+      return { ok: true, skipped: true };
+    }
+
+    const pattern = await this.resolveClickUpCustomIdPatternForPreflight();
+    const taskId = await extractClickUpTaskIdFromGitHubEvent(process.env, pattern);
     if (taskId) {
       return { ok: true, source: 'pr', taskId };
     }
     return { ok: false };
+  }
+
+  private async resolveClickUpCustomIdPatternForPreflight(): Promise<RegExp> {
+    const fromEnv = process.env.CLICKUP_CUSTOM_ID_PATTERN?.trim();
+    if (fromEnv) {
+      return compileClickUpCustomIdPattern(fromEnv);
+    }
+
+    try {
+      const configPath = this.resolveConfigPath();
+      const raw = await this.configLoader.load(configPath);
+      const parsed = RunConfigSchema.safeParse(raw);
+      if (parsed.success) {
+        return resolveClickUpCustomIdPattern({
+          configPattern: parsed.data.clickup?.customIdPattern,
+        });
+      }
+    } catch {
+      // fall through to default pattern
+    }
+
+    return resolveClickUpCustomIdPattern();
   }
 
   private resolveGitHubToken(): string {

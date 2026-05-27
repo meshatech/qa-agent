@@ -7,7 +7,7 @@ export const PullRequestContextSchema = z
     headBranch: z.string().min(1),
     title: z.string().min(1),
     author: z.string().min(1),
-    clickUpTaskId: z.string().min(1),
+    clickUpTaskId: z.string().min(1).optional(),
   })
   .strict();
 

@@ -207,6 +207,8 @@ describe('PipelinePreflightService', () => {
     expect(result.report.status).toBe('BLOCKED');
     expect(result.report.checks.clickupToken.ok).toBe(false);
     expect(result.report.checks.clickupTaskId.ok).toBe(true);
+    expect(result.report.checks.clickupTaskId.skipped).toBe(true);
+    expect(result.report.checkItems.find((item) => item.name === 'clickupTaskId')?.status).toBe('WARN');
     expect(result.report.checks.githubToken.ok).toBe(false);
     expect(result.report.checks.githubToken.warning).toBeTruthy();
     expect(result.report.checks.config.ok).toBe(false);
@@ -312,8 +314,36 @@ describe('PipelinePreflightService', () => {
       const result = await makeService().run(outputDir);
 
       expect(result.report.checks.clickupTaskId.ok).toBe(true);
+      expect(result.report.checks.clickupTaskId.skipped).toBeUndefined();
       expect(result.report.checks.clickupTaskId.source).toBe('pr');
       expect(result.report.checks.clickupTaskId.taskId).toBe('PRJ-11392');
+    });
+
+    it('skips clickupTaskId with WARN when PR context is complete but GITHUB_EVENT_PATH is missing', async () => {
+      const outputDir = await setupPreflightPassEnv();
+      delete process.env.GITHUB_EVENT_PATH;
+
+      const result = await makeService().run(outputDir);
+
+      expect(result.report.checks.clickupTaskId.ok).toBe(true);
+      expect(result.report.checks.clickupTaskId.skipped).toBe(true);
+      expect(result.report.checkItems.find((item) => item.name === 'clickupTaskId')?.status).toBe('WARN');
+      expect(result.report.checkItems.find((item) => item.name === 'clickupTaskId')?.message).toContain(
+        'not running in GitHub Actions',
+      );
+    });
+
+    it('extracts task ID using CLICKUP_CUSTOM_ID_PATTERN env override', async () => {
+      const outputDir = await setupPreflightPassEnv();
+      process.env.CLICKUP_CUSTOM_ID_PATTERN = 'TASK-\\d+';
+      process.env.GITHUB_EVENT_PATH = await writePreflightPullRequestEvent({
+        title: 'TASK-12345 — Custom pattern',
+      });
+
+      const result = await makeService().run(outputDir);
+
+      expect(result.report.checks.clickupTaskId.ok).toBe(true);
+      expect(result.report.checks.clickupTaskId.taskId).toBe('TASK-12345');
     });
   });
 
@@ -578,6 +608,11 @@ describe('PipelinePreflightService', () => {
       expect(result.report.checks.prContext.ok).toBe(false);
       expect(result.report.checks.clickupToken.ok).toBe(true);
       expect(result.report.checks.clickupTaskId.ok).toBe(true);
+      expect(result.report.checks.clickupTaskId.skipped).toBe(true);
+      expect(result.report.checkItems.find((item) => item.name === 'clickupTaskId')?.status).toBe('WARN');
+      expect(result.report.checkItems.find((item) => item.name === 'clickupTaskId')?.message).toContain(
+        'PR context incomplete',
+      );
       expect(result.report.checks.githubToken.ok).toBe(true);
       expect(result.report.checks.config.ok).toBe(true);
     });
@@ -739,6 +774,11 @@ describe('PipelinePreflightService', () => {
       expect(result.report.checks.branchHead.ok).toBe(false);
       expect(result.report.checks.clickupToken.ok).toBe(true);
       expect(result.report.checks.clickupTaskId.ok).toBe(true);
+      expect(result.report.checks.clickupTaskId.skipped).toBe(true);
+      expect(result.report.checkItems.find((item) => item.name === 'clickupTaskId')?.status).toBe('WARN');
+      expect(result.report.checkItems.find((item) => item.name === 'clickupTaskId')?.message).toContain(
+        'PR context incomplete',
+      );
       expect(result.report.checks.githubToken.ok).toBe(true);
       expect(result.report.checks.config.ok).toBe(true);
     });

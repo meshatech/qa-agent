@@ -6,7 +6,7 @@ import {
   PullRequestContextSchema,
   type PullRequestContext,
 } from '../../domain/schemas/pull-request-context.schema.js';
-import { extractClickUpTaskIdFromPullRequestText } from './clickup-task-id-from-pr.resolver.js';
+import { extractClickUpTaskIdFromPullRequestText, resolveClickUpCustomIdPattern } from './clickup-task-id-from-pr.resolver.js';
 import { resolveGitHubActionsPrRefs, resolveHeadBranchFromEnv, resolveBaseBranchFromEnv } from './github-actions-pr-refs.resolver.js';
 
 const ALLOWED_PR_EVENT_NAMES = ['pull_request', 'pull_request_target'] as const;
@@ -74,6 +74,7 @@ async function readGitHubPullRequestEvent(
 
 export async function extractClickUpTaskIdFromGitHubEvent(
   env: NodeJS.ProcessEnv = process.env,
+  pattern: RegExp = resolveClickUpCustomIdPattern({ env }),
 ): Promise<string | undefined> {
   const eventPath = env.GITHUB_EVENT_PATH?.trim();
   if (!eventPath) {
@@ -87,7 +88,7 @@ export async function extractClickUpTaskIdFromGitHubEvent(
     if (!title) {
       return undefined;
     }
-    return extractClickUpTaskIdFromPullRequestText(title, body);
+    return extractClickUpTaskIdFromPullRequestText(title, body, pattern);
   } catch {
     return undefined;
   }
@@ -175,7 +176,8 @@ export async function mapGitHubActionsToPullRequestContext(
   }
 
   const { title, author, body } = await readPullRequestMetadata(env);
-  const clickUpTaskId = extractClickUpTaskIdFromPullRequestText(title, body);
+  const pattern = resolveClickUpCustomIdPattern({ env });
+  const clickUpTaskId = extractClickUpTaskIdFromPullRequestText(title, body, pattern);
   if (!clickUpTaskId) {
     throw clickUpTaskIdNotFoundError(env);
   }

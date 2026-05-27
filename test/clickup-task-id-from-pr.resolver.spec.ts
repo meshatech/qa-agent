@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { extractClickUpTaskIdFromPullRequestText } from '../src/infra/github/clickup-task-id-from-pr.resolver.js';
+import {
+  compileClickUpCustomIdPattern,
+  extractClickUpTaskIdFromPullRequestText,
+} from '../src/infra/github/clickup-task-id-from-pr.resolver.js';
 
 describe('extractClickUpTaskIdFromPullRequestText', () => {
   it('extracts task ID from PR title when present', () => {
@@ -25,5 +28,25 @@ describe('extractClickUpTaskIdFromPullRequestText', () => {
 
   it('rejects lowercase custom IDs', () => {
     expect(extractClickUpTaskIdFromPullRequestText('prj-11552 — lowercase')).toBeUndefined();
+  });
+
+  it('extracts using a custom regex pattern', () => {
+    const pattern = compileClickUpCustomIdPattern('TASK-\\d+');
+    expect(extractClickUpTaskIdFromPullRequestText('TASK-12345 — custom prefix', undefined, pattern)).toBe(
+      'TASK-12345',
+    );
+  });
+
+  it('returns the second valid match when the first candidate is invalid for the default pattern', () => {
+    expect(extractClickUpTaskIdFromPullRequestText('FIX-123 PRJ-456')).toBe('PRJ-456');
+  });
+
+  it('returns undefined when matches exist but none pass custom ID validation', () => {
+    expect(extractClickUpTaskIdFromPullRequestText('FIX-123 TASK-789')).toBeUndefined();
+  });
+
+  it('returns undefined when a custom pattern has no matches', () => {
+    const pattern = compileClickUpCustomIdPattern('EPIC-\\d+');
+    expect(extractClickUpTaskIdFromPullRequestText('PRJ-11552 — title', undefined, pattern)).toBeUndefined();
   });
 });

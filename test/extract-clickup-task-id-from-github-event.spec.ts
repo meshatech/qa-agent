@@ -1,0 +1,73 @@
+import { afterEach, describe, expect, it } from 'vitest';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+
+import { extractClickUpTaskIdFromGitHubEvent } from '../src/infra/github/github-actions-pr-context.mapper.js';
+
+let tempDirs: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(tempDirs.map((dir) => rm(dir, { recursive: true, force: true })));
+  tempDirs = [];
+});
+
+async function writeEvent(payload: Record<string, unknown>): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'agent-qa-github-event-'));
+  tempDirs.push(dir);
+  const eventPath = join(dir, 'event.json');
+  await writeFile(eventPath, JSON.stringify(payload), 'utf8');
+  return eventPath;
+}
+
+describe('extractClickUpTaskIdFromGitHubEvent', () => {
+  it('returns undefined when GITHUB_EVENT_PATH is missing', async () => {
+    await expect(extractClickUpTaskIdFromGitHubEvent({})).resolves.toBeUndefined();
+  });
+
+  it('returns undefined when the event file does not exist', async () => {
+    await expect(
+      extractClickUpTaskIdFromGitHubEvent({
+        GITHUB_EVENT_PATH: join(tmpdir(), 'missing-event.json'),
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('returns undefined when pull_request.title is missing', async () => {
+    const eventPath = await writeEvent({
+      pull_request: {
+        user: { login: 'octocat' },
+        body: 'PRJ-11392',
+      },
+    });
+
+    await expect(
+      extractClickUpTaskIdFromGitHubEvent({ GITHUB_EVENT_PATH: eventPath }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('returns undefined when event payload is malformed JSON', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'agent-qa-github-event-'));
+    tempDirs.push(dir);
+    const eventPath = join(dir, 'event.json');
+    await writeFile(eventPath, '{not-json', 'utf8');
+
+    await expect(
+      extractClickUpTaskIdFromGitHubEvent({ GITHUB_EVENT_PATH: eventPath }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('extracts task ID from a valid GitHub pull_request event', async () => {
+    const eventPath = await writeEvent({
+      pull_request: {
+        title: 'PRJ-11552 — Pipeline test',
+        body: 'Details',
+        user: { login: 'octocat' },
+      },
+    });
+
+    await expect(
+      extractClickUpTaskIdFromGitHubEvent({ GITHUB_EVENT_PATH: eventPath }),
+    ).resolves.toBe('PRJ-11552');
+  });
+});

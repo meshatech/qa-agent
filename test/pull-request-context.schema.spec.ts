@@ -60,6 +60,11 @@ describe('PullRequestContextSchema', () => {
     ).toThrow();
   });
 
+  it('accepts a valid pull request context without clickUpTaskId', () => {
+    const { clickUpTaskId: _removed, ...withoutTaskId } = VALID_PULL_REQUEST_CONTEXT;
+    expect(PullRequestContextSchema.parse(withoutTaskId)).toEqual(withoutTaskId);
+  });
+
   it('rejects unknown fields (strict schema)', () => {
     expect(() =>
       PullRequestContextSchema.parse({

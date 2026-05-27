@@ -143,12 +143,17 @@ export class RunAgentUseCase {
     const token = process.env.CLICKUP_TOKEN?.trim();
     if (!token) return;
 
-    const configTaskId = config.clickup?.taskId;
-    const hasTaskId = Boolean(configTaskId?.trim());
+    const configTaskId = config.clickup?.taskId?.trim();
+    const envTaskId = process.env.CLICKUP_TASK_ID?.trim();
+    const hasTaskId = Boolean(configTaskId || envTaskId);
     if (!hasTaskId) return;
 
+    if (!configTaskId && envTaskId) {
+      logger.warn('CLICKUP_TASK_ID env is deprecated; use config.clickup.taskId instead.');
+    }
+
     await this.demandContextPersistence.persistFromClickUpTask(runDir, token, {
-      configTaskId,
+      configTaskId: configTaskId ?? envTaskId,
       configTeamId: config.clickup?.teamId,
     });
   }

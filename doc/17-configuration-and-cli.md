@@ -163,6 +163,8 @@ Regra: nenhum módulo fora de `LlmModule` importa LangChain diretamente. O Orche
 | `QA_HEADED` | sobrescreve `browser.headed` |
 | `CLICKUP_TOKEN` | API token ClickUp (preflight + leitor HTTP) |
 | `CLICKUP_TEAM_ID` | Team ID para custom IDs (`PRJ-xxxxx`) na API ClickUp |
+| `CLICKUP_TASK_ID` | **Deprecado** — fallback temporário para `qa-agent run` local; preferir `config.clickup.taskId` |
+| `CLICKUP_CUSTOM_ID_PATTERN` | Regex para extrair custom ID do PR (default `PRJ-\d+`; override de `config.clickup.customIdPattern`) |
 | `GITHUB_TOKEN` / `GH_TOKEN` | Token GitHub Actions (comentário PR — warning se ausente) |
 
 Credenciais **nunca** ficam no arquivo de config. Sempre via env.
@@ -189,11 +191,12 @@ qa-agent validate-config --config ./agent-qa.config.json
 
 Convenção Sprint Labs: incluir custom ID ClickUp no **título** do PR, ex.: `PRJ-11552 — descrição curta`. Se ausente no título, o agente tenta extrair do **corpo** do PR (`pull_request.body` em `GITHUB_EVENT_PATH`).
 
-- Padrão: primeira ocorrência de `PRJ-\d+` validada como custom ID
+- Padrão default: `PRJ-\d+` (override via `CLICKUP_CUSTOM_ID_PATTERN` ou `config.clickup.customIdPattern`)
 - Pipeline (preflight + prepare): `clickUpTaskId` extraído do evento GitHub (`GITHUB_EVENT_PATH`)
-- `qa-agent run` local: task ID opcional via `config.clickup.taskId` no arquivo de config (persistência `demand-context.json`)
-- Saída: campo `pullRequest.clickUpTaskId` em `pr-diff-context.json`
-- Ausência no PR: preflight `BLOCKED` / `read-pr-context` falha com `PrContextReaderError` code `CLICKUP_TASK_ID_NOT_FOUND`
+- Preflight local sem GHA: check `clickupTaskId` **skipped** (`WARN` no report; não bloqueia sozinho)
+- `qa-agent run` local: `config.clickup.taskId` (fallback deprecado `CLICKUP_TASK_ID` env com warning)
+- Saída: campo `pullRequest.clickUpTaskId` em `pr-diff-context.json` (opcional no schema; obrigatório no fluxo GHA)
+- Ausência no PR (modo pipeline): preflight `BLOCKED` / `read-pr-context` falha com `CLICKUP_TASK_ID_NOT_FOUND`
 
 ### Flags principais
 
