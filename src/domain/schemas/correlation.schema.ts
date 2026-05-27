@@ -1,8 +1,8 @@
 import { z } from 'zod';
 
 import { CorrelationItemSchema } from './correlation-item.schema.js';
+import { RequiredScenarioSchema } from './required-scenario.schema.js';
 import { RiskItemSchema } from './risk-item.schema.js';
-import { ScenarioIntentSchema } from './scenario-intent.schema.js';
 
 export {
   CorrelationItemSchema,
@@ -20,16 +20,11 @@ export {
   type RiskType,
 } from './risk-item.schema.js';
 
-export const RequiredScenarioSchema = z
-  .object({
-    id: z.string().min(1),
-    title: z.string().min(1),
-    intent: ScenarioIntentSchema,
-    rationale: z.string().min(1),
-    relatedFiles: z.array(z.string()),
-    riskScore: z.number(),
-  })
-  .strict();
+export {
+  RequiredScenarioSchema,
+  createRequiredScenario,
+  type RequiredScenario,
+} from './required-scenario.schema.js';
 
 export const CorrelationStatusSchema = z.enum(['OK', 'BLOCKED']);
 
@@ -45,7 +40,6 @@ export const CorrelationResultSchema = z
   })
   .strict();
 
-export type RequiredScenario = z.infer<typeof RequiredScenarioSchema>;
 export type CorrelationStatus = z.infer<typeof CorrelationStatusSchema>;
 export type CorrelationResult = z.infer<typeof CorrelationResultSchema>;
 

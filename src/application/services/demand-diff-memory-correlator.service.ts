@@ -9,6 +9,7 @@ import type {
 } from '../../domain/schemas/correlation.schema.js';
 import { createBlockedCorrelationResult } from '../../domain/schemas/correlation.schema.js';
 import { createCorrelationItem } from '../../domain/schemas/correlation-item.schema.js';
+import { createRequiredScenario } from '../../domain/schemas/required-scenario.schema.js';
 import { createRiskItem } from '../../domain/schemas/risk-item.schema.js';
 import type { DemandContext } from '../../domain/schemas/demand-context.schema.js';
 import type { MemorySearchResult } from '../../domain/schemas/memory.schema.js';
@@ -65,14 +66,16 @@ export class DemandDiffMemoryCorrelatorService {
         continue;
       }
 
-      scenarios.push({
-        id: `required-scenario-${scenarios.length + 1}`,
-        title: truncate(criterion, 100),
-        intent: 'POSITIVE',
-        rationale: match.correlation.rationale,
-        relatedFiles: match.relatedFiles,
-        riskScore: this.computeScenarioRiskScore(match.correlation.score, match.relatedFiles, risks),
-      });
+      scenarios.push(
+        createRequiredScenario({
+          id: `required-scenario-${scenarios.length + 1}`,
+          title: truncate(criterion, 100),
+          intent: 'POSITIVE',
+          rationale: match.correlation.rationale,
+          relatedFiles: match.relatedFiles,
+          riskScore: this.computeScenarioRiskScore(match.correlation.score, match.relatedFiles, risks),
+        }),
+      );
 
       if (scenarios.length >= MAX_SCENARIOS) {
         warnings.push(`Scenario cap reached (${MAX_SCENARIOS}); remaining criteria omitted`);
@@ -226,16 +229,18 @@ export class DemandDiffMemoryCorrelatorService {
         (item) => item.chunk.type === 'route' && item.chunk.content.includes(route),
       )?.chunk.id;
 
-      scenarios.push({
-        id: `required-scenario-route-${scenarios.length + 1}`,
-        title: `Validate affected route ${route}`,
-        intent: 'POSITIVE',
-        rationale: memoryChunk
-          ? `Affected route ${route} requires validation; memory chunk ${memoryChunk} provides context`
-          : `Affected route ${route} changed in PR diff`,
-        relatedFiles: relatedFiles,
-        riskScore: relatedFiles.length ? 0.6 : 0.8,
-      });
+      scenarios.push(
+        createRequiredScenario({
+          id: `required-scenario-route-${scenarios.length + 1}`,
+          title: `Validate affected route ${route}`,
+          intent: 'POSITIVE',
+          rationale: memoryChunk
+            ? `Affected route ${route} requires validation; memory chunk ${memoryChunk} provides context`
+            : `Affected route ${route} changed in PR diff`,
+          relatedFiles: relatedFiles,
+          riskScore: relatedFiles.length ? 0.6 : 0.8,
+        }),
+      );
     }
     return scenarios;
   }
