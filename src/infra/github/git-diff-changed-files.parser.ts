@@ -1,3 +1,5 @@
+import { Logger } from '@nestjs/common';
+
 import {
   ChangedFileWithoutKindSchema,
   type ChangedFileStatus,
@@ -7,6 +9,7 @@ import { DiffLineSchema, type DiffLine } from '../../domain/schemas/diff-line.sc
 import { HUNK_HEADER_PATTERN, isFileMetadataLine } from './git-diff.parser.shared.js';
 
 const DIFF_GIT_PATTERN = /^diff --git a\/(.+) b\/(.+)$/;
+const logger = new Logger('GitDiffChangedFilesParser');
 
 interface FileBuildState {
   oldPath: string;
@@ -71,6 +74,15 @@ export function parseGitDiffChangedFiles(rawDiff: string): ChangedFileWithoutKin
     if (currentFile === undefined) {
       return;
     }
+    if (currentFile.isBinary) {
+      const status = resolveFileStatus(currentFile);
+      const path = resolveFilePath(currentFile, status);
+      logger.warn(`Skipping binary file in PR diff: ${path}`);
+      currentFile = undefined;
+      oldLineNumber = undefined;
+      newLineNumber = undefined;
+      return;
+    }
     changedFiles.push(finalizeFile(currentFile));
     currentFile = undefined;
     oldLineNumber = undefined;
@@ -100,6 +112,11 @@ export function parseGitDiffChangedFiles(rawDiff: string): ChangedFileWithoutKin
     }
 
     if (line.startsWith('Binary files ') && line.endsWith(' differ')) {
+      currentFile.isBinary = true;
+      continue;
+    }
+
+    if (line.startsWith('GIT binary patch')) {
       currentFile.isBinary = true;
       continue;
     }

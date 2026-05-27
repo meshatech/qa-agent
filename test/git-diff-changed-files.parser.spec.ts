@@ -1,4 +1,5 @@
-import { describe, expect, it, afterEach } from 'vitest';
+import { describe, expect, it, afterEach, vi } from 'vitest';
+import { Logger } from '@nestjs/common';
 
 import { parseGitDiffChangedFiles } from '../src/infra/github/git-diff-changed-files.parser.js';
 import { classifyChangedFiles } from '../src/infra/github/git-diff-changed-file-classifier.js';
@@ -148,7 +149,7 @@ describe('parseGitDiffChangedFiles', () => {
     ]);
   });
 
-  it('parses multiple files and binary diffs', () => {
+  it('parses multiple files and skips binary diffs', () => {
     const rawDiff = [
       'diff --git a/bin.dat b/bin.dat',
       'Binary files a/bin.dat and b/bin.dat differ',
@@ -161,13 +162,6 @@ describe('parseGitDiffChangedFiles', () => {
     ].join('\n');
 
     expect(parseGitDiffChangedFiles(rawDiff)).toEqual([
-      {
-        path: 'bin.dat',
-        status: 'modified',
-        positiveLines: [],
-        negativeLines: [],
-        contextLines: [],
-      },
       {
         path: 'a.txt',
         status: 'modified',
@@ -188,6 +182,19 @@ describe('parseGitDiffChangedFiles', () => {
         contextLines: [],
       },
     ]);
+  });
+
+  it('skips binary files and logs warning', () => {
+    const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const rawDiff = [
+      'diff --git a/bin.dat b/bin.dat',
+      'Binary files a/bin.dat and b/bin.dat differ',
+    ].join('\n');
+
+    expect(parseGitDiffChangedFiles(rawDiff)).toEqual([]);
+    expect(warnSpy).toHaveBeenCalledWith('Skipping binary file in PR diff: bin.dat');
+
+    warnSpy.mockRestore();
   });
 
   it('parses changed files from real git diff output', async () => {

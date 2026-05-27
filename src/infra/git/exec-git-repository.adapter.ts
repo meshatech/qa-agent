@@ -8,6 +8,21 @@ import { PrContextReaderError } from '../../domain/errors.js';
 const execFileAsync = promisify(execFile);
 
 const GITHUB_TOKEN_ENV_KEYS = ['GITHUB_TOKEN', 'GH_TOKEN', 'INPUT_GITHUB_TOKEN'] as const;
+const BASE_BRANCH_REF_PATTERN = /^[a-zA-Z0-9_\-./]+$/;
+
+function assertValidBaseBranchRef(baseBranch: string): void {
+  if (
+    baseBranch === '' ||
+    baseBranch.startsWith('-') ||
+    !BASE_BRANCH_REF_PATTERN.test(baseBranch)
+  ) {
+    throw new PrContextReaderError(
+      `Invalid base branch ref: ${baseBranch}`,
+      undefined,
+      'VALIDATION_FAILED',
+    );
+  }
+}
 
 function sanitizeGitErrorMessage(message: string): string {
   let sanitized = message;
@@ -32,6 +47,28 @@ function readExecFileErrorMessage(error: unknown): string {
     }
   }
   return String(error);
+}
+
+export const GIT_DIFF_MAX_BUFFER_BYTES = 50 * 1024 * 1024;
+
+function isExecFileMaxBufferError(error: unknown): boolean {
+  return (
+    error !== null &&
+    typeof error === 'object' &&
+    'code' in error &&
+    (error as { code?: string }).code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'
+  );
+}
+
+export function formatGitDiffFailedMessage(
+  error: unknown,
+  maxBufferBytes = GIT_DIFF_MAX_BUFFER_BYTES,
+): string {
+  if (isExecFileMaxBufferError(error)) {
+    const limitMb = Math.round(maxBufferBytes / (1024 * 1024));
+    return `Git diff output exceeded ${limitMb}MB buffer limit`;
+  }
+  return `Git diff failed: ${readExecFileErrorMessage(error)}`;
 }
 
 export function buildPullRequestDiffArgs(baseBranch: string): readonly [string, string] {
@@ -61,6 +98,8 @@ export class ExecGitRepositoryAdapter implements GitRepositoryPort {
   }
 
   async ensureBaseBranchAvailable(baseBranch: string, cwd: string): Promise<void> {
+    assertValidBaseBranchRef(baseBranch);
+
     if (await this.hasRemoteBranch(baseBranch, cwd)) {
       return;
     }
@@ -102,13 +141,12 @@ export class ExecGitRepositoryAdapter implements GitRepositoryPort {
       const { stdout } = await execFileAsync('git', [...buildPullRequestDiffArgs(baseBranch)], {
         cwd,
         encoding: 'utf8',
-        maxBuffer: 10 * 1024 * 1024,
+        maxBuffer: GIT_DIFF_MAX_BUFFER_BYTES,
       });
       return stdout;
     } catch (error) {
-      const detail = readExecFileErrorMessage(error);
       throw new PrContextReaderError(
-        sanitizeGitErrorMessage(`Git diff failed: ${detail}`),
+        sanitizeGitErrorMessage(formatGitDiffFailedMessage(error)),
         error,
         'GIT_DIFF_FAILED',
       );

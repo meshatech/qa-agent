@@ -38,12 +38,9 @@ export class PrDiffContextPersistenceService {
     const validated = PrDiffContextSchema.parse(built);
     const env = options?.env ?? process.env;
     const secrets = collectKnownSecretsFromEnv(env, options?.knownSecrets ?? []);
-    let sanitized = this.sanitizer.sanitizeForOutput(validated, secrets);
-    let tokensMasked = !this.sanitizer.containsLeakedSecrets(JSON.stringify(sanitized), secrets);
-    if (!tokensMasked) {
-      sanitized = this.sanitizer.sanitizeForOutput(sanitized, secrets);
-      tokensMasked = !this.sanitizer.containsLeakedSecrets(JSON.stringify(sanitized), secrets);
-    }
+    const leakDetected = this.sanitizer.containsLeakedSecrets(JSON.stringify(validated), secrets);
+    const sanitized = this.sanitizer.sanitizeForOutput(validated, secrets);
+    const tokensMasked = !leakDetected;
     const path = await this.writer.write(outputDir, sanitized);
     return { path, context: sanitized, tokensMasked };
   }

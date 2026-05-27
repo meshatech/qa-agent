@@ -8,6 +8,7 @@ import { promisify } from 'node:util';
 import {
   buildPullRequestDiffArgs,
   ExecGitRepositoryAdapter,
+  formatGitDiffFailedMessage,
 } from '../src/infra/git/exec-git-repository.adapter.js';
 import { PrContextReaderError } from '../src/domain/errors.js';
 import {
@@ -79,6 +80,24 @@ describe('ExecGitRepositoryAdapter', () => {
     adapter = new ExecGitRepositoryAdapter();
   });
 
+  describe('formatGitDiffFailedMessage', () => {
+    it('returns explicit message when stdout exceeds maxBuffer', () => {
+      const error = Object.assign(new Error('maxBuffer length exceeded'), {
+        code: 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER',
+      });
+
+      expect(formatGitDiffFailedMessage(error)).toBe(
+        'Git diff output exceeded 50MB buffer limit',
+      );
+    });
+
+    it('returns generic git diff failure message for other errors', () => {
+      expect(formatGitDiffFailedMessage(new Error('fatal: bad revision'))).toBe(
+        'Git diff failed: fatal: bad revision',
+      );
+    });
+  });
+
   it('buildPullRequestDiffArgs uses origin/base...HEAD range', () => {
     expect(buildPullRequestDiffArgs('main')).toEqual(['diff', 'origin/main...HEAD']);
   });
@@ -106,6 +125,17 @@ describe('ExecGitRepositoryAdapter', () => {
 
     await expect(adapter.ensureBaseBranchAvailable('main', dir)).resolves.toBeUndefined();
   });
+
+  it.each(['--upload-pack', 'main;rm', ''])(
+    'throws VALIDATION_FAILED for invalid base branch ref %s',
+    async (baseBranch) => {
+      await expect(adapter.ensureBaseBranchAvailable(baseBranch, '/tmp')).rejects.toMatchObject({
+        name: 'PrContextReaderError',
+        code: 'VALIDATION_FAILED',
+        message: `Invalid base branch ref: ${baseBranch}`,
+      });
+    },
+  );
 
   it('throws BASE_BRANCH_UNAVAILABLE when origin base branch is missing', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'agent-qa-git-diff-'));

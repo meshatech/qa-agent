@@ -177,6 +177,8 @@ qa-agent report --runId <id> --format md|json
 qa-agent validate-config --config ./agent-qa.config.json
 ```
 
+`read-pr-context` executa `git diff origin/<base>...HEAD` com limite de **50MB** de stdout. Se o diff exceder esse buffer, o comando falha com `GIT_DIFF_FAILED` e mensagem explícita (`Git diff output exceeded 50MB buffer limit`).
+
 ### Flags principais
 
 | Flag | Tipo | Default | Efeito |

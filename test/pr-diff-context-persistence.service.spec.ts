@@ -101,7 +101,7 @@ describe('PrDiffContextPersistenceService', () => {
     expect(context.changedFiles[0]?.positiveLines[0]?.content).toContain('***REDACTED***');
   });
 
-  it('sets tokensMasked false when residual leak is detected after sanitize', async () => {
+  it('sets tokensMasked false when leak is detected in original context before sanitize', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'agent-qa-pr-diff-context-persist-'));
     tempDirs.push(dir);
     const leakedSecret = 'residual_leak_secret_value';
@@ -125,7 +125,6 @@ describe('PrDiffContextPersistenceService', () => {
     const sanitizer = new SanitizerService();
     const containsLeakedSecrets = vi
       .spyOn(sanitizer, 'containsLeakedSecrets')
-      .mockReturnValueOnce(true)
       .mockReturnValueOnce(true);
     const service = new PrDiffContextPersistenceService(
       new FilePrDiffContextWriterAdapter(),
@@ -138,7 +137,8 @@ describe('PrDiffContextPersistenceService', () => {
     });
 
     expect(tokensMasked).toBe(false);
-    expect(containsLeakedSecrets).toHaveBeenCalledTimes(2);
+    expect(containsLeakedSecrets).toHaveBeenCalledTimes(1);
+    expect(containsLeakedSecrets.mock.calls[0]?.[0]).toContain(leakedSecret);
   });
 
   it('redacts secrets from env without explicit knownSecrets option', async () => {
