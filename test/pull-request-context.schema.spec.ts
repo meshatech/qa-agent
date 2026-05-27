@@ -6,8 +6,9 @@ const VALID_PULL_REQUEST_CONTEXT = {
   prNumber: 42,
   baseBranch: 'main',
   headBranch: 'feature/test',
-  title: 'Implementar leitor real de PR/diff via GitHub Actions',
+  title: 'PRJ-11552 — Implementar leitor real de PR/diff via GitHub Actions',
   author: 'jose.neto',
+  clickUpTaskId: 'PRJ-11552',
 };
 
 describe('PullRequestContextSchema', () => {

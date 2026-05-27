@@ -144,7 +144,7 @@ export class RunAgentUseCase {
     if (!token) return;
 
     const configTaskId = config.clickup?.taskId;
-    const hasTaskId = Boolean(process.env.CLICKUP_TASK_ID?.trim() || configTaskId?.trim());
+    const hasTaskId = Boolean(configTaskId?.trim());
     if (!hasTaskId) return;
 
     await this.demandContextPersistence.persistFromClickUpTask(runDir, token, {

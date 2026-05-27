@@ -35,7 +35,7 @@ async function writePullRequestEvent(): Promise<{ dir: string; eventPath: string
     JSON.stringify({
       pull_request: {
         number: 42,
-        title: 'Fix login flow',
+        title: 'PRJ-11552 — Fix login flow',
         user: { login: 'octocat' },
       },
     }),
@@ -82,8 +82,9 @@ describe('GitHubActionsPrContextReaderAdapter', () => {
         prNumber: 42,
         baseBranch: 'main',
         headBranch: 'feature/test',
-        title: 'Fix login flow',
+        title: 'PRJ-11552 — Fix login flow',
         author: 'octocat',
+        clickUpTaskId: 'PRJ-11552',
       },
       rawDiff: 'diff --git a/file.ts b/file.ts\n',
       changedFiles: [
@@ -198,8 +199,9 @@ describe('GitHubActionsPrContextReaderAdapter', () => {
       prNumber: 42,
       baseBranch: 'main',
       headBranch: 'feature/test',
-      title: 'Fix login flow',
+      title: 'PRJ-11552 — Fix login flow',
       author: 'octocat',
+      clickUpTaskId: 'PRJ-11552',
     });
     expect(result.rawDiff).toContain('README.md');
     expect(result.rawDiff).toContain('-base');

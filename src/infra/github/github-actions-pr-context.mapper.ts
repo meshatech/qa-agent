@@ -6,6 +6,7 @@ import {
   PullRequestContextSchema,
   type PullRequestContext,
 } from '../../domain/schemas/pull-request-context.schema.js';
+import { extractClickUpTaskIdFromPullRequestText } from './clickup-task-id-from-pr.resolver.js';
 import { resolveGitHubActionsPrRefs, resolveHeadBranchFromEnv, resolveBaseBranchFromEnv } from './github-actions-pr-refs.resolver.js';
 
 const ALLOWED_PR_EVENT_NAMES = ['pull_request', 'pull_request_target'] as const;
@@ -15,6 +16,7 @@ const GITHUB_TOKEN_ENV_KEYS = ['GITHUB_TOKEN', 'GH_TOKEN', 'INPUT_GITHUB_TOKEN']
 type GitHubPullRequestEvent = {
   pull_request?: {
     title?: string;
+    body?: string | null;
     user?: { login?: string };
   };
 };
@@ -42,9 +44,9 @@ function sanitizePrContextErrorCause(error: unknown, env: NodeJS.ProcessEnv): Er
   return new Error(sanitizePrContextErrorMessage(error.message, env));
 }
 
-async function readPullRequestMetadata(
+async function readGitHubPullRequestEvent(
   env: NodeJS.ProcessEnv,
-): Promise<{ title: string; author: string }> {
+): Promise<GitHubPullRequestEvent> {
   const eventPath = env.GITHUB_EVENT_PATH?.trim();
   if (!eventPath) {
     throw new PrContextReaderError(
@@ -56,22 +58,7 @@ async function readPullRequestMetadata(
 
   try {
     const raw = await readFile(eventPath, 'utf8');
-    const event = JSON.parse(raw) as GitHubPullRequestEvent;
-    const title = event.pull_request?.title?.trim();
-    const author = event.pull_request?.user?.login?.trim();
-
-    if (!title || !author) {
-      throw new PrContextReaderError(
-        'GitHub Actions pull request metadata is incomplete',
-        sanitizePrContextErrorCause(
-          new Error('GitHub Actions pull request metadata is incomplete'),
-          env,
-        ),
-        'INVALID_EVENT',
-      );
-    }
-
-    return { title, author };
+    return JSON.parse(raw) as GitHubPullRequestEvent;
   } catch (error) {
     if (error instanceof PrContextReaderError) {
       throw error;
@@ -85,6 +72,49 @@ async function readPullRequestMetadata(
   }
 }
 
+export async function extractClickUpTaskIdFromGitHubEvent(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<string | undefined> {
+  const eventPath = env.GITHUB_EVENT_PATH?.trim();
+  if (!eventPath) {
+    return undefined;
+  }
+
+  try {
+    const event = await readGitHubPullRequestEvent(env);
+    const title = event.pull_request?.title?.trim() ?? '';
+    const body = event.pull_request?.body?.trim() || undefined;
+    if (!title) {
+      return undefined;
+    }
+    return extractClickUpTaskIdFromPullRequestText(title, body);
+  } catch {
+    return undefined;
+  }
+}
+
+async function readPullRequestMetadata(
+  env: NodeJS.ProcessEnv,
+): Promise<{ title: string; author: string; body?: string }> {
+  const event = await readGitHubPullRequestEvent(env);
+  const title = event.pull_request?.title?.trim();
+  const author = event.pull_request?.user?.login?.trim();
+  const body = event.pull_request?.body?.trim() || undefined;
+
+  if (!title || !author) {
+    throw new PrContextReaderError(
+      'GitHub Actions pull request metadata is incomplete',
+      sanitizePrContextErrorCause(
+        new Error('GitHub Actions pull request metadata is incomplete'),
+        env,
+      ),
+      'INVALID_EVENT',
+    );
+  }
+
+  return { title, author, body };
+}
+
 function missingContextError(
   env: NodeJS.ProcessEnv,
   message: string,
@@ -93,6 +123,17 @@ function missingContextError(
     'GitHub Actions PR context is incomplete',
     sanitizePrContextErrorCause(new Error(message), env),
     'MISSING_CONTEXT',
+  );
+}
+
+function clickUpTaskIdNotFoundError(env: NodeJS.ProcessEnv): PrContextReaderError {
+  return new PrContextReaderError(
+    'ClickUp task ID not found in pull request title or body',
+    sanitizePrContextErrorCause(
+      new Error('ClickUp task ID not found in pull request title or body'),
+      env,
+    ),
+    'CLICKUP_TASK_ID_NOT_FOUND',
   );
 }
 
@@ -133,13 +174,18 @@ export async function mapGitHubActionsToPullRequestContext(
     );
   }
 
-  const { title, author } = await readPullRequestMetadata(env);
+  const { title, author, body } = await readPullRequestMetadata(env);
+  const clickUpTaskId = extractClickUpTaskIdFromPullRequestText(title, body);
+  if (!clickUpTaskId) {
+    throw clickUpTaskIdNotFoundError(env);
+  }
 
   try {
     return PullRequestContextSchema.parse({
       ...prRefs,
       title,
       author,
+      clickUpTaskId,
     });
   } catch (error) {
     if (error instanceof ZodError) {

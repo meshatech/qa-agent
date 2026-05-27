@@ -33,7 +33,7 @@ async function writePullRequestEvent(
     JSON.stringify({
       pull_request: {
         number: 42,
-        title: 'Fix login flow',
+        title: 'PRJ-11552 — Fix login flow',
         user: { login: 'octocat' },
         ...payload,
       },
@@ -65,8 +65,31 @@ describe('mapGitHubActionsToPullRequestContext', () => {
       prNumber: 42,
       baseBranch: 'main',
       headBranch: 'feature/test',
-      title: 'Fix login flow',
+      title: 'PRJ-11552 — Fix login flow',
       author: 'octocat',
+      clickUpTaskId: 'PRJ-11552',
+    });
+  });
+
+  it('extracts clickUpTaskId from PR body when title has no task ID', async () => {
+    const { eventPath } = await writePullRequestEvent({
+      title: 'Fix login flow',
+      body: 'Related to PRJ-11392',
+    });
+    const env = buildPrEnv(eventPath);
+
+    await expect(mapGitHubActionsToPullRequestContext({ env })).resolves.toMatchObject({
+      clickUpTaskId: 'PRJ-11392',
+    });
+  });
+
+  it('fails with CLICKUP_TASK_ID_NOT_FOUND when PR has no task ID', async () => {
+    const { eventPath } = await writePullRequestEvent({ title: 'Fix login flow', body: 'No id' });
+    const env = buildPrEnv(eventPath);
+
+    await expect(mapGitHubActionsToPullRequestContext({ env })).rejects.toMatchObject({
+      name: 'PrContextReaderError',
+      code: 'CLICKUP_TASK_ID_NOT_FOUND',
     });
   });
 

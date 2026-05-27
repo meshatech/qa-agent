@@ -41,7 +41,7 @@ describe('ClickUpHttpReaderAdapter', () => {
     vi.unstubAllEnvs();
   });
 
-  it('readConfiguredTask resolves taskId from env and calls ClickUp API with custom ID params', async () => {
+  it('readConfiguredTask resolves taskId from config and calls ClickUp API with custom ID params', async () => {
     const fetchMock = vi.fn(async () =>
       ({
         ok: true,
@@ -50,11 +50,9 @@ describe('ClickUpHttpReaderAdapter', () => {
       }) as unknown as Response,
     );
     vi.stubGlobal('fetch', fetchMock);
-    vi.stubEnv('CLICKUP_TASK_ID', 'PRJ-11366');
-    vi.stubEnv('CLICKUP_TEAM_ID', '459806');
     const reader = new ClickUpHttpReaderAdapter();
 
-    await reader.readConfiguredTask('pk_test_token');
+    await reader.readConfiguredTask('pk_test_token', 'PRJ-11366', '459806');
 
     expect(fetchMock).toHaveBeenCalledWith(
       'https://api.clickup.com/api/v2/task/PRJ-11366?custom_task_ids=true&team_id=459806',

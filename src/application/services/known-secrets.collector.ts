@@ -8,7 +8,6 @@ export function collectKnownSecretsFromEnv(
 
   for (const value of [
     env.CLICKUP_TOKEN,
-    env.CLICKUP_TASK_ID,
     ...GITHUB_TOKEN_ENV_KEYS.map((key) => env[key]),
     ...extraSecrets,
   ]) {

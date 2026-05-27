@@ -21,6 +21,7 @@ import {
 } from '../../domain/schemas/preflight-report.schema.js';
 import { ConfigError, PreflightBlockedError } from '../../domain/errors.js';
 import { resolveHeadBranchFromEnv } from '../../infra/github/github-actions-pr-refs.resolver.js';
+import { extractClickUpTaskIdFromGitHubEvent } from '../../infra/github/github-actions-pr-context.mapper.js';
 import { collectKnownSecretsFromEnv } from './known-secrets.collector.js';
 import { SanitizerService } from './sanitizer.service.js';
 
@@ -70,7 +71,7 @@ export class PipelinePreflightService {
     return {
       clickupToken: this.validateClickUpToken(),
       clickupReadAccess: await this.validateClickUpReadAccess(),
-      clickupTaskId: this.validateClickUpTaskId(),
+      clickupTaskId: await this.validateClickUpTaskId(),
       githubToken: this.validateGitHubToken(),
       prCommentPermission: await this.validatePrCommentPermission(),
       prContext: this.validatePrContext(),
@@ -111,7 +112,13 @@ export class PipelinePreflightService {
           ? 'ClickUp read access verified'
           : (checks.clickupReadAccess.error ?? 'ClickUp read access check failed');
       case 'clickupTaskId':
-        return checks.clickupTaskId.ok ? 'CLICKUP_TASK_ID is configured' : 'CLICKUP_TASK_ID is missing';
+        if (!checks.prContext.ok) {
+          return 'ClickUp task ID check deferred until PR context is complete';
+        }
+        if (checks.clickupTaskId.ok && checks.clickupTaskId.taskId) {
+          return `ClickUp task ID extracted from PR: ${checks.clickupTaskId.taskId}`;
+        }
+        return 'ClickUp task ID not found in PR title/body';
       case 'githubToken':
         return checks.githubToken.ok
           ? 'GitHub token is configured'
@@ -150,9 +157,21 @@ export class PipelinePreflightService {
     return this.clickUpApi.verifyReadAccess(token);
   }
 
-  private validateClickUpTaskId(): { ok: boolean } {
-    const value = process.env.CLICKUP_TASK_ID;
-    return { ok: Boolean(value && value.trim().length > 0) };
+  private async validateClickUpTaskId(): Promise<{
+    ok: boolean;
+    source?: 'pr';
+    taskId?: string;
+  }> {
+    const prContext = this.validatePrContext();
+    if (!prContext.ok) {
+      return { ok: true };
+    }
+
+    const taskId = await extractClickUpTaskIdFromGitHubEvent(process.env);
+    if (taskId) {
+      return { ok: true, source: 'pr', taskId };
+    }
+    return { ok: false };
   }
 
   private resolveGitHubToken(): string {
