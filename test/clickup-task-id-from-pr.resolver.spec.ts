@@ -159,4 +159,41 @@ describe('resolveClickUpCustomIdPattern', () => {
     expect(result.usedFallback).toBe(true);
     expect(result.warning).toBe(INVALID_CUSTOM_ID_PATTERN_WARNING);
   });
+
+  it('prefers config over CLICKUP_CUSTOM_ID_PATTERN env', () => {
+    const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+    const result = resolveClickUpCustomIdPattern({
+      env: { CLICKUP_CUSTOM_ID_PATTERN: 'TASK-\\d+' },
+      configPattern: 'PRJ-\\d+',
+    });
+
+    expect(result.usedFallback).toBe(false);
+    expect(
+      extractClickUpTaskIdFromPullRequestText('PRJ-99999 — title', undefined, result.pattern),
+    ).toBe('PRJ-99999');
+    expect(
+      extractClickUpTaskIdFromPullRequestText('TASK-12345 — title', undefined, result.pattern),
+    ).toBeUndefined();
+    expect(warnSpy).not.toHaveBeenCalled();
+
+    warnSpy.mockRestore();
+  });
+
+  it('falls back to env pattern with deprecation warning when config is absent', () => {
+    const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+    const result = resolveClickUpCustomIdPattern({
+      env: { CLICKUP_CUSTOM_ID_PATTERN: 'TASK-\\d+' },
+    });
+
+    expect(
+      extractClickUpTaskIdFromPullRequestText('TASK-12345 — title', undefined, result.pattern),
+    ).toBe('TASK-12345');
+    expect(warnSpy).toHaveBeenCalledWith(
+      'CLICKUP_CUSTOM_ID_PATTERN env is deprecated; use config.clickup.customIdPattern instead.',
+    );
+
+    warnSpy.mockRestore();
+  });
 });

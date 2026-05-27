@@ -334,7 +334,7 @@ describe('PipelinePreflightService', () => {
       );
     });
 
-    it('extracts task ID using CLICKUP_CUSTOM_ID_PATTERN env override', async () => {
+    it('extracts task ID using CLICKUP_CUSTOM_ID_PATTERN env when config has no pattern', async () => {
       const outputDir = await setupPreflightPassEnv();
       process.env.CLICKUP_CUSTOM_ID_PATTERN = 'TASK-\\d+';
       process.env.GITHUB_EVENT_PATH = await writePreflightPullRequestEvent({
@@ -345,6 +345,24 @@ describe('PipelinePreflightService', () => {
 
       expect(result.report.checks.clickupTaskId.ok).toBe(true);
       expect(result.report.checks.clickupTaskId.taskId).toBe('TASK-12345');
+    });
+
+    it('prefers clickup.customIdPattern in config over CLICKUP_CUSTOM_ID_PATTERN env', async () => {
+      const outputDir = await tempDir();
+      process.env.AGENT_QA_CONFIG = await writeConfigFile(outputDir, {
+        ...VALID_CONFIG,
+        clickup: { customIdPattern: 'PRJ-\\d+' },
+      });
+      await setFullPreflightEnv();
+      process.env.CLICKUP_CUSTOM_ID_PATTERN = 'TASK-\\d+';
+      process.env.GITHUB_EVENT_PATH = await writePreflightPullRequestEvent({
+        title: 'PRJ-11552 — Config pattern wins',
+      });
+
+      const result = await makeService().run(outputDir);
+
+      expect(result.report.checks.clickupTaskId.ok).toBe(true);
+      expect(result.report.checks.clickupTaskId.taskId).toBe('PRJ-11552');
     });
 
     it('warns when CLICKUP_CUSTOM_ID_PATTERN is invalid but still extracts with default', async () => {

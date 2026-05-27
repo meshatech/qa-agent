@@ -81,13 +81,17 @@ export function resolveClickUpCustomIdPattern(options?: {
   configPattern?: string;
 }): ClickUpCustomIdPatternResult {
   const env = options?.env ?? process.env;
-  const fromEnv = env[CLICKUP_CUSTOM_ID_PATTERN_ENV]?.trim();
-  if (fromEnv) {
-    return compileClickUpCustomIdPattern(fromEnv);
+  const fromConfig = options?.configPattern?.trim();
+  if (fromConfig) {
+    return compileClickUpCustomIdPattern(fromConfig);
   }
 
-  if (options?.configPattern?.trim()) {
-    return compileClickUpCustomIdPattern(options.configPattern);
+  const fromEnv = env[CLICKUP_CUSTOM_ID_PATTERN_ENV]?.trim();
+  if (fromEnv) {
+    logger.warn(
+      'CLICKUP_CUSTOM_ID_PATTERN env is deprecated; use config.clickup.customIdPattern instead.',
+    );
+    return compileClickUpCustomIdPattern(fromEnv);
   }
 
   return compileClickUpCustomIdPattern();
