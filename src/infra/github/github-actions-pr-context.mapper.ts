@@ -74,7 +74,7 @@ async function readGitHubPullRequestEvent(
 
 export async function extractClickUpTaskIdFromGitHubEvent(
   env: NodeJS.ProcessEnv = process.env,
-  pattern: RegExp = resolveClickUpCustomIdPattern({ env }),
+  pattern: RegExp = resolveClickUpCustomIdPattern({ env }).pattern,
 ): Promise<string | undefined> {
   const eventPath = env.GITHUB_EVENT_PATH?.trim();
   if (!eventPath) {
@@ -127,17 +127,6 @@ function missingContextError(
   );
 }
 
-function clickUpTaskIdNotFoundError(env: NodeJS.ProcessEnv): PrContextReaderError {
-  return new PrContextReaderError(
-    'ClickUp task ID not found in pull request title or body',
-    sanitizePrContextErrorCause(
-      new Error('ClickUp task ID not found in pull request title or body'),
-      env,
-    ),
-    'CLICKUP_TASK_ID_NOT_FOUND',
-  );
-}
-
 export async function mapGitHubActionsToPullRequestContext(
   options?: { env?: NodeJS.ProcessEnv },
 ): Promise<PullRequestContext> {
@@ -176,18 +165,15 @@ export async function mapGitHubActionsToPullRequestContext(
   }
 
   const { title, author, body } = await readPullRequestMetadata(env);
-  const pattern = resolveClickUpCustomIdPattern({ env });
+  const { pattern } = resolveClickUpCustomIdPattern({ env });
   const clickUpTaskId = extractClickUpTaskIdFromPullRequestText(title, body, pattern);
-  if (!clickUpTaskId) {
-    throw clickUpTaskIdNotFoundError(env);
-  }
 
   try {
     return PullRequestContextSchema.parse({
       ...prRefs,
       title,
       author,
-      clickUpTaskId,
+      ...(clickUpTaskId ? { clickUpTaskId } : {}),
     });
   } catch (error) {
     if (error instanceof ZodError) {

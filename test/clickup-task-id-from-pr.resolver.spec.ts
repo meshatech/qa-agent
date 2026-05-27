@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { Logger } from '@nestjs/common';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   compileClickUpCustomIdPattern,
@@ -31,7 +32,7 @@ describe('extractClickUpTaskIdFromPullRequestText', () => {
   });
 
   it('extracts using a custom regex pattern', () => {
-    const pattern = compileClickUpCustomIdPattern('TASK-\\d+');
+    const { pattern } = compileClickUpCustomIdPattern('TASK-\\d+');
     expect(extractClickUpTaskIdFromPullRequestText('TASK-12345 — custom prefix', undefined, pattern)).toBe(
       'TASK-12345',
     );
@@ -46,7 +47,27 @@ describe('extractClickUpTaskIdFromPullRequestText', () => {
   });
 
   it('returns undefined when a custom pattern has no matches', () => {
-    const pattern = compileClickUpCustomIdPattern('EPIC-\\d+');
+    const { pattern } = compileClickUpCustomIdPattern('EPIC-\\d+');
     expect(extractClickUpTaskIdFromPullRequestText('PRJ-11552 — title', undefined, pattern)).toBeUndefined();
+  });
+});
+
+describe('compileClickUpCustomIdPattern', () => {
+  it('falls back to default PRJ-\\d+ and logs when pattern is invalid', () => {
+    const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+    const result = compileClickUpCustomIdPattern('[PRJ-\\d+');
+
+    expect(result.usedFallback).toBe(true);
+    expect(result.invalidSource).toBe('[PRJ-\\d+');
+    expect(
+      extractClickUpTaskIdFromPullRequestText('PRJ-11552 — title', undefined, result.pattern),
+    ).toBe('PRJ-11552');
+    expect(warnSpy).toHaveBeenCalledWith(
+      'Invalid CLICKUP_CUSTOM_ID_PATTERN, falling back to default PRJ-\\d+',
+      expect.anything(),
+    );
+
+    warnSpy.mockRestore();
   });
 });

@@ -345,6 +345,23 @@ describe('PipelinePreflightService', () => {
       expect(result.report.checks.clickupTaskId.ok).toBe(true);
       expect(result.report.checks.clickupTaskId.taskId).toBe('TASK-12345');
     });
+
+    it('warns when CLICKUP_CUSTOM_ID_PATTERN is invalid but still extracts with default', async () => {
+      const outputDir = await setupPreflightPassEnv();
+      process.env.CLICKUP_CUSTOM_ID_PATTERN = '[PRJ-\\d+';
+
+      const result = await makeService().run(outputDir);
+
+      expect(result.report.checks.clickupTaskId.ok).toBe(true);
+      expect(result.report.checks.clickupTaskId.taskId).toBe('PRJ-11552');
+      expect(result.report.checks.clickupTaskId.warning).toBe(
+        'Invalid custom ID pattern; using default PRJ-\\d+',
+      );
+      expect(result.report.checkItems.find((item) => item.name === 'clickupTaskId')?.status).toBe('WARN');
+      expect(result.report.checkItems.find((item) => item.name === 'clickupTaskId')?.message).toContain(
+        'Invalid custom ID pattern',
+      );
+    });
   });
 
   describe('PRJ-11349 — CLICKUP_TOKEN validation', () => {

@@ -83,13 +83,18 @@ describe('mapGitHubActionsToPullRequestContext', () => {
     });
   });
 
-  it('fails with CLICKUP_TASK_ID_NOT_FOUND when PR has no task ID', async () => {
+  it('omits clickUpTaskId when PR has no task ID', async () => {
     const { eventPath } = await writePullRequestEvent({ title: 'Fix login flow', body: 'No id' });
     const env = buildPrEnv(eventPath);
 
-    await expect(mapGitHubActionsToPullRequestContext({ env })).rejects.toMatchObject({
-      name: 'PrContextReaderError',
-      code: 'CLICKUP_TASK_ID_NOT_FOUND',
+    const result = await mapGitHubActionsToPullRequestContext({ env });
+    expect(result.clickUpTaskId).toBeUndefined();
+    expect(result).toMatchObject({
+      prNumber: 42,
+      baseBranch: 'main',
+      headBranch: 'feature/test',
+      title: 'Fix login flow',
+      author: 'octocat',
     });
   });
 

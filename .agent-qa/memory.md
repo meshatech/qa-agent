@@ -99,7 +99,7 @@ Princípio: LLM decide, harness executa, orchestrator governa, schemas validam, 
 
 <!-- type: runtime_learning | id: LEARN-CLICKUP-DEMAND-RUN-001 -->
 
-`RunAgentUseCase` persiste `demand-context.json` no diretório do run quando `CLICKUP_TOKEN` está no env e há `config.clickup.taskId` (opcional `config.clickup.teamId` para custom IDs). Sem token ou task id no config, o run segue sem persistência ClickUp. Falha na leitura/persistência ClickUp loga warning e o run continua. Preflight valida task id extraído do PR (título/corpo) antes do pipeline CI.
+`RunAgentUseCase` persiste `demand-context.json` quando `CLICKUP_TOKEN` está no env e há `config.clickup.taskId` (fallback deprecado: `CLICKUP_TASK_ID` env com warning). Preflight extrai task ID do PR; fora do GHA o check é skipped (`WARN`).
 
 <!-- type: runtime_learning | id: LEARN-GITHUB-PR-CONTEXT-001 -->
 
@@ -143,7 +143,7 @@ Antes do `git diff`, `GitHubActionsPrContextReaderAdapter` chama `GitRepositoryP
 
 <!-- type: runtime_learning | id: LEARN-PR-CLICKUP-TASK-ID-001 -->
 
-`extractClickUpTaskIdFromPullRequestText(title, body?)` em `clickup-task-id-from-pr.resolver.ts` extrai custom ID ClickUp (`PRJ-\d+`) do título do PR com fallback para o corpo. Validação via `isCustomClickUpTaskId`. Campo `pullRequest.clickUpTaskId` em `PullRequestContext` / `pr-diff-context.json`. Preflight: `validateClickUpTaskId` usa `extractClickUpTaskIdFromGitHubEvent`. Env `CLICKUP_TASK_ID` removida; run local usa `config.clickup.taskId`. Ausência no PR: `CLICKUP_TASK_ID_NOT_FOUND` / preflight BLOCKED. Convenção PR: `PRJ-xxxxx — descrição` no título.
+`extractClickUpTaskIdFromPullRequestText(title, body?, pattern?)` extrai custom ID do PR (default `PRJ-\d+`; override env/config). Preflight: skipped (`WARN`) sem contexto PR ou sem `GITHUB_EVENT_PATH`; BLOCKED se PR OK mas ID ausente. Regex inválido (`CLICKUP_CUSTOM_ID_PATTERN` / config): fallback default + `Logger.warn` + check `WARN` quando extração OK. Mapper GHA omite `clickUpTaskId` se ausente (sem throw). `CLICKUP_TASK_ID` env deprecada (fallback run local). Schema: `clickUpTaskId` opcional.
 
 <!-- type: runtime_learning | id: LEARN-PLACEHOLDER-001 -->
 

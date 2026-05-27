@@ -35,6 +35,8 @@ const GITHUB_TOKEN_ENV_KEYS = ['GITHUB_TOKEN', 'GH_TOKEN', 'INPUT_GITHUB_TOKEN']
 const GITHUB_TOKEN_MISSING_WARNING =
   'GitHub token is missing (GITHUB_TOKEN, GH_TOKEN, or INPUT_GITHUB_TOKEN); PR read/publish may be unavailable.';
 const ALLOWED_PR_EVENT_NAMES = ['pull_request', 'pull_request_target'] as const;
+const INVALID_CUSTOM_ID_PATTERN_WARNING =
+  'Invalid custom ID pattern; using default PRJ-\\d+';
 
 /**
  * Validates the pipeline environment before execution.
@@ -111,6 +113,8 @@ export class PipelinePreflightService {
     let status: PreflightCheckStatus;
     if (name === 'clickupTaskId' && checks.clickupTaskId.skipped) {
       status = 'WARN';
+    } else if (name === 'clickupTaskId' && checks.clickupTaskId.warning && checks.clickupTaskId.ok) {
+      status = 'WARN';
     } else {
       status = raw.ok ? 'PASS' : warningChecks.includes(name) ? 'WARN' : 'FAIL';
     }
@@ -132,8 +136,15 @@ export class PipelinePreflightService {
           }
           return 'ClickUp task ID check skipped — not running in GitHub Actions';
         }
+        if (checks.clickupTaskId.error) {
+          return checks.clickupTaskId.error;
+        }
         if (checks.clickupTaskId.ok && checks.clickupTaskId.taskId) {
-          return `ClickUp task ID extracted from PR: ${checks.clickupTaskId.taskId}`;
+          const extracted = `ClickUp task ID extracted from PR: ${checks.clickupTaskId.taskId}`;
+          return checks.clickupTaskId.warning ? `${checks.clickupTaskId.warning}. ${extracted}` : extracted;
+        }
+        if (checks.clickupTaskId.warning) {
+          return `${checks.clickupTaskId.warning}. ClickUp task ID not found in PR title/body`;
         }
         return 'ClickUp task ID not found in PR title/body';
       case 'githubToken':
@@ -179,6 +190,8 @@ export class PipelinePreflightService {
     skipped?: boolean;
     source?: 'pr';
     taskId?: string;
+    error?: string;
+    warning?: string;
   }> {
     const prContext = this.validatePrContext();
     if (!prContext.ok) {
@@ -189,34 +202,52 @@ export class PipelinePreflightService {
       return { ok: true, skipped: true };
     }
 
-    const pattern = await this.resolveClickUpCustomIdPatternForPreflight();
-    const taskId = await extractClickUpTaskIdFromGitHubEvent(process.env, pattern);
-    if (taskId) {
-      return { ok: true, source: 'pr', taskId };
+    const { pattern, patternWarning } = await this.resolveClickUpCustomIdPatternForPreflight();
+
+    try {
+      const taskId = await extractClickUpTaskIdFromGitHubEvent(process.env, pattern);
+      if (taskId) {
+        return { ok: true, source: 'pr', taskId, warning: patternWarning };
+      }
+      return { ok: false, warning: patternWarning };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+        warning: patternWarning,
+      };
     }
-    return { ok: false };
   }
 
-  private async resolveClickUpCustomIdPatternForPreflight(): Promise<RegExp> {
+  private async resolveClickUpCustomIdPatternForPreflight(): Promise<{
+    pattern: RegExp;
+    patternWarning?: string;
+  }> {
     const fromEnv = process.env.CLICKUP_CUSTOM_ID_PATTERN?.trim();
     if (fromEnv) {
-      return compileClickUpCustomIdPattern(fromEnv);
+      const compiled = compileClickUpCustomIdPattern(fromEnv);
+      return {
+        pattern: compiled.pattern,
+        patternWarning: compiled.usedFallback ? INVALID_CUSTOM_ID_PATTERN_WARNING : undefined,
+      };
     }
 
     try {
       const configPath = this.resolveConfigPath();
       const raw = await this.configLoader.load(configPath);
       const parsed = RunConfigSchema.safeParse(raw);
-      if (parsed.success) {
-        return resolveClickUpCustomIdPattern({
-          configPattern: parsed.data.clickup?.customIdPattern,
-        });
+      if (parsed.success && parsed.data.clickup?.customIdPattern?.trim()) {
+        const compiled = compileClickUpCustomIdPattern(parsed.data.clickup.customIdPattern);
+        return {
+          pattern: compiled.pattern,
+          patternWarning: compiled.usedFallback ? INVALID_CUSTOM_ID_PATTERN_WARNING : undefined,
+        };
       }
     } catch {
       // fall through to default pattern
     }
 
-    return resolveClickUpCustomIdPattern();
+    return { pattern: resolveClickUpCustomIdPattern().pattern };
   }
 
   private resolveGitHubToken(): string {

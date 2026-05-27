@@ -1,25 +1,49 @@
+import { Logger } from '@nestjs/common';
+
 import { isCustomClickUpTaskId } from '../clickup/clickup-task-url.builder.js';
+
+const logger = new Logger('ClickUpCustomIdPattern');
 
 export const DEFAULT_CLICKUP_CUSTOM_ID_PATTERN = /PRJ-\d+/g;
 
 const CLICKUP_CUSTOM_ID_PATTERN_ENV = 'CLICKUP_CUSTOM_ID_PATTERN';
 
-export function compileClickUpCustomIdPattern(source?: string): RegExp {
+export type ClickUpCustomIdPatternResult = {
+  pattern: RegExp;
+  usedFallback: boolean;
+  invalidSource?: string;
+};
+
+export function compileClickUpCustomIdPattern(source?: string): ClickUpCustomIdPatternResult {
   if (!source?.trim()) {
-    return new RegExp(DEFAULT_CLICKUP_CUSTOM_ID_PATTERN.source, 'g');
+    return {
+      pattern: new RegExp(DEFAULT_CLICKUP_CUSTOM_ID_PATTERN.source, 'g'),
+      usedFallback: false,
+    };
   }
 
   try {
-    return new RegExp(source.trim(), 'g');
-  } catch {
-    return new RegExp(DEFAULT_CLICKUP_CUSTOM_ID_PATTERN.source, 'g');
+    return {
+      pattern: new RegExp(source.trim(), 'g'),
+      usedFallback: false,
+    };
+  } catch (error) {
+    logger.warn(
+      'Invalid CLICKUP_CUSTOM_ID_PATTERN, falling back to default PRJ-\\d+',
+      error instanceof Error ? error.stack : String(error),
+    );
+    return {
+      pattern: new RegExp(DEFAULT_CLICKUP_CUSTOM_ID_PATTERN.source, 'g'),
+      usedFallback: true,
+      invalidSource: source.trim(),
+    };
   }
 }
 
 export function resolveClickUpCustomIdPattern(options?: {
   env?: NodeJS.ProcessEnv;
   configPattern?: string;
-}): RegExp {
+}): ClickUpCustomIdPatternResult {
   const env = options?.env ?? process.env;
   const fromEnv = env[CLICKUP_CUSTOM_ID_PATTERN_ENV]?.trim();
   if (fromEnv) {
@@ -52,7 +76,7 @@ function findFirstValidClickUpTaskId(text: string, pattern: RegExp): string | un
 export function extractClickUpTaskIdFromPullRequestText(
   title: string,
   body?: string,
-  pattern: RegExp = resolveClickUpCustomIdPattern(),
+  pattern: RegExp = resolveClickUpCustomIdPattern().pattern,
 ): string | undefined {
   const fromTitle = findFirstValidClickUpTaskId(title, pattern);
   if (fromTitle) {
