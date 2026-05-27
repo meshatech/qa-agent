@@ -42,6 +42,9 @@ export class RunPipelineCorrelateUseCase {
     options?: { projectPath?: string; env?: NodeJS.ProcessEnv },
   ): Promise<PipelineCorrelateRunResult> {
     const env = options?.env ?? process.env;
+    const token = env.CLICKUP_TOKEN?.trim() ?? '';
+    const safeUserMessage = (message: string) => redactSecretsInMessage(message, [token]);
+
     let prDiff: PrDiffContext;
     try {
       prDiff = await readPipelineArtifact(outputDir, 'pr-diff-context.json', PrDiffContextSchema);
@@ -53,7 +56,7 @@ export class RunPipelineCorrelateUseCase {
       }
       if (error instanceof ConfigError) {
         return this.blockAndThrow({
-          blockReason: describePipelineArtifactError(error),
+          blockReason: safeUserMessage(describePipelineArtifactError(error)),
         });
       }
       throw error;
@@ -67,14 +70,11 @@ export class RunPipelineCorrelateUseCase {
       });
     }
 
-    const token = env.CLICKUP_TOKEN?.trim() ?? '';
     if (!token) {
       return this.blockAndThrow({
         blockReason: 'CLICKUP_TOKEN is missing; cannot fetch demand context',
       });
     }
-
-    const safeUserMessage = (message: string) => redactSecretsInMessage(message, [token]);
 
     let demandContextPath: string;
     let demand;

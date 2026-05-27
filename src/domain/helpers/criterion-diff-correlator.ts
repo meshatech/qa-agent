@@ -1,4 +1,5 @@
 import { overlapScore, pathTokens, tokenize } from './correlation-lexical.js';
+import { sanitizePath } from './sanitize-path.js';
 import type { ConsumedMemorySearchContext } from './memory-search-consumer.js';
 import type { ConsumedPrDiffContext } from './pr-diff-context-consumer.js';
 import { createCorrelationItem } from '../schemas/correlation-item.schema.js';
@@ -44,7 +45,7 @@ export function correlateCriterionWithDiff(
     state = applyBestMatch(state, {
       score: scoreChangedFile(criterionTokens, file),
       file: file.path,
-      rationale: `Criterion tokens overlap with changed file path ${file.path}`,
+      rationale: `Criterion tokens overlap with changed file path ${sanitizePath(file.path)}`,
     });
   }
 
@@ -52,7 +53,7 @@ export function correlateCriterionWithDiff(
     state = applyBestMatch(state, {
       score: scoreRouteMatch(criterionTokens, route),
       file: findChangedFileForRoute(input.prDiff.changedFiles, route),
-      rationale: `Criterion tokens overlap with affected route ${route}`,
+      rationale: `Criterion tokens overlap with affected route ${sanitizePath(route)}`,
     });
   }
 

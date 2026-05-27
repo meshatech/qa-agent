@@ -54,8 +54,38 @@ describe('correlateCriterionWithDiff', () => {
 
     expect(result.correlation.file).toBe('src/routes/login.ts');
     expect(result.correlation.score).toBeGreaterThan(0);
-    expect(result.correlation.rationale).toContain('changed file path');
+    expect(result.correlation.rationale).toContain('changed file path .../routes/login.ts');
+    expect(result.correlation.rationale).not.toContain('src/routes/login.ts');
     expect(result.relatedFiles).toEqual(['src/routes/login.ts']);
+  });
+
+  it('sanitizes absolute paths in rationales without exposing home directories', () => {
+    const prDiff = consumePrDiffContext({
+      ...BASE_PR_DIFF,
+      changedFiles: [
+        {
+          path: '/home/user/proj/src/routes/login.ts',
+          status: 'modified',
+          kind: 'route',
+          positiveLines: [{ type: 'added', lineNumber: 1, content: 'validate credentials' }],
+          negativeLines: [],
+          contextLines: [],
+        },
+      ],
+      affectedRoutes: ['/login'],
+      affectedSchemas: [],
+    });
+    const memory = consumeMemorySearchResults([]);
+
+    const result = correlateCriterionWithDiff({
+      criterion: 'Login route validates user credentials',
+      prDiff,
+      memory,
+    });
+
+    expect(result.correlation.file).toBe('/home/user/proj/src/routes/login.ts');
+    expect(result.correlation.rationale).not.toContain('/home/user');
+    expect(result.correlation.rationale).toContain('changed file path');
   });
 
   it('returns zero score when criterion has no overlap with diff', () => {
@@ -127,7 +157,8 @@ describe('correlateCriterionWithDiff', () => {
       memory,
     });
 
-    expect(result.correlation.rationale).toContain('affected route /billing/dashboard/page');
+    expect(result.correlation.rationale).toContain('affected route /.../dashboard/page');
+    expect(result.correlation.rationale).not.toContain('/billing/dashboard/page');
     expect(result.relatedFiles).toEqual(['src/routes/billing/dashboard.ts']);
     expect(result.correlation.file).toBe('src/routes/billing/dashboard.ts');
   });

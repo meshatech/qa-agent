@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { RunPipelineCorrelateUseCase } from '../src/application/use-cases/run-pipeline-correlate.usecase.js';
+import * as readPipelineArtifactModule from '../src/application/helpers/read-pipeline-artifact.js';
 import { DemandContextPersistenceService } from '../src/application/services/demand-context-persistence.service.js';
 import { DemandDiffMemoryCorrelatorService } from '../src/application/services/demand-diff-memory-correlator.service.js';
 import { MemorySearchService } from '../src/application/services/memory-search.service.js';
@@ -11,7 +12,7 @@ import { BM25MemoryIndex } from '../src/application/services/bm25-memory-index.s
 import { MemoryChunker } from '../src/application/services/memory-chunker.service.js';
 import { MemoryMarkdownLoader } from '../src/application/services/memory-markdown-loader.service.js';
 import { SanitizerService } from '../src/application/services/sanitizer.service.js';
-import { CorrelationBlockedError, ClickUpReaderError, HarnessFatalError } from '../src/domain/errors.js';
+import { CorrelationBlockedError, ClickUpReaderError, ConfigError, HarnessFatalError } from '../src/domain/errors.js';
 import { CorrelationResultSchema } from '../src/domain/schemas/correlation.schema.js';
 import type { ClickUpReaderPort } from '../src/application/ports/clickup-reader.port.js';
 import { FileDemandContextWriterAdapter } from '../src/infra/persistence/file-demand-context-writer.adapter.js';
@@ -168,6 +169,38 @@ describe('RunPipelineCorrelateUseCase', () => {
     } catch (error) {
       expectBlockedError(error, (blocked) => {
         expect(blocked.result.blockReason).toContain('Pipeline artifact invalid JSON');
+      });
+    }
+
+    await expectNoCorrelationArtifacts(outputDir);
+  });
+
+  it('redacts CLICKUP_TOKEN from artifact validation blockReason when token appears in error message', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'agent-qa-pipeline-correlate-'));
+    tempDirs.push(outputDir);
+    const secretToken = 'pk_leaked_secret_token_value';
+    vi.stubEnv('CLICKUP_TOKEN', secretToken);
+
+    vi.spyOn(readPipelineArtifactModule, 'readPipelineArtifact').mockRejectedValue(
+      new ConfigError(
+        'Pipeline artifact validation failed: pr-diff-context.json',
+        new Error(`Invalid token ${secretToken} in artifact metadata`),
+      ),
+    );
+
+    const useCase = buildUseCase({
+      readTask: vi.fn(),
+      readConfiguredTask: vi.fn(),
+    });
+
+    try {
+      await useCase.execute(outputDir, { env: process.env });
+      expect.fail('expected CorrelationBlockedError');
+    } catch (error) {
+      expectBlockedError(error, (blocked) => {
+        expect(blocked.result.blockReason).toContain('Pipeline artifact validation failed');
+        expect(blocked.result.blockReason).not.toContain(secretToken);
+        expect(blocked.result.blockReason).toContain('***REDACTED***');
       });
     }
 

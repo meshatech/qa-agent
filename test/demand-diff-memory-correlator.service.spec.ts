@@ -203,4 +203,25 @@ describe('DemandDiffMemoryCorrelatorService', () => {
       ),
     ).toBe(true);
   });
+
+  it('caps scenarios at MAX_SCENARIOS and warns when criteria exceed the limit', () => {
+    const criteria = Array.from({ length: 12 }, (_, index) =>
+      `Login route validates user credentials check ${String(index + 1).padStart(2, '0')}`,
+    );
+
+    const result = service.correlate({
+      demand: {
+        ...BASE_DEMAND,
+        acceptanceCriteria: criteria,
+      },
+      prDiff: BASE_PR_DIFF,
+      memoryResults: [],
+    });
+
+    expect(result.status).toBe('OK');
+    expect(result.scenarios).toHaveLength(10);
+    expect(
+      result.warnings.some((warning) => warning.includes('Scenario cap reached (10)')),
+    ).toBe(true);
+  });
 });
