@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 
 import { consumeDemandContext } from '../../domain/helpers/demand-context-consumer.js';
+import type { ConsumedMemorySearchContext } from '../../domain/helpers/memory-search-consumer.js';
+import { consumeMemorySearchResults } from '../../domain/helpers/memory-search-consumer.js';
 import type { ConsumedPrDiffContext } from '../../domain/helpers/pr-diff-context-consumer.js';
 import { consumePrDiffContext } from '../../domain/helpers/pr-diff-context-consumer.js';
 import { overlapScore, pathTokens, tokenize, truncate } from '../../domain/helpers/correlation-lexical.js';
@@ -51,12 +53,14 @@ export class DemandDiffMemoryCorrelatorService {
       );
     }
 
+    const memory = consumeMemorySearchResults(input.memoryResults);
+
     const risks = this.collectRegressionRisks(prDiff);
     const correlations: CorrelationItem[] = [];
     const scenarios: RequiredScenario[] = [];
 
     for (const criterion of demand.acceptanceCriteria) {
-      const match = this.findBestCriterionMatch(criterion, prDiff, input.memoryResults);
+      const match = this.findBestCriterionMatch(criterion, prDiff, memory);
       correlations.push(match.correlation);
 
       if (match.correlation.score < MIN_OVERLAP_SCORE) {
@@ -88,7 +92,7 @@ export class DemandDiffMemoryCorrelatorService {
     }
 
     if (!scenarios.length) {
-      const routeScenarios = this.buildRouteFallbackScenarios(prDiff, input.memoryResults);
+      const routeScenarios = this.buildRouteFallbackScenarios(prDiff, memory);
       scenarios.push(...routeScenarios.slice(0, MAX_SCENARIOS));
     }
 
@@ -99,7 +103,7 @@ export class DemandDiffMemoryCorrelatorService {
       );
     }
 
-    if (!input.memoryResults.length) {
+    if (memory.isEmpty) {
       warnings.push('BM25 memory returned no chunks; correlation used PR diff and demand only');
     }
 
@@ -134,7 +138,7 @@ export class DemandDiffMemoryCorrelatorService {
   private findBestCriterionMatch(
     criterion: string,
     prDiff: ConsumedPrDiffContext,
-    memoryResults: MemorySearchResult[],
+    memory: ConsumedMemorySearchContext,
   ): { correlation: CorrelationItem; relatedFiles: string[] } {
     const criterionTokens = tokenize(criterion);
     let bestScore = 0;
@@ -169,7 +173,7 @@ export class DemandDiffMemoryCorrelatorService {
     }
 
     let memoryChunk: string | undefined;
-    const memoryBoost = this.memoryBoost(criterionTokens, prDiff, memoryResults);
+    const memoryBoost = this.memoryBoost(criterionTokens, prDiff, memory);
     if (memoryBoost) {
       bestScore = Math.min(1, bestScore + memoryBoost.boost);
       memoryChunk = memoryBoost.chunkId;
@@ -192,15 +196,10 @@ export class DemandDiffMemoryCorrelatorService {
   private memoryBoost(
     criterionTokens: Set<string>,
     prDiff: ConsumedPrDiffContext,
-    memoryResults: MemorySearchResult[],
+    memory: ConsumedMemorySearchContext,
   ): { boost: number; chunkId: string; rationale: string } | undefined {
-    const relevantTypes = new Set(['route', 'flow', 'scenario']);
-    for (const result of memoryResults) {
+    for (const result of memory.correlationChunks) {
       const chunk = result.chunk;
-      if (!relevantTypes.has(chunk.type)) {
-        continue;
-      }
-
       const routeHit = prDiff.affectedRoutes.some(
         (route) =>
           chunk.content.includes(route) ||
@@ -222,14 +221,14 @@ export class DemandDiffMemoryCorrelatorService {
 
   private buildRouteFallbackScenarios(
     prDiff: ConsumedPrDiffContext,
-    memoryResults: MemorySearchResult[],
+    memory: ConsumedMemorySearchContext,
   ): RequiredScenario[] {
     const scenarios: RequiredScenario[] = [];
     for (const route of prDiff.affectedRoutes) {
       const relatedFiles = prDiff.changedFiles
         .filter((file) => file.kind === 'route' || pathTokens(file.path).has(route.replace(/^\//, '')))
         .map((file) => file.path);
-      const memoryChunk = memoryResults.find(
+      const memoryChunk = memory.correlationChunks.find(
         (item) => item.chunk.type === 'route' && item.chunk.content.includes(route),
       )?.chunk.id;
 
