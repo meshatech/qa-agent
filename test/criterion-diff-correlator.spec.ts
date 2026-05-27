@@ -254,6 +254,99 @@ describe('correlateCriterionWithDiff', () => {
     expect(withMemory.correlation.rationale).toContain('BM25 memory chunk route-login');
   });
 
+  it('does not retain a stale file when route match wins without a resolved route file', () => {
+    const prDiff = consumePrDiffContext({
+      ...BASE_PR_DIFF,
+      changedFiles: [
+        {
+          path: 'src/components/widget.tsx',
+          status: 'modified',
+          kind: 'other',
+          positiveLines: [],
+          negativeLines: [],
+          contextLines: [],
+        },
+      ],
+      affectedRoutes: ['billing account'],
+      affectedSchemas: [],
+    });
+    const memory = consumeMemorySearchResults([]);
+
+    const result = correlateCriterionWithDiff({
+      criterion: 'widget billing account service user portal',
+      prDiff,
+      memory,
+    });
+
+    expect(result.correlation.rationale).toContain('affected route billing account');
+    expect(result.correlation.file).toBeUndefined();
+    expect(result.correlation.file).not.toBe('src/components/widget.tsx');
+  });
+
+  it('does not retain a stale file or schema id when schema match wins without a resolved schema file', () => {
+    const prDiff = consumePrDiffContext({
+      ...BASE_PR_DIFF,
+      changedFiles: [
+        {
+          path: 'src/models/order.ts',
+          status: 'modified',
+          kind: 'other',
+          positiveLines: [],
+          negativeLines: [],
+          contextLines: [],
+        },
+      ],
+      affectedRoutes: [],
+      affectedSchemas: ['user'],
+    });
+    const memory = consumeMemorySearchResults([]);
+
+    const result = correlateCriterionWithDiff({
+      criterion: 'user schema validation rules order',
+      prDiff,
+      memory,
+    });
+
+    expect(result.correlation.rationale).toContain('affected schema user');
+    expect(result.correlation.file).toBeUndefined();
+    expect(result.correlation.file).not.toBe('src/models/order.ts');
+    expect(result.correlation.file).not.toBe('user');
+  });
+
+  it('scores short schema names using resolved schema file paths', () => {
+    const prDiff = consumePrDiffContext({
+      ...BASE_PR_DIFF,
+      changedFiles: [
+        {
+          path: 'src/domain/schemas/user.schema.ts',
+          status: 'modified',
+          kind: 'schema',
+          positiveLines: [],
+          negativeLines: [],
+          contextLines: [],
+        },
+      ],
+      affectedRoutes: [],
+      affectedSchemas: ['user'],
+    });
+    const memory = consumeMemorySearchResults([]);
+
+    const billingResult = correlateCriterionWithDiff({
+      criterion: 'Billing invoice export supports CSV format',
+      prDiff,
+      memory,
+    });
+    const userResult = correlateCriterionWithDiff({
+      criterion: 'User schema validates email fields',
+      prDiff,
+      memory,
+    });
+
+    expect(billingResult.correlation.file).not.toBe('src/domain/schemas/user.schema.ts');
+    expect(userResult.correlation.file).toBe('src/domain/schemas/user.schema.ts');
+    expect(userResult.correlation.score).toBeGreaterThan(billingResult.correlation.score);
+  });
+
   it('does not force a match when memory is irrelevant', () => {
     const prDiff = consumePrDiffContext(BASE_PR_DIFF);
     const memory = consumeMemorySearchResults([

@@ -18,61 +18,110 @@ export interface CriterionDiffCorrelationResult {
   relatedFiles: string[];
 }
 
+interface BestMatchState {
+  bestScore: number;
+  bestFile: string | undefined;
+  bestRationale: string;
+}
+
+interface MatchCandidate {
+  score: number;
+  file: string | undefined;
+  rationale: string;
+}
+
 export function correlateCriterionWithDiff(
   input: CriterionDiffCorrelationInput,
 ): CriterionDiffCorrelationResult {
   const criterionTokens = tokenize(input.criterion);
-  let bestScore = 0;
-  let bestFile: string | undefined;
-  let bestRationale = 'No lexical overlap with changed files or affected routes';
+  let state: BestMatchState = {
+    bestScore: 0,
+    bestFile: undefined,
+    bestRationale: 'No lexical overlap with changed files or affected routes',
+  };
 
   for (const file of input.prDiff.changedFiles) {
-    const score = overlapScore(criterionTokens, pathTokens(file.path));
-    if (score > bestScore) {
-      bestScore = score;
-      bestFile = file.path;
-      bestRationale = `Criterion tokens overlap with changed file path ${file.path}`;
-    }
+    state = applyBestMatch(state, {
+      score: scoreChangedFile(criterionTokens, file),
+      file: file.path,
+      rationale: `Criterion tokens overlap with changed file path ${file.path}`,
+    });
   }
 
   for (const route of input.prDiff.affectedRoutes) {
-    const score = overlapScore(criterionTokens, tokenize(route));
-    if (score > bestScore) {
-      bestScore = score;
-      const routeFile = findChangedFileForRoute(input.prDiff.changedFiles, route);
-      bestFile = routeFile ?? bestFile;
-      bestRationale = `Criterion tokens overlap with affected route ${route}`;
-    }
+    state = applyBestMatch(state, {
+      score: scoreRouteMatch(criterionTokens, route),
+      file: findChangedFileForRoute(input.prDiff.changedFiles, route),
+      rationale: `Criterion tokens overlap with affected route ${route}`,
+    });
   }
 
   for (const schema of input.prDiff.affectedSchemas) {
-    const score = overlapScore(criterionTokens, pathTokens(schema));
-    if (score > bestScore) {
-      bestScore = score;
-      const schemaFile = findChangedFileForSchema(input.prDiff.changedFiles, schema);
-      bestFile = schemaFile ?? bestFile ?? schema;
-      bestRationale = `Criterion tokens overlap with affected schema ${schema}`;
-    }
+    const schemaMatch = scoreSchemaMatch(criterionTokens, schema, input.prDiff.changedFiles);
+    state = applyBestMatch(state, {
+      score: schemaMatch.score,
+      file: schemaMatch.file,
+      rationale: `Criterion tokens overlap with affected schema ${schema}`,
+    });
   }
 
   let memoryChunk: string | undefined;
   const memoryBoost = applyMemoryBoost(criterionTokens, input.prDiff, input.memory);
   if (memoryBoost) {
-    bestScore = Math.min(1, bestScore + memoryBoost.boost);
+    state.bestScore = Math.min(1, state.bestScore + memoryBoost.boost);
     memoryChunk = memoryBoost.chunkId;
-    bestRationale = `${bestRationale}; ${memoryBoost.rationale}`;
+    state.bestRationale = `${state.bestRationale}; ${memoryBoost.rationale}`;
   }
 
   const relatedFiles = collectRelatedFiles(criterionTokens, input.prDiff);
   return {
     correlation: createCorrelationItem({
       criterion: input.criterion,
-      file: bestFile,
+      file: state.bestFile,
       memoryChunk,
-      score: bestScore,
-      rationale: bestRationale,
+      score: state.bestScore,
+      rationale: state.bestRationale,
     }),
     relatedFiles,
+  };
+}
+
+function applyBestMatch(state: BestMatchState, candidate: MatchCandidate): BestMatchState {
+  if (candidate.score <= state.bestScore) {
+    return state;
+  }
+
+  return {
+    bestScore: candidate.score,
+    bestFile: candidate.file,
+    bestRationale: candidate.rationale,
+  };
+}
+
+function scoreChangedFile(criterionTokens: Set<string>, file: ChangedFile): number {
+  return overlapScore(criterionTokens, pathTokens(file.path));
+}
+
+function scoreRouteMatch(criterionTokens: Set<string>, route: string): number {
+  return overlapScore(criterionTokens, tokenize(route));
+}
+
+function scoreSchemaMatch(
+  criterionTokens: Set<string>,
+  schemaId: string,
+  changedFiles: ChangedFile[],
+): { score: number; file: string | undefined } {
+  const schemaFile = findChangedFileForSchema(changedFiles, schemaId);
+  if (schemaFile) {
+    return {
+      score: overlapScore(criterionTokens, pathTokens(schemaFile)),
+      file: schemaFile,
+    };
+  }
+
+  return {
+    score: overlapScore(criterionTokens, tokenize(`${schemaId} schema`)),
+    file: undefined,
   };
 }
 
@@ -83,14 +132,14 @@ function collectRelatedFiles(
   const scored = new Map<string, number>();
 
   for (const file of prDiff.changedFiles) {
-    const score = overlapScore(criterionTokens, pathTokens(file.path));
+    const score = scoreChangedFile(criterionTokens, file);
     if (score > 0) {
       scored.set(file.path, Math.max(scored.get(file.path) ?? 0, score));
     }
   }
 
   for (const route of prDiff.affectedRoutes) {
-    const score = overlapScore(criterionTokens, tokenize(route));
+    const score = scoreRouteMatch(criterionTokens, route);
     if (score > 0) {
       const routeFile = findChangedFileForRoute(prDiff.changedFiles, route);
       if (routeFile) {
@@ -100,12 +149,9 @@ function collectRelatedFiles(
   }
 
   for (const schema of prDiff.affectedSchemas) {
-    const score = overlapScore(criterionTokens, pathTokens(schema));
-    if (score > 0) {
-      const schemaFile = findChangedFileForSchema(prDiff.changedFiles, schema);
-      if (schemaFile) {
-        scored.set(schemaFile, Math.max(scored.get(schemaFile) ?? 0, score));
-      }
+    const schemaMatch = scoreSchemaMatch(criterionTokens, schema, prDiff.changedFiles);
+    if (schemaMatch.score > 0 && schemaMatch.file) {
+      scored.set(schemaMatch.file, Math.max(scored.get(schemaMatch.file) ?? 0, schemaMatch.score));
     }
   }
 
@@ -171,8 +217,6 @@ function findChangedFileForRoute(changedFiles: ChangedFile[], route: string): st
 }
 
 function findChangedFileForSchema(changedFiles: ChangedFile[], schemaId: string): string | undefined {
-  const schemaTokens = pathTokens(schemaId);
-
   for (const file of changedFiles) {
     if (file.kind !== 'schema') {
       continue;
@@ -180,6 +224,13 @@ function findChangedFileForSchema(changedFiles: ChangedFile[], schemaId: string)
 
     if (file.path.endsWith(`${schemaId}.schema.ts`)) {
       return file.path;
+    }
+  }
+
+  const schemaTokens = pathTokens(schemaId);
+  for (const file of changedFiles) {
+    if (file.kind !== 'schema') {
+      continue;
     }
 
     if (overlapScore(schemaTokens, pathTokens(file.path)) > 0) {
