@@ -23,6 +23,7 @@ const CONTEXT_LINE = {
 const VALID_MODIFIED_FILE = {
   path: 'src/domain/schemas/changed-file.schema.ts',
   status: 'modified' as const,
+  kind: 'schema' as const,
   positiveLines: [ADDED_LINE],
   negativeLines: [REMOVED_LINE],
   contextLines: [CONTEXT_LINE],
@@ -38,6 +39,7 @@ describe('ChangedFileSchema', () => {
       ChangedFileSchema.parse({
         path: 'src/new-file.ts',
         status: 'added',
+        kind: 'other',
         positiveLines: [ADDED_LINE],
         negativeLines: [],
         contextLines: [],
@@ -45,6 +47,7 @@ describe('ChangedFileSchema', () => {
     ).toEqual({
       path: 'src/new-file.ts',
       status: 'added',
+      kind: 'other',
       positiveLines: [ADDED_LINE],
       negativeLines: [],
       contextLines: [],
@@ -56,6 +59,7 @@ describe('ChangedFileSchema', () => {
       ChangedFileSchema.parse({
         path: 'src/old-file.ts',
         status: 'removed',
+        kind: 'other',
         positiveLines: [],
         negativeLines: [REMOVED_LINE],
         contextLines: [],
@@ -63,10 +67,23 @@ describe('ChangedFileSchema', () => {
     ).toEqual({
       path: 'src/old-file.ts',
       status: 'removed',
+      kind: 'other',
       positiveLines: [],
       negativeLines: [REMOVED_LINE],
       contextLines: [],
     });
+  });
+
+  it('rejects missing kind', () => {
+    expect(() =>
+      ChangedFileSchema.parse({
+        path: 'src/example.ts',
+        status: 'modified',
+        positiveLines: [],
+        negativeLines: [],
+        contextLines: [],
+      }),
+    ).toThrow();
   });
 
   it('rejects empty path', () => {
@@ -83,6 +100,15 @@ describe('ChangedFileSchema', () => {
       ChangedFileSchema.parse({
         ...VALID_MODIFIED_FILE,
         status: 'renamed',
+      }),
+    ).toThrow();
+  });
+
+  it('rejects invalid kind', () => {
+    expect(() =>
+      ChangedFileSchema.parse({
+        ...VALID_MODIFIED_FILE,
+        kind: 'unknown',
       }),
     ).toThrow();
   });

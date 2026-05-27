@@ -86,6 +86,16 @@ describe('GitHubActionsPrContextReaderAdapter', () => {
         author: 'octocat',
       },
       rawDiff: 'diff --git a/file.ts b/file.ts\n',
+      changedFiles: [
+        {
+          path: 'file.ts',
+          status: 'modified',
+          kind: 'other',
+          positiveLines: [],
+          negativeLines: [],
+          contextLines: [],
+        },
+      ],
     });
   });
 
@@ -142,5 +152,27 @@ describe('GitHubActionsPrContextReaderAdapter', () => {
     expect(result.rawDiff).toContain('README.md');
     expect(result.rawDiff).toContain('-base');
     expect(result.rawDiff).toContain('+changed');
+    expect(result.changedFiles).toEqual([
+      {
+        path: 'README.md',
+        status: 'modified',
+        kind: 'docs',
+        positiveLines: [
+          {
+            type: 'added',
+            lineNumber: 1,
+            content: 'changed',
+          },
+        ],
+        negativeLines: [
+          {
+            type: 'removed',
+            lineNumber: 1,
+            content: 'base',
+          },
+        ],
+        contextLines: [],
+      },
+    ]);
   });
 });

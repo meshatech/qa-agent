@@ -5,6 +5,8 @@ import type {
   PrContextReadResult,
 } from '../../application/ports/github-actions-pr-context-reader.port.js';
 import type { GitRepositoryPort } from '../../application/ports/git-repository.port.js';
+import { classifyChangedFiles } from './git-diff-changed-file-classifier.js';
+import { parseGitDiffChangedFiles } from './git-diff-changed-files.parser.js';
 import {
   mapGitHubActionsToPullRequestContext,
   resolveGitHubWorkspace,
@@ -23,7 +25,8 @@ export class GitHubActionsPrContextReaderAdapter implements GitHubActionsPrConte
     const pullRequest = await mapGitHubActionsToPullRequestContext({ env });
     await this.git.ensureBaseBranchAvailable(pullRequest.baseBranch, cwd);
     const rawDiff = await this.git.diffPullRequest(pullRequest.baseBranch, cwd);
+    const changedFiles = classifyChangedFiles(parseGitDiffChangedFiles(rawDiff));
 
-    return { pullRequest, rawDiff };
+    return { pullRequest, rawDiff, changedFiles };
   }
 }
