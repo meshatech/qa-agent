@@ -3,23 +3,21 @@ import { describe, expect, it } from 'vitest';
 
 import { DemandContextSchema } from '../src/domain/schemas/demand-context.schema.js';
 import { ClickUpHttpReaderAdapter } from '../src/infra/clickup/clickup-http-reader.adapter.js';
-import { isCustomClickUpTaskId } from '../src/infra/clickup/clickup-task-url.builder.js';
 
 loadEnv();
 
-const taskId = process.env.CLICKUP_TASK_ID?.trim() ?? '';
+const INTEGRATION_TASK_ID = 'PRJ-11366';
 const hasClickUpEnv = Boolean(
-  process.env.CLICKUP_TOKEN?.trim() &&
-    taskId &&
-    (!isCustomClickUpTaskId(taskId) || process.env.CLICKUP_TEAM_ID?.trim()),
+  process.env.CLICKUP_TOKEN?.trim() && process.env.CLICKUP_TEAM_ID?.trim(),
 );
 
 describe.runIf(hasClickUpEnv)('ClickUpHttpReaderAdapter real API', () => {
   it('reads a real ClickUp task into DemandContext with sanitized title and description', async () => {
     const reader = new ClickUpHttpReaderAdapter();
     const token = process.env.CLICKUP_TOKEN!.trim();
+    const teamId = process.env.CLICKUP_TEAM_ID!.trim();
 
-    const result = await reader.readTask(taskId, token);
+    const result = await reader.readConfiguredTask(token, INTEGRATION_TASK_ID, teamId);
 
     expect(DemandContextSchema.parse(result.demand).taskId.length).toBeGreaterThan(0);
     expect(result.demand.title.length).toBeGreaterThan(0);

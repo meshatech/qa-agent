@@ -19,6 +19,7 @@ import { ValidateConfigUseCase } from '../src/application/use-cases/validate-con
 import { FileConfigLoader } from '../src/infra/config/file-config.loader.js';
 import { FilePreflightReportWriterAdapter } from '../src/infra/persistence/file-preflight-report-writer.adapter.js';
 import { FileGitHubEventContextAdapter } from '../src/infra/github/file-github-event-context.adapter.js';
+import * as githubPrContextMapper from '../src/infra/github/github-actions-pr-context.mapper.js';
 
 let tempDirs: string[] = [];
 let originalEnv: NodeJS.ProcessEnv;
@@ -115,17 +116,43 @@ function setPullRequestContextEnv(): void {
   process.env.GITHUB_BASE_REF = 'main';
 }
 
+async function writePreflightPullRequestEvent(
+  payload: Record<string, unknown> = {},
+): Promise<string> {
+  const eventDir = await tempDir();
+  const eventPath = join(eventDir, 'event.json');
+  await writeFile(
+    eventPath,
+    JSON.stringify({
+      pull_request: {
+        number: 42,
+        title: 'PRJ-11552 — Pipeline preflight test',
+        user: { login: 'octocat' },
+        ...payload,
+      },
+    }),
+    'utf8',
+  );
+  return eventPath;
+}
+
+async function attachPullRequestEventWithTaskId(
+  payload: Record<string, unknown> = {},
+): Promise<void> {
+  process.env.GITHUB_EVENT_PATH = await writePreflightPullRequestEvent(payload);
+}
+
+async function setFullPreflightEnv(): Promise<void> {
+  process.env.CLICKUP_TOKEN = 'pk_live_valid_token';
+  process.env.GITHUB_TOKEN = 'ghp_xxx';
+  setPullRequestContextEnv();
+  await attachPullRequestEventWithTaskId();
+}
+
 function clearGitHubTokens(): void {
   delete process.env.GITHUB_TOKEN;
   delete process.env.GH_TOKEN;
   delete process.env.INPUT_GITHUB_TOKEN;
-}
-
-function setFullPreflightEnv(): void {
-  process.env.CLICKUP_TOKEN = 'pk_live_valid_token';
-  process.env.GITHUB_TOKEN = 'ghp_xxx';
-  process.env.CLICKUP_TASK_ID = '12345';
-  setPullRequestContextEnv();
 }
 
 async function writeConfigFile(dir: string, content: unknown, name = 'agent-qa.config.json'): Promise<string> {
@@ -142,7 +169,7 @@ async function attachValidConfig(): Promise<void> {
 async function setupPreflightPassEnv(): Promise<string> {
   const dir = await tempDir();
   process.env.AGENT_QA_CONFIG = await writeConfigFile(dir, VALID_CONFIG);
-  setFullPreflightEnv();
+  await setFullPreflightEnv();
   return dir;
 }
 
@@ -171,7 +198,6 @@ describe('PipelinePreflightService', () => {
 
   it('returns BLOCKED when required env is missing', async () => {
     delete process.env.CLICKUP_TOKEN;
-    delete process.env.CLICKUP_TASK_ID;
     delete process.env.GITHUB_TOKEN;
     delete process.env.GH_TOKEN;
     delete process.env.INPUT_GITHUB_TOKEN;
@@ -181,7 +207,9 @@ describe('PipelinePreflightService', () => {
 
     expect(result.report.status).toBe('BLOCKED');
     expect(result.report.checks.clickupToken.ok).toBe(false);
-    expect(result.report.checks.clickupTaskId.ok).toBe(false);
+    expect(result.report.checks.clickupTaskId.ok).toBe(true);
+    expect(result.report.checks.clickupTaskId.skipped).toBe(true);
+    expect(result.report.checkItems.find((item) => item.name === 'clickupTaskId')?.status).toBe('WARN');
     expect(result.report.checks.githubToken.ok).toBe(false);
     expect(result.report.checks.githubToken.warning).toBeTruthy();
     expect(result.report.checks.config.ok).toBe(false);
@@ -190,7 +218,6 @@ describe('PipelinePreflightService', () => {
   it('returns BLOCKED when PR context is missing', async () => {
     process.env.CLICKUP_TOKEN = 'token';
     process.env.GITHUB_TOKEN = 'ghp_xxx';
-    process.env.CLICKUP_TASK_ID = '12345';
     await attachValidConfig();
 
     const outputDir = await tempDir();
@@ -208,8 +235,8 @@ describe('PipelinePreflightService', () => {
   it('returns BLOCKED when clickup env is empty strings', async () => {
     process.env.CLICKUP_TOKEN = '';
     process.env.GITHUB_TOKEN = '   ';
-    process.env.CLICKUP_TASK_ID = '';
     setPullRequestContextEnv();
+    await attachPullRequestEventWithTaskId({ title: 'Fix login without task id' });
     await attachValidConfig();
 
     const outputDir = await tempDir();
@@ -222,25 +249,26 @@ describe('PipelinePreflightService', () => {
     expect(result.report.checks.clickupTaskId.ok).toBe(false);
   });
 
-  describe('PRJ-11350 — CLICKUP_TASK_ID validation', () => {
+  describe('PRJ-11350 — clickupTaskId validation from PR', () => {
     async function setFullEnvExceptClickUpTaskId(): Promise<void> {
       process.env.CLICKUP_TOKEN = 'pk_live_valid_token';
       process.env.GITHUB_TOKEN = 'ghp_xxx';
-      delete process.env.CLICKUP_TASK_ID;
       setPullRequestContextEnv();
+      await attachPullRequestEventWithTaskId({ title: 'Fix login without task id' });
       await attachValidConfig();
     }
 
-    it('clickupTaskId check passes when CLICKUP_TASK_ID is set', async () => {
+    it('clickupTaskId check passes when PR title contains task ID', async () => {
       const outputDir = await setupPreflightPassEnv();
-      process.env.CLICKUP_TASK_ID = '86ahmgfc0';
 
       const result = await makeService().run(outputDir);
 
       expect(result.report.checks.clickupTaskId.ok).toBe(true);
+      expect(result.report.checks.clickupTaskId.source).toBe('pr');
+      expect(result.report.checks.clickupTaskId.taskId).toBe('PRJ-11552');
     });
 
-    it('clickupTaskId check fails when CLICKUP_TASK_ID is missing', async () => {
+    it('clickupTaskId check fails when PR has no task ID', async () => {
       await setFullEnvExceptClickUpTaskId();
 
       const outputDir = await tempDir();
@@ -250,9 +278,9 @@ describe('PipelinePreflightService', () => {
       expect(result.report.status).toBe('BLOCKED');
     });
 
-    it('clickupTaskId check fails when CLICKUP_TASK_ID is whitespace', async () => {
+    it('clickupTaskId check fails when legacy env is set but PR has no task ID', async () => {
       await setFullEnvExceptClickUpTaskId();
-      process.env.CLICKUP_TASK_ID = '   ';
+      process.env.CLICKUP_TASK_ID = '86ahmgfc0';
 
       const outputDir = await tempDir();
       const result = await makeService().run(outputDir);
@@ -261,7 +289,7 @@ describe('PipelinePreflightService', () => {
       expect(result.report.status).toBe('BLOCKED');
     });
 
-    it('status is BLOCKED when only CLICKUP_TASK_ID is missing', async () => {
+    it('status is BLOCKED when only ClickUp task ID is missing from PR', async () => {
       await setFullEnvExceptClickUpTaskId();
 
       const outputDir = await tempDir();
@@ -274,21 +302,136 @@ describe('PipelinePreflightService', () => {
       expect(result.report.checks.prContext.ok).toBe(true);
       expect(result.report.checks.config.ok).toBe(true);
     });
+  });
 
-    it('preflight-report.json does not contain CLICKUP_TASK_ID value', async () => {
-      const taskId = '86ahmgfc0_secret_task_id';
-      process.env.CLICKUP_TOKEN = 'pk_live_valid_token';
-      process.env.GITHUB_TOKEN = 'ghp_xxx';
-      process.env.CLICKUP_TASK_ID = taskId;
-      setPullRequestContextEnv();
-      await attachValidConfig();
+  describe('PRJ-11552 — extract ClickUp task ID from PR', () => {
+    it('uses PR body fallback when title has no task ID', async () => {
+      const outputDir = await setupPreflightPassEnv();
+      process.env.GITHUB_EVENT_PATH = await writePreflightPullRequestEvent({
+        title: 'Fix login flow',
+        body: 'Related to PRJ-11392',
+      });
 
+      const result = await makeService().run(outputDir);
+
+      expect(result.report.checks.clickupTaskId.ok).toBe(true);
+      expect(result.report.checks.clickupTaskId.skipped).toBeUndefined();
+      expect(result.report.checks.clickupTaskId.source).toBe('pr');
+      expect(result.report.checks.clickupTaskId.taskId).toBe('PRJ-11392');
+    });
+
+    it('skips clickupTaskId with WARN when PR context is complete but GITHUB_EVENT_PATH is missing', async () => {
+      const outputDir = await setupPreflightPassEnv();
+      delete process.env.GITHUB_EVENT_PATH;
+
+      const result = await makeService().run(outputDir);
+
+      expect(result.report.checks.clickupTaskId.ok).toBe(true);
+      expect(result.report.checks.clickupTaskId.skipped).toBe(true);
+      expect(result.report.checkItems.find((item) => item.name === 'clickupTaskId')?.status).toBe('WARN');
+      expect(result.report.checkItems.find((item) => item.name === 'clickupTaskId')?.message).toContain(
+        'not running in GitHub Actions',
+      );
+    });
+
+    it('extracts task ID using CLICKUP_CUSTOM_ID_PATTERN env when config has no pattern', async () => {
+      const outputDir = await setupPreflightPassEnv();
+      process.env.CLICKUP_CUSTOM_ID_PATTERN = 'TASK-\\d+';
+      process.env.GITHUB_EVENT_PATH = await writePreflightPullRequestEvent({
+        title: 'TASK-12345 — Custom pattern',
+      });
+
+      const result = await makeService().run(outputDir);
+
+      expect(result.report.checks.clickupTaskId.ok).toBe(true);
+      expect(result.report.checks.clickupTaskId.taskId).toBe('TASK-12345');
+    });
+
+    it('prefers clickup.customIdPattern in config over CLICKUP_CUSTOM_ID_PATTERN env', async () => {
       const outputDir = await tempDir();
-      await makeService().run(outputDir);
+      process.env.AGENT_QA_CONFIG = await writeConfigFile(outputDir, {
+        ...VALID_CONFIG,
+        clickup: { customIdPattern: 'PRJ-\\d+' },
+      });
+      await setFullPreflightEnv();
+      process.env.CLICKUP_CUSTOM_ID_PATTERN = 'TASK-\\d+';
+      process.env.GITHUB_EVENT_PATH = await writePreflightPullRequestEvent({
+        title: 'PRJ-11552 — Config pattern wins',
+      });
 
-      const raw = await readFile(join(outputDir, 'preflight-report.json'), 'utf8');
-      expect(raw).not.toContain(taskId);
-      expect(JSON.parse(raw).checks.clickupTaskId.ok).toBe(true);
+      const result = await makeService().run(outputDir);
+
+      expect(result.report.checks.clickupTaskId.ok).toBe(true);
+      expect(result.report.checks.clickupTaskId.taskId).toBe('PRJ-11552');
+    });
+
+    it('warns when CLICKUP_CUSTOM_ID_PATTERN is invalid but still extracts with default', async () => {
+      const outputDir = await setupPreflightPassEnv();
+      process.env.CLICKUP_CUSTOM_ID_PATTERN = '[PRJ-\\d+';
+
+      const result = await makeService().run(outputDir);
+
+      expect(result.report.checks.clickupTaskId.ok).toBe(true);
+      expect(result.report.checks.clickupTaskId.taskId).toBe('PRJ-11552');
+      expect(result.report.checks.clickupTaskId.warning).toBe(
+        'Invalid custom ID pattern; using default PRJ-\\d+',
+      );
+      expect(result.report.checkItems.find((item) => item.name === 'clickupTaskId')?.status).toBe('WARN');
+      expect(result.report.checkItems.find((item) => item.name === 'clickupTaskId')?.message).toContain(
+        'Invalid custom ID pattern',
+      );
+    });
+
+    it('warns when clickup.customIdPattern in config is invalid but still extracts with default', async () => {
+      const outputDir = await tempDir();
+      process.env.AGENT_QA_CONFIG = await writeConfigFile(outputDir, {
+        ...VALID_CONFIG,
+        clickup: { customIdPattern: '[PRJ-\\d+' },
+      });
+      await setFullPreflightEnv();
+      delete process.env.CLICKUP_CUSTOM_ID_PATTERN;
+
+      const result = await makeService().run(outputDir);
+
+      expect(result.report.checks.clickupTaskId.ok).toBe(true);
+      expect(result.report.checks.clickupTaskId.taskId).toBe('PRJ-11552');
+      expect(result.report.checks.clickupTaskId.warning).toBe(
+        'Invalid custom ID pattern; using default PRJ-\\d+',
+      );
+      expect(result.report.checkItems.find((item) => item.name === 'clickupTaskId')?.status).toBe('WARN');
+    });
+
+    it('fails clickupTaskId check when GITHUB_EVENT_PATH contains invalid JSON', async () => {
+      const outputDir = await setupPreflightPassEnv();
+      const dir = await tempDir();
+      const eventPath = join(dir, 'invalid-event.json');
+      await writeFile(eventPath, '{not-json', 'utf8');
+      process.env.GITHUB_EVENT_PATH = eventPath;
+
+      const result = await makeService().run(outputDir);
+
+      expect(result.report.status).toBe('BLOCKED');
+      expect(result.report.checks.clickupTaskId.ok).toBe(false);
+      expect(result.report.checks.clickupTaskId.error).toBe('GitHub Actions event payload is invalid');
+      expect(result.report.checks.clickupTaskId.skipped).toBeUndefined();
+      expect(result.report.checkItems.find((item) => item.name === 'clickupTaskId')?.status).toBe('FAIL');
+    });
+
+    it('sanitizes clickupTaskId extraction errors in preflight report', async () => {
+      const outputDir = await setupPreflightPassEnv();
+      process.env.GITHUB_TOKEN = 'ghp_super_secret_token';
+      vi.spyOn(githubPrContextMapper, 'extractClickUpTaskIdFromGitHubEvent').mockRejectedValueOnce(
+        new Error('Failed reading /home/user/secret/event.json with ghp_super_secret_token'),
+      );
+
+      const result = await makeService().run(outputDir);
+
+      expect(result.report.checks.clickupTaskId.ok).toBe(false);
+      expect(result.report.checks.clickupTaskId.error).toBe(
+        'Failed reading <redacted> with ***REDACTED***',
+      );
+
+      vi.restoreAllMocks();
     });
   });
 
@@ -296,8 +439,8 @@ describe('PipelinePreflightService', () => {
     async function setFullEnvExceptClickUpToken(): Promise<void> {
       delete process.env.CLICKUP_TOKEN;
       process.env.GITHUB_TOKEN = 'ghp_xxx';
-      process.env.CLICKUP_TASK_ID = '12345';
       setPullRequestContextEnv();
+      await attachPullRequestEventWithTaskId();
       await attachValidConfig();
     }
 
@@ -346,8 +489,8 @@ describe('PipelinePreflightService', () => {
       const secret = 'pk_test_super_secret_12345';
       process.env.CLICKUP_TOKEN = secret;
       process.env.GITHUB_TOKEN = 'ghp_xxx';
-      process.env.CLICKUP_TASK_ID = '12345';
       setPullRequestContextEnv();
+      await attachPullRequestEventWithTaskId();
       await attachValidConfig();
 
       const outputDir = await tempDir();
@@ -363,15 +506,14 @@ describe('PipelinePreflightService', () => {
     async function setFullEnvExceptGitHubToken(): Promise<void> {
       process.env.CLICKUP_TOKEN = 'pk_live_valid_token';
       clearGitHubTokens();
-      process.env.CLICKUP_TASK_ID = '86ahmgfc0';
       setPullRequestContextEnv();
+      await attachPullRequestEventWithTaskId();
       await attachValidConfig();
     }
 
     it('githubToken check passes when GITHUB_TOKEN is set', async () => {
       const outputDir = await setupPreflightPassEnv();
       process.env.GITHUB_TOKEN = 'ghp_live_valid_token';
-      process.env.CLICKUP_TASK_ID = '86ahmgfc0';
 
       const result = await makeService().run(outputDir);
 
@@ -438,8 +580,8 @@ describe('PipelinePreflightService', () => {
       const secret = 'ghp_test_super_secret_12345';
       process.env.CLICKUP_TOKEN = 'pk_live_valid_token';
       process.env.GITHUB_TOKEN = secret;
-      process.env.CLICKUP_TASK_ID = '86ahmgfc0';
       setPullRequestContextEnv();
+      await attachPullRequestEventWithTaskId();
       await attachValidConfig();
 
       const outputDir = await tempDir();
@@ -474,7 +616,6 @@ describe('PipelinePreflightService', () => {
     async function setFullEnvExceptPrContext(): Promise<void> {
       process.env.CLICKUP_TOKEN = 'pk_live_valid_token';
       process.env.GITHUB_TOKEN = 'ghp_xxx';
-      process.env.CLICKUP_TASK_ID = '86ahmgfc0';
       delete process.env.GITHUB_EVENT_NAME;
       delete process.env.GITHUB_REF;
       delete process.env.GITHUB_HEAD_REF;
@@ -555,6 +696,11 @@ describe('PipelinePreflightService', () => {
       expect(result.report.checks.prContext.ok).toBe(false);
       expect(result.report.checks.clickupToken.ok).toBe(true);
       expect(result.report.checks.clickupTaskId.ok).toBe(true);
+      expect(result.report.checks.clickupTaskId.skipped).toBe(true);
+      expect(result.report.checkItems.find((item) => item.name === 'clickupTaskId')?.status).toBe('WARN');
+      expect(result.report.checkItems.find((item) => item.name === 'clickupTaskId')?.message).toContain(
+        'PR context incomplete',
+      );
       expect(result.report.checks.githubToken.ok).toBe(true);
       expect(result.report.checks.config.ok).toBe(true);
     });
@@ -562,7 +708,7 @@ describe('PipelinePreflightService', () => {
 
   describe('PRJ-11354 — project config validation', () => {
     async function setFullEnvExceptConfig(): Promise<void> {
-      setFullPreflightEnv();
+      await setFullPreflightEnv();
       delete process.env.AGENT_QA_CONFIG;
     }
 
@@ -617,7 +763,7 @@ describe('PipelinePreflightService', () => {
     });
 
     it('status is BLOCKED when only config is invalid', async () => {
-      setFullPreflightEnv();
+      await setFullPreflightEnv();
       process.env.AGENT_QA_CONFIG = join(await tempDir(), 'missing.config.json');
 
       const outputDir = await tempDir();
@@ -636,7 +782,7 @@ describe('PipelinePreflightService', () => {
       const configPath = await writeConfigFile(workspaceDir, VALID_CONFIG);
       process.env.GITHUB_WORKSPACE = workspaceDir;
       process.env.AGENT_QA_CONFIG = './agent-qa.config.json';
-      setFullPreflightEnv();
+      await setFullPreflightEnv();
 
       const outputDir = await tempDir();
       const result = await makeService().run(outputDir);
@@ -703,7 +849,6 @@ describe('PipelinePreflightService', () => {
     it('status is BLOCKED when GITHUB_HEAD_REF is missing', async () => {
       process.env.CLICKUP_TOKEN = 'pk_live_valid_token';
       process.env.GITHUB_TOKEN = 'ghp_xxx';
-      process.env.CLICKUP_TASK_ID = '86ahmgfc0';
       process.env.GITHUB_EVENT_NAME = 'pull_request';
       process.env.GITHUB_REF = 'refs/pull/42/merge';
       process.env.GITHUB_BASE_REF = 'main';
@@ -717,6 +862,11 @@ describe('PipelinePreflightService', () => {
       expect(result.report.checks.branchHead.ok).toBe(false);
       expect(result.report.checks.clickupToken.ok).toBe(true);
       expect(result.report.checks.clickupTaskId.ok).toBe(true);
+      expect(result.report.checks.clickupTaskId.skipped).toBe(true);
+      expect(result.report.checkItems.find((item) => item.name === 'clickupTaskId')?.status).toBe('WARN');
+      expect(result.report.checkItems.find((item) => item.name === 'clickupTaskId')?.message).toContain(
+        'PR context incomplete',
+      );
       expect(result.report.checks.githubToken.ok).toBe(true);
       expect(result.report.checks.config.ok).toBe(true);
     });

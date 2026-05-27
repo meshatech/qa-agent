@@ -21,6 +21,10 @@ import {
 } from '../../domain/schemas/preflight-report.schema.js';
 import { ConfigError, PreflightBlockedError } from '../../domain/errors.js';
 import { resolveHeadBranchFromEnv } from '../../infra/github/github-actions-pr-refs.resolver.js';
+import { extractClickUpTaskIdFromGitHubEvent, sanitizePrContextErrorMessage } from '../../infra/github/github-actions-pr-context.mapper.js';
+import {
+  resolveClickUpCustomIdPattern,
+} from '../../infra/github/clickup-task-id-from-pr.resolver.js';
 import { collectKnownSecretsFromEnv } from './known-secrets.collector.js';
 import { SanitizerService } from './sanitizer.service.js';
 
@@ -70,7 +74,7 @@ export class PipelinePreflightService {
     return {
       clickupToken: this.validateClickUpToken(),
       clickupReadAccess: await this.validateClickUpReadAccess(),
-      clickupTaskId: this.validateClickUpTaskId(),
+      clickupTaskId: await this.validateClickUpTaskId(),
       githubToken: this.validateGitHubToken(),
       prCommentPermission: await this.validatePrCommentPermission(),
       prContext: this.validatePrContext(),
@@ -81,7 +85,12 @@ export class PipelinePreflightService {
   }
 
   private isBlockingChecksOk(checks: PreflightChecksDetail): boolean {
-    return BLOCKING_PREFLIGHT_CHECKS.every((name) => checks[name].ok);
+    return BLOCKING_PREFLIGHT_CHECKS.every((name) => {
+      if (name === 'clickupTaskId' && checks.clickupTaskId.skipped) {
+        return true;
+      }
+      return checks[name].ok;
+    });
   }
 
   private buildPreflightReport(checks: PreflightChecksDetail, allOk: boolean): PreflightReport {
@@ -98,7 +107,14 @@ export class PipelinePreflightService {
   private buildCheckItem(name: PreflightCheckName, checks: PreflightChecksDetail): PreflightCheckItem {
     const warningChecks: PreflightCheckName[] = ['githubToken', 'prCommentPermission'];
     const raw = checks[name];
-    const status: PreflightCheckStatus = raw.ok ? 'PASS' : warningChecks.includes(name) ? 'WARN' : 'FAIL';
+    let status: PreflightCheckStatus;
+    if (name === 'clickupTaskId' && checks.clickupTaskId.skipped) {
+      status = 'WARN';
+    } else if (name === 'clickupTaskId' && checks.clickupTaskId.warning && checks.clickupTaskId.ok) {
+      status = 'WARN';
+    } else {
+      status = raw.ok ? 'PASS' : warningChecks.includes(name) ? 'WARN' : 'FAIL';
+    }
     return { name, status, message: this.messageForCheck(name, checks) };
   }
 
@@ -111,7 +127,23 @@ export class PipelinePreflightService {
           ? 'ClickUp read access verified'
           : (checks.clickupReadAccess.error ?? 'ClickUp read access check failed');
       case 'clickupTaskId':
-        return checks.clickupTaskId.ok ? 'CLICKUP_TASK_ID is configured' : 'CLICKUP_TASK_ID is missing';
+        if (checks.clickupTaskId.skipped) {
+          if (!checks.prContext.ok) {
+            return 'ClickUp task ID check skipped — PR context incomplete';
+          }
+          return 'ClickUp task ID check skipped — not running in GitHub Actions';
+        }
+        if (checks.clickupTaskId.error) {
+          return checks.clickupTaskId.error;
+        }
+        if (checks.clickupTaskId.ok && checks.clickupTaskId.taskId) {
+          const extracted = `ClickUp task ID extracted from PR: ${checks.clickupTaskId.taskId}`;
+          return checks.clickupTaskId.warning ? `${checks.clickupTaskId.warning}. ${extracted}` : extracted;
+        }
+        if (checks.clickupTaskId.warning) {
+          return `${checks.clickupTaskId.warning}. ClickUp task ID not found in PR title/body`;
+        }
+        return 'ClickUp task ID not found in PR title/body';
       case 'githubToken':
         return checks.githubToken.ok
           ? 'GitHub token is configured'
@@ -150,9 +182,64 @@ export class PipelinePreflightService {
     return this.clickUpApi.verifyReadAccess(token);
   }
 
-  private validateClickUpTaskId(): { ok: boolean } {
-    const value = process.env.CLICKUP_TASK_ID;
-    return { ok: Boolean(value && value.trim().length > 0) };
+  private async validateClickUpTaskId(): Promise<{
+    ok: boolean;
+    skipped?: boolean;
+    source?: 'pr';
+    taskId?: string;
+    error?: string;
+    warning?: string;
+  }> {
+    const prContext = this.validatePrContext();
+    if (!prContext.ok) {
+      return { ok: true, skipped: true };
+    }
+
+    if (!process.env.GITHUB_EVENT_PATH?.trim()) {
+      return { ok: true, skipped: true };
+    }
+
+    const { pattern, patternWarning } = await this.resolveClickUpCustomIdPatternForPreflight();
+
+    try {
+      const taskId = await extractClickUpTaskIdFromGitHubEvent(process.env, pattern);
+      if (taskId) {
+        return { ok: true, source: 'pr', taskId, warning: patternWarning };
+      }
+      return { ok: false, warning: patternWarning };
+    } catch (error) {
+      return {
+        ok: false,
+        error: sanitizePrContextErrorMessage(
+          error instanceof Error ? error.message : String(error),
+          process.env,
+        ),
+        warning: patternWarning,
+      };
+    }
+  }
+
+  private async resolveClickUpCustomIdPatternForPreflight(): Promise<{
+    pattern: RegExp;
+    patternWarning?: string;
+  }> {
+    let configPattern: string | undefined;
+    try {
+      const configPath = this.resolveConfigPath();
+      const raw = await this.configLoader.load(configPath);
+      const parsed = RunConfigSchema.safeParse(raw);
+      if (parsed.success) {
+        configPattern = parsed.data.clickup?.customIdPattern?.trim() || undefined;
+      }
+    } catch {
+      // fall through to env/default resolution
+    }
+
+    const result = resolveClickUpCustomIdPattern({
+      env: process.env,
+      configPattern,
+    });
+    return { pattern: result.pattern, patternWarning: result.warning };
   }
 
   private resolveGitHubToken(): string {

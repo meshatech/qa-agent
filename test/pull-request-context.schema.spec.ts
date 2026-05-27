@@ -6,8 +6,9 @@ const VALID_PULL_REQUEST_CONTEXT = {
   prNumber: 42,
   baseBranch: 'main',
   headBranch: 'feature/test',
-  title: 'Implementar leitor real de PR/diff via GitHub Actions',
+  title: 'PRJ-11552 — Implementar leitor real de PR/diff via GitHub Actions',
   author: 'jose.neto',
+  clickUpTaskId: 'PRJ-11552',
 };
 
 describe('PullRequestContextSchema', () => {
@@ -57,6 +58,11 @@ describe('PullRequestContextSchema', () => {
     expect(() =>
       PullRequestContextSchema.parse({ ...VALID_PULL_REQUEST_CONTEXT, author: '' }),
     ).toThrow();
+  });
+
+  it('accepts a valid pull request context without clickUpTaskId', () => {
+    const { clickUpTaskId: _removed, ...withoutTaskId } = VALID_PULL_REQUEST_CONTEXT;
+    expect(PullRequestContextSchema.parse(withoutTaskId)).toEqual(withoutTaskId);
   });
 
   it('rejects unknown fields (strict schema)', () => {

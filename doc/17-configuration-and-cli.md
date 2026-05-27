@@ -161,6 +161,11 @@ Regra: nenhum módulo fora de `LlmModule` importa LangChain diretamente. O Orche
 | Valor de `auth.passwordEnv` | Password de login |
 | `QA_LOG_LEVEL` | debug/info/warn/error |
 | `QA_HEADED` | sobrescreve `browser.headed` |
+| `CLICKUP_TOKEN` | API token ClickUp (preflight + leitor HTTP) |
+| `CLICKUP_TEAM_ID` | Team ID para custom IDs (`PRJ-xxxxx`) na API ClickUp |
+| `CLICKUP_TASK_ID` | **Deprecado** — fallback temporário para `qa-agent run` local; preferir `config.clickup.taskId` |
+| `CLICKUP_CUSTOM_ID_PATTERN` | **Deprecado** — fallback regex para extrair custom ID do PR; preferir `config.clickup.customIdPattern` |
+| `GITHUB_TOKEN` / `GH_TOKEN` | Token GitHub Actions (comentário PR — warning se ausente) |
 
 Credenciais **nunca** ficam no arquivo de config. Sempre via env.
 
@@ -181,6 +186,17 @@ qa-agent validate-config --config ./agent-qa.config.json
 `read-pr-context` executa `git diff origin/<base>...HEAD` com limite de **50MB** de stdout. Se o diff exceder esse buffer, o comando falha com `GIT_DIFF_FAILED` e mensagem explícita (`Git diff output exceeded 50MB buffer limit`).
 
 `pipeline prepare` executa **preflight** (gate obrigatório) e só então **read-pr-context**, gravando `preflight-report.json` e `pr-diff-context.json` no mesmo `--output-dir`. Preflight `BLOCKED` interrompe antes do diff (exit code 6).
+
+### ClickUp task ID a partir do PR (PRJ-11552)
+
+Convenção Sprint Labs: incluir custom ID ClickUp no **título** do PR, ex.: `PRJ-11552 — descrição curta`. Se ausente no título, o agente tenta extrair do **corpo** do PR (`pull_request.body` em `GITHUB_EVENT_PATH`).
+
+- Padrão default: `PRJ-\d+` (override: `config.clickup.customIdPattern` > `CLICKUP_CUSTOM_ID_PATTERN` env deprecada)
+- Pipeline (preflight + prepare): `clickUpTaskId` extraído do evento GitHub (`GITHUB_EVENT_PATH`)
+- Preflight local sem GHA: check `clickupTaskId` **skipped** (`WARN` no report; não bloqueia sozinho)
+- `qa-agent run` local: `config.clickup.taskId` (fallback deprecado `CLICKUP_TASK_ID` env com warning)
+- Saída: campo `pullRequest.clickUpTaskId` em `pr-diff-context.json` (opcional no schema)
+- Ausência no PR (modo pipeline): preflight `BLOCKED`; `read-pr-context` isolado não falha por ID ausente (omite o campo)
 
 ### Flags principais
 

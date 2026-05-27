@@ -39,7 +39,14 @@ export const PreflightChecksDetailSchema = z.object({
     statusCode: z.number().optional(),
     error: z.string().optional(),
   }),
-  clickupTaskId: z.object({ ok: z.boolean() }),
+  clickupTaskId: z.object({
+    ok: z.boolean(),
+    skipped: z.boolean().optional(),
+    source: z.enum(['pr']).optional(),
+    taskId: z.string().optional(),
+    error: z.string().optional(),
+    warning: z.string().optional(),
+  }),
   githubToken: z.object({ ok: z.boolean(), warning: z.string().optional() }),
   prCommentPermission: z.object({
     ok: z.boolean(),

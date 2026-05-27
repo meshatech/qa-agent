@@ -8,8 +8,9 @@ const VALID_PR_DIFF_CONTEXT = {
     prNumber: 42,
     baseBranch: 'main',
     headBranch: 'feature/test',
-    title: 'Fix login flow',
+    title: 'PRJ-11552 — Fix login flow',
     author: 'octocat',
+    clickUpTaskId: 'PRJ-11552',
   },
   changedFiles: [
     {

@@ -54,6 +54,7 @@ export class ClickUpReaderError extends Error {
 export type PrContextReaderErrorCode =
   | 'MISSING_CONTEXT'
   | 'INVALID_EVENT'
+  | 'CLICKUP_TASK_ID_NOT_FOUND'
   | 'BASE_BRANCH_UNAVAILABLE'
   | 'GIT_DIFF_FAILED'
   | 'VALIDATION_FAILED';

@@ -99,7 +99,7 @@ Princípio: LLM decide, harness executa, orchestrator governa, schemas validam, 
 
 <!-- type: runtime_learning | id: LEARN-CLICKUP-DEMAND-RUN-001 -->
 
-`RunAgentUseCase` persiste `demand-context.json` no diretório do run quando `CLICKUP_TOKEN` está no env e há task id via `CLICKUP_TASK_ID` ou `config.clickup.taskId` (opcional `config.clickup.teamId` para custom IDs). Sem token ou task id, o run segue sem persistência ClickUp. Falha na leitura/persistência ClickUp loga warning e o run continua. Preflight continua validando token/leitura/task id antes do pipeline CI.
+`RunAgentUseCase` persiste `demand-context.json` quando `CLICKUP_TOKEN` está no env e há `config.clickup.taskId` (fallback deprecado: `CLICKUP_TASK_ID` env com warning). Preflight extrai task ID do PR; fora do GHA o check é skipped (`WARN`).
 
 <!-- type: runtime_learning | id: LEARN-GITHUB-PR-CONTEXT-001 -->
 
@@ -140,6 +140,10 @@ Refs do PR vêm de `github-actions-pr-refs.resolver.ts`: `prNumber` via `GITHUB_
 <!-- type: runtime_learning | id: LEARN-GITHUB-BASE-BRANCH-001 -->
 
 Antes do `git diff`, `GitHubActionsPrContextReaderAdapter` chama `GitRepositoryPort.ensureBaseBranchAvailable(baseBranch, cwd)`: verifica `origin/${baseBranch}`; se ausente e checkout não-shallow, executa `git fetch origin ${base}:refs/remotes/origin/${base}` via `execFile`. Falha com `PrContextReaderError` code `BASE_BRANCH_UNAVAILABLE`. Preflight continua gate CI sem fetch. Testes de integração cobrem fetch que restaura `origin/main` ausente e bloqueio em checkout shallow.
+
+<!-- type: runtime_learning | id: LEARN-PR-CLICKUP-TASK-ID-001 -->
+
+`extractClickUpTaskIdFromPullRequestText(title, body?, pattern?)` extrai custom ID do PR (default `PRJ-\d+`; `config.clickup.customIdPattern` > env `CLICKUP_CUSTOM_ID_PATTERN` deprecada > default). `findFirstValidClickUpTaskId` clona RegExp global (`cloneGlobalPattern`) para evitar `lastIndex` stateful. Preflight: skipped (`WARN`) sem contexto PR ou sem `GITHUB_EVENT_PATH`; BLOCKED se PR OK mas ID ausente. Erros I/O/parse propagam (`PrContextReaderError`) → preflight `FAIL`. Regex custom: max 100 chars, whitelist, `safe-regex`; inválido → fallback + `warning`. Body sanitizado (max 10k) com `Logger.warn` se truncado. Mapper GHA: uma leitura de `GITHUB_EVENT_PATH` por execução (`parsePullRequestMetadataFromEvent` + `extractClickUpTaskIdFromPullRequestText`). `CLICKUP_TASK_ID` no `collectKnownSecretsFromEnv`. Schema: `clickUpTaskId` opcional.
 
 <!-- type: runtime_learning | id: LEARN-PLACEHOLDER-001 -->
 

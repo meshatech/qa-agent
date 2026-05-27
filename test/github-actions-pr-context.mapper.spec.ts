@@ -1,10 +1,14 @@
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
+import { Logger } from '@nestjs/common';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { PrContextReaderError } from '../src/domain/errors.js';
-import { mapGitHubActionsToPullRequestContext } from '../src/infra/github/github-actions-pr-context.mapper.js';
+import {
+  mapGitHubActionsToPullRequestContext,
+  sanitizePrContextErrorMessage,
+} from '../src/infra/github/github-actions-pr-context.mapper.js';
 
 let tempDirs: string[] = [];
 let originalEnv: NodeJS.ProcessEnv;
@@ -33,7 +37,7 @@ async function writePullRequestEvent(
     JSON.stringify({
       pull_request: {
         number: 42,
-        title: 'Fix login flow',
+        title: 'PRJ-11552 — Fix login flow',
         user: { login: 'octocat' },
         ...payload,
       },
@@ -65,9 +69,51 @@ describe('mapGitHubActionsToPullRequestContext', () => {
       prNumber: 42,
       baseBranch: 'main',
       headBranch: 'feature/test',
+      title: 'PRJ-11552 — Fix login flow',
+      author: 'octocat',
+      clickUpTaskId: 'PRJ-11552',
+    });
+  });
+
+  it('extracts clickUpTaskId from PR body when title has no task ID', async () => {
+    const { eventPath } = await writePullRequestEvent({
+      title: 'Fix login flow',
+      body: 'Related to PRJ-11392',
+    });
+    const env = buildPrEnv(eventPath);
+
+    await expect(mapGitHubActionsToPullRequestContext({ env })).resolves.toMatchObject({
+      clickUpTaskId: 'PRJ-11392',
+    });
+  });
+
+  it('omits clickUpTaskId when PR has no task ID', async () => {
+    const { eventPath } = await writePullRequestEvent({ title: 'Fix login flow', body: 'No id' });
+    const env = buildPrEnv(eventPath);
+
+    const result = await mapGitHubActionsToPullRequestContext({ env });
+    expect(result.clickUpTaskId).toBeUndefined();
+    expect(result).toMatchObject({
+      prNumber: 42,
+      baseBranch: 'main',
+      headBranch: 'feature/test',
       title: 'Fix login flow',
       author: 'octocat',
     });
+  });
+
+  it('logs warning when CLICKUP_CUSTOM_ID_PATTERN env is invalid', async () => {
+    const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const { eventPath } = await writePullRequestEvent();
+    const env = buildPrEnv(eventPath, { CLICKUP_CUSTOM_ID_PATTERN: '[PRJ-\\d+' });
+
+    await mapGitHubActionsToPullRequestContext({ env });
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      'Invalid custom ID pattern; using default PRJ-\\d+',
+    );
+
+    warnSpy.mockRestore();
   });
 
   it('fails when GITHUB_HEAD_REF is missing', async () => {
@@ -131,6 +177,26 @@ describe('mapGitHubActionsToPullRequestContext', () => {
       (error: unknown) =>
         error instanceof PrContextReaderError &&
         (error.code === 'VALIDATION_FAILED' || error.code === 'MISSING_CONTEXT'),
+    );
+  });
+});
+
+describe('sanitizePrContextErrorMessage', () => {
+  it('redacts multi-segment absolute paths and GitHub tokens from error messages', () => {
+    const env = { GITHUB_TOKEN: 'ghp_super_secret_token' };
+    const message = 'Failed reading /home/user/secret/event.json with ghp_super_secret_token';
+
+    expect(sanitizePrContextErrorMessage(message, env)).toBe(
+      'Failed reading <redacted> with ***REDACTED***',
+    );
+  });
+
+  it('does not redact single-segment paths like /api', () => {
+    const env = { GITHUB_TOKEN: 'ghp_super_secret_token' };
+    const message = 'Request to /api failed with ghp_super_secret_token';
+
+    expect(sanitizePrContextErrorMessage(message, env)).toBe(
+      'Request to /api failed with ***REDACTED***',
     );
   });
 });

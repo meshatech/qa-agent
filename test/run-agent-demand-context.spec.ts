@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { RunAgentUseCase } from '../src/application/use-cases/run-agent.usecase.js';
@@ -27,7 +28,6 @@ describe('RunAgentUseCase ClickUp demand context', () => {
     const persist = vi.fn();
     useCase.demandContextPersistence = { persistFromClickUpTask: persist };
     vi.stubEnv('CLICKUP_TOKEN', 'pk_test');
-    vi.stubEnv('CLICKUP_TASK_ID', '');
 
     await useCase.persistClickUpDemandContext('/run', {});
 
@@ -52,19 +52,23 @@ describe('RunAgentUseCase ClickUp demand context', () => {
     });
   });
 
-  it('uses CLICKUP_TASK_ID env when config task id is absent', async () => {
+  it('uses deprecated CLICKUP_TASK_ID env when config task id is absent', async () => {
     const persist = vi.fn().mockResolvedValue({
       path: '/run/demand-context.json',
       demand: { taskId: 'PRJ-11318', title: 'Task', description: 'Body' },
     });
+    const warnSpy = vi.spyOn(Logger.prototype, 'warn');
     useCase.demandContextPersistence = { persistFromClickUpTask: persist };
     vi.stubEnv('CLICKUP_TOKEN', 'pk_test');
     vi.stubEnv('CLICKUP_TASK_ID', 'PRJ-11318');
 
     await useCase.persistClickUpDemandContext('/run', { clickup: { teamId: '9012345678' } });
 
+    expect(warnSpy).toHaveBeenCalledWith(
+      'CLICKUP_TASK_ID env is deprecated; use config.clickup.taskId instead.',
+    );
     expect(persist).toHaveBeenCalledWith('/run', 'pk_test', {
-      configTaskId: undefined,
+      configTaskId: 'PRJ-11318',
       configTeamId: '9012345678',
     });
   });
