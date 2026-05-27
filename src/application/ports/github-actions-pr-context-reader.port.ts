@@ -6,6 +6,7 @@ export interface PrContextReadResult {
   rawDiff: string;
   changedFiles: ChangedFile[];
   affectedRoutes: string[];
+  affectedSchemas: string[];
 }
 
 export interface GitHubActionsPrContextReaderPort {

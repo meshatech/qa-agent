@@ -97,7 +97,33 @@ describe('GitHubActionsPrContextReaderAdapter', () => {
         },
       ],
       affectedRoutes: [],
+      affectedSchemas: [],
     });
+  });
+
+  it('detects affected schemas from classified schema files in the diff', async () => {
+    const { dir, eventPath } = await writePullRequestEvent();
+    const env = buildPrEnv(eventPath, dir);
+    const rawDiff = [
+      'diff --git a/src/domain/schemas/foo.schema.ts b/src/domain/schemas/foo.schema.ts',
+      '--- a/src/domain/schemas/foo.schema.ts',
+      '+++ b/src/domain/schemas/foo.schema.ts',
+      '@@ -1 +1 @@',
+      '-old',
+      '+new',
+    ].join('\n');
+    const git: GitRepositoryPort = {
+      isShallowRepository: async () => false,
+      hasRemoteBranch: async () => true,
+      ensureBaseBranchAvailable: vi.fn().mockResolvedValue(undefined),
+      diffPullRequest: vi.fn().mockResolvedValue(rawDiff),
+    };
+    const adapter = new GitHubActionsPrContextReaderAdapter(git);
+
+    const result = await adapter.read({ cwd: dir, env });
+
+    expect(result.affectedSchemas).toEqual(['foo']);
+    expect(result.changedFiles[0]?.kind).toBe('schema');
   });
 
   it('detects affected routes from classified route files in the diff', async () => {
@@ -201,5 +227,6 @@ describe('GitHubActionsPrContextReaderAdapter', () => {
       },
     ]);
     expect(result.affectedRoutes).toEqual([]);
+    expect(result.affectedSchemas).toEqual([]);
   });
 });
