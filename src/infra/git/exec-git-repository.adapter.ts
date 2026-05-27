@@ -20,6 +20,20 @@ function sanitizeGitErrorMessage(message: string): string {
   return sanitized;
 }
 
+function readExecFileErrorMessage(error: unknown): string {
+  if (error && typeof error === 'object') {
+    const withStderr = error as { stderr?: string | Buffer; message?: string };
+    const stderr = withStderr.stderr ? String(withStderr.stderr).trim() : '';
+    if (stderr) {
+      return stderr;
+    }
+    if (withStderr.message) {
+      return withStderr.message;
+    }
+  }
+  return String(error);
+}
+
 export function buildPullRequestDiffArgs(baseBranch: string): readonly [string, string] {
   return ['diff', `origin/${baseBranch}...HEAD`] as const;
 }
@@ -54,7 +68,7 @@ export class ExecGitRepositoryAdapter implements GitRepositoryPort {
     if (await this.isShallowRepository(cwd)) {
       throw new PrContextReaderError(
         'Base branch is unavailable in a shallow checkout',
-        sanitizeGitErrorMessage('Base branch is unavailable in a shallow checkout'),
+        undefined,
         'BASE_BRANCH_UNAVAILABLE',
       );
     }
@@ -66,10 +80,10 @@ export class ExecGitRepositoryAdapter implements GitRepositoryPort {
         { cwd, encoding: 'utf8' },
       );
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const detail = readExecFileErrorMessage(error);
       throw new PrContextReaderError(
-        sanitizeGitErrorMessage('Base branch fetch failed'),
-        sanitizeGitErrorMessage(message),
+        sanitizeGitErrorMessage(`Base branch fetch failed: ${detail}`),
+        error,
         'BASE_BRANCH_UNAVAILABLE',
       );
     }
@@ -77,7 +91,7 @@ export class ExecGitRepositoryAdapter implements GitRepositoryPort {
     if (!(await this.hasRemoteBranch(baseBranch, cwd))) {
       throw new PrContextReaderError(
         'Base branch is not accessible locally',
-        sanitizeGitErrorMessage('Base branch is not accessible locally'),
+        undefined,
         'BASE_BRANCH_UNAVAILABLE',
       );
     }
@@ -92,10 +106,10 @@ export class ExecGitRepositoryAdapter implements GitRepositoryPort {
       });
       return stdout;
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const detail = readExecFileErrorMessage(error);
       throw new PrContextReaderError(
-        sanitizeGitErrorMessage(`Git diff failed: ${message}`),
-        sanitizeGitErrorMessage(message),
+        sanitizeGitErrorMessage(`Git diff failed: ${detail}`),
+        error,
         'GIT_DIFF_FAILED',
       );
     }

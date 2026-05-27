@@ -14,9 +14,10 @@ export class RunPrDiffContextUseCase {
     outputDir: string,
     options?: { cwd?: string; env?: NodeJS.ProcessEnv; knownSecrets?: string[] },
   ): Promise<PrDiffContextRunResult> {
-    return this.persistence.persistFromGitHubActions(outputDir, options).then(({ path, context }) => ({
+    return this.persistence.persistFromGitHubActions(outputDir, options).then(({ path, context, tokensMasked }) => ({
       context,
       contextPath: path,
+      tokensMasked,
     }));
   }
 }

@@ -13,6 +13,7 @@ import { SanitizerService } from './sanitizer.service.js';
 export interface PrDiffContextPersistResult {
   path: string;
   context: PrDiffContext;
+  tokensMasked: boolean;
 }
 
 @Injectable()
@@ -37,8 +38,13 @@ export class PrDiffContextPersistenceService {
     const validated = PrDiffContextSchema.parse(built);
     const env = options?.env ?? process.env;
     const secrets = collectKnownSecretsFromEnv(env, options?.knownSecrets ?? []);
-    const sanitized = this.sanitizer.sanitizeForOutput(validated, secrets);
+    let sanitized = this.sanitizer.sanitizeForOutput(validated, secrets);
+    let tokensMasked = !this.sanitizer.containsLeakedSecrets(JSON.stringify(sanitized), secrets);
+    if (!tokensMasked) {
+      sanitized = this.sanitizer.sanitizeForOutput(sanitized, secrets);
+      tokensMasked = !this.sanitizer.containsLeakedSecrets(JSON.stringify(sanitized), secrets);
+    }
     const path = await this.writer.write(outputDir, sanitized);
-    return { path, context: sanitized };
+    return { path, context: sanitized, tokensMasked };
   }
 }

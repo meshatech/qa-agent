@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 import type { DemandContextWriterPort } from '../../application/ports/demand-context-writer.port.js';
 import type { DemandContext } from '../../domain/schemas/demand-context.schema.js';
+import { commitAtomicJsonWrite } from './atomic-json-write.js';
 
 const DEMAND_CONTEXT_FILE = 'demand-context.json';
 
@@ -18,7 +19,7 @@ export class FileDemandContextWriterAdapter implements DemandContextWriterPort {
 
     try {
       await writeFile(tmpPath, payload, 'utf8');
-      await rename(tmpPath, path);
+      await commitAtomicJsonWrite(tmpPath, path);
       committed = true;
       return path;
     } finally {

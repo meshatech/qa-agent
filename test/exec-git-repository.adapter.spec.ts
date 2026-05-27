@@ -150,10 +150,20 @@ describe('ExecGitRepositoryAdapter', () => {
     tempDirs.push(dir);
     await execFileAsync('git', ['init'], { cwd: dir });
 
-    await expect(adapter.diffPullRequest('main', dir)).rejects.toMatchObject({
+    let caught: unknown;
+    try {
+      await adapter.diffPullRequest('main', dir);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(PrContextReaderError);
+    expect(caught).toMatchObject({
       name: 'PrContextReaderError',
       code: 'GIT_DIFF_FAILED',
     });
-    await expect(adapter.diffPullRequest('main', dir)).rejects.toBeInstanceOf(PrContextReaderError);
+    const readerError = caught as PrContextReaderError;
+    expect(readerError.message.toLowerCase()).toMatch(/origin\/main|unknown revision|ambiguous argument/);
+    expect(readerError.cause).toBeInstanceOf(Error);
   });
 });

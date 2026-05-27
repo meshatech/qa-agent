@@ -171,6 +171,7 @@ Comando:
 ```txt
 qa-agent run --config ./agent-qa.config.json [flags]
 qa-agent preflight --output-dir ./.agent-qa/pipeline
+qa-agent read-pr-context --output-dir ./.agent-qa/pipeline
 qa-agent inspect --runId <id>
 qa-agent report --runId <id> --format md|json
 qa-agent validate-config --config ./agent-qa.config.json

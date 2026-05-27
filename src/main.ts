@@ -110,7 +110,21 @@ program
   .action(async (opts) => {
     try {
       const result = await withApp((c) => c.readPrContext(opts.outputDir));
-      console.log(JSON.stringify(result, null, 2));
+      if (result.tokensMasked) {
+        console.log(JSON.stringify(result, null, 2));
+      } else {
+        console.log(
+          JSON.stringify(
+            {
+              contextPath: result.contextPath,
+              tokensMasked: false,
+              warning: 'PR diff context output redacted due to potential secret leak',
+            },
+            null,
+            2,
+          ),
+        );
+      }
       process.exitCode = EXIT.OK;
     } catch (err) {
       console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err), kind: err instanceof Error ? err.constructor.name : 'Error' }, null, 2));

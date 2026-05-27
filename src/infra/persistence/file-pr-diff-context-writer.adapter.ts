@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 import type { PrDiffContextWriterPort } from '../../application/ports/pr-diff-context-writer.port.js';
 import type { PrDiffContext } from '../../domain/schemas/pr-diff-context.schema.js';
+import { commitAtomicJsonWrite } from './atomic-json-write.js';
 
 const PR_DIFF_CONTEXT_FILE = 'pr-diff-context.json';
 
@@ -18,7 +19,7 @@ export class FilePrDiffContextWriterAdapter implements PrDiffContextWriterPort {
 
     try {
       await writeFile(tmpPath, payload, 'utf8');
-      await rename(tmpPath, path);
+      await commitAtomicJsonWrite(tmpPath, path);
       committed = true;
       return path;
     } finally {

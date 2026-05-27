@@ -52,9 +52,10 @@ describe('PrDiffContextPersistenceService', () => {
       new SanitizerService(),
     );
 
-    const { path, context } = await service.persistFromGitHubActions(dir);
+    const { path, context, tokensMasked } = await service.persistFromGitHubActions(dir);
 
     expect(path.endsWith('pr-diff-context.json')).toBe(true);
+    expect(tokensMasked).toBe(true);
     expect(context.schemaVersion).toBe('pr-diff-context.v1');
     expect(context.changedFiles).toEqual(VALID_READ_RESULT.changedFiles);
     expect('rawDiff' in context).toBe(false);
@@ -98,6 +99,46 @@ describe('PrDiffContextPersistenceService', () => {
     expect(raw).not.toContain(clickupToken);
     expect(raw).toContain('***REDACTED***');
     expect(context.changedFiles[0]?.positiveLines[0]?.content).toContain('***REDACTED***');
+  });
+
+  it('sets tokensMasked false when residual leak is detected after sanitize', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'agent-qa-pr-diff-context-persist-'));
+    tempDirs.push(dir);
+    const leakedSecret = 'residual_leak_secret_value';
+    const prContextReader: GitHubActionsPrContextReaderPort = {
+      read: vi.fn(async () => ({
+        ...VALID_READ_RESULT,
+        changedFiles: [
+          {
+            ...VALID_READ_RESULT.changedFiles[0]!,
+            positiveLines: [
+              {
+                type: 'added' as const,
+                lineNumber: 1,
+                content: leakedSecret,
+              },
+            ],
+          },
+        ],
+      })),
+    };
+    const sanitizer = new SanitizerService();
+    const containsLeakedSecrets = vi
+      .spyOn(sanitizer, 'containsLeakedSecrets')
+      .mockReturnValueOnce(true)
+      .mockReturnValueOnce(true);
+    const service = new PrDiffContextPersistenceService(
+      new FilePrDiffContextWriterAdapter(),
+      prContextReader,
+      sanitizer,
+    );
+
+    const { tokensMasked } = await service.persistFromGitHubActions(dir, {
+      knownSecrets: [leakedSecret],
+    });
+
+    expect(tokensMasked).toBe(false);
+    expect(containsLeakedSecrets).toHaveBeenCalledTimes(2);
   });
 
   it('redacts secrets from env without explicit knownSecrets option', async () => {

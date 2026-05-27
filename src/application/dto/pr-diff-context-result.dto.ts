@@ -3,4 +3,5 @@ import type { PrDiffContext } from '../../domain/schemas/pr-diff-context.schema.
 export interface PrDiffContextRunResult {
   context: PrDiffContext;
   contextPath: string;
+  tokensMasked: boolean;
 }
