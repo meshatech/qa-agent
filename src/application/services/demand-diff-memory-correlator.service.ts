@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
 
+import { correlateCriterionWithDiff } from '../../domain/helpers/criterion-diff-correlator.js';
 import { consumeDemandContext } from '../../domain/helpers/demand-context-consumer.js';
 import type { ConsumedMemorySearchContext } from '../../domain/helpers/memory-search-consumer.js';
 import { consumeMemorySearchResults } from '../../domain/helpers/memory-search-consumer.js';
 import type { ConsumedPrDiffContext } from '../../domain/helpers/pr-diff-context-consumer.js';
 import { consumePrDiffContext } from '../../domain/helpers/pr-diff-context-consumer.js';
-import { overlapScore, pathTokens, tokenize, truncate } from '../../domain/helpers/correlation-lexical.js';
+import { pathTokens, truncate } from '../../domain/helpers/correlation-lexical.js';
 import type {
   CorrelationItem,
   CorrelationResult,
@@ -13,7 +14,6 @@ import type {
   RiskItem,
 } from '../../domain/schemas/correlation.schema.js';
 import { createBlockedCorrelationResult } from '../../domain/schemas/correlation.schema.js';
-import { createCorrelationItem } from '../../domain/schemas/correlation-item.schema.js';
 import { createRequiredScenario } from '../../domain/schemas/required-scenario.schema.js';
 import { createRiskItem } from '../../domain/schemas/risk-item.schema.js';
 import type { DemandContext } from '../../domain/schemas/demand-context.schema.js';
@@ -60,7 +60,7 @@ export class DemandDiffMemoryCorrelatorService {
     const scenarios: RequiredScenario[] = [];
 
     for (const criterion of demand.acceptanceCriteria) {
-      const match = this.findBestCriterionMatch(criterion, prDiff, memory);
+      const match = correlateCriterionWithDiff({ criterion, prDiff, memory });
       correlations.push(match.correlation);
 
       if (match.correlation.score < MIN_OVERLAP_SCORE) {
@@ -133,90 +133,6 @@ export class DemandDiffMemoryCorrelatorService {
       );
     }
     return risks;
-  }
-
-  private findBestCriterionMatch(
-    criterion: string,
-    prDiff: ConsumedPrDiffContext,
-    memory: ConsumedMemorySearchContext,
-  ): { correlation: CorrelationItem; relatedFiles: string[] } {
-    const criterionTokens = tokenize(criterion);
-    let bestScore = 0;
-    let bestFile: string | undefined;
-    let bestRationale = 'No lexical overlap with changed files or affected routes';
-
-    for (const file of prDiff.changedFiles) {
-      const score = overlapScore(criterionTokens, pathTokens(file.path));
-      if (score > bestScore) {
-        bestScore = score;
-        bestFile = file.path;
-        bestRationale = `Criterion tokens overlap with changed file path ${file.path}`;
-      }
-    }
-
-    for (const route of prDiff.affectedRoutes) {
-      const score = overlapScore(criterionTokens, tokenize(route));
-      if (score > bestScore) {
-        bestScore = score;
-        bestFile = undefined;
-        bestRationale = `Criterion tokens overlap with affected route ${route}`;
-      }
-    }
-
-    for (const schema of prDiff.affectedSchemas) {
-      const score = overlapScore(criterionTokens, pathTokens(schema));
-      if (score > bestScore) {
-        bestScore = score;
-        bestFile = schema;
-        bestRationale = `Criterion tokens overlap with affected schema ${schema}`;
-      }
-    }
-
-    let memoryChunk: string | undefined;
-    const memoryBoost = this.memoryBoost(criterionTokens, prDiff, memory);
-    if (memoryBoost) {
-      bestScore = Math.min(1, bestScore + memoryBoost.boost);
-      memoryChunk = memoryBoost.chunkId;
-      bestRationale = `${bestRationale}; ${memoryBoost.rationale}`;
-    }
-
-    const relatedFiles = bestFile ? [bestFile] : [];
-    return {
-      correlation: createCorrelationItem({
-        criterion,
-        file: bestFile,
-        memoryChunk,
-        score: bestScore,
-        rationale: bestRationale,
-      }),
-      relatedFiles,
-    };
-  }
-
-  private memoryBoost(
-    criterionTokens: Set<string>,
-    prDiff: ConsumedPrDiffContext,
-    memory: ConsumedMemorySearchContext,
-  ): { boost: number; chunkId: string; rationale: string } | undefined {
-    for (const result of memory.correlationChunks) {
-      const chunk = result.chunk;
-      const routeHit = prDiff.affectedRoutes.some(
-        (route) =>
-          chunk.content.includes(route) ||
-          chunk.title.includes(route) ||
-          overlapScore(tokenize(route), tokenize(chunk.content)) > 0,
-      );
-      const criterionHit = overlapScore(criterionTokens, tokenize(`${chunk.title} ${chunk.content}`)) > 0;
-
-      if (routeHit || criterionHit) {
-        return {
-          boost: Math.min(0.35, result.relevanceScore * 0.1 + 0.1),
-          chunkId: chunk.id,
-          rationale: `BM25 memory chunk ${chunk.id} (${chunk.type}) aligns with affected routes or criterion`,
-        };
-      }
-    }
-    return undefined;
   }
 
   private buildRouteFallbackScenarios(
