@@ -364,6 +364,25 @@ describe('PipelinePreflightService', () => {
       );
     });
 
+    it('warns when clickup.customIdPattern in config is invalid but still extracts with default', async () => {
+      const outputDir = await tempDir();
+      process.env.AGENT_QA_CONFIG = await writeConfigFile(outputDir, {
+        ...VALID_CONFIG,
+        clickup: { customIdPattern: '[PRJ-\\d+' },
+      });
+      await setFullPreflightEnv();
+      delete process.env.CLICKUP_CUSTOM_ID_PATTERN;
+
+      const result = await makeService().run(outputDir);
+
+      expect(result.report.checks.clickupTaskId.ok).toBe(true);
+      expect(result.report.checks.clickupTaskId.taskId).toBe('PRJ-11552');
+      expect(result.report.checks.clickupTaskId.warning).toBe(
+        'Invalid custom ID pattern; using default PRJ-\\d+',
+      );
+      expect(result.report.checkItems.find((item) => item.name === 'clickupTaskId')?.status).toBe('WARN');
+    });
+
     it('fails clickupTaskId check when GITHUB_EVENT_PATH contains invalid JSON', async () => {
       const outputDir = await setupPreflightPassEnv();
       const dir = await tempDir();

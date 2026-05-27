@@ -23,7 +23,6 @@ import { ConfigError, PreflightBlockedError } from '../../domain/errors.js';
 import { resolveHeadBranchFromEnv } from '../../infra/github/github-actions-pr-refs.resolver.js';
 import { extractClickUpTaskIdFromGitHubEvent, sanitizePrContextErrorMessage } from '../../infra/github/github-actions-pr-context.mapper.js';
 import {
-  compileClickUpCustomIdPattern,
   resolveClickUpCustomIdPattern,
 } from '../../infra/github/clickup-task-id-from-pr.resolver.js';
 import { collectKnownSecretsFromEnv } from './known-secrets.collector.js';
@@ -35,8 +34,6 @@ const GITHUB_TOKEN_ENV_KEYS = ['GITHUB_TOKEN', 'GH_TOKEN', 'INPUT_GITHUB_TOKEN']
 const GITHUB_TOKEN_MISSING_WARNING =
   'GitHub token is missing (GITHUB_TOKEN, GH_TOKEN, or INPUT_GITHUB_TOKEN); PR read/publish may be unavailable.';
 const ALLOWED_PR_EVENT_NAMES = ['pull_request', 'pull_request_target'] as const;
-const INVALID_CUSTOM_ID_PATTERN_WARNING =
-  'Invalid custom ID pattern; using default PRJ-\\d+';
 
 /**
  * Validates the pipeline environment before execution.
@@ -226,31 +223,23 @@ export class PipelinePreflightService {
     pattern: RegExp;
     patternWarning?: string;
   }> {
-    const fromEnv = process.env.CLICKUP_CUSTOM_ID_PATTERN?.trim();
-    if (fromEnv) {
-      const compiled = compileClickUpCustomIdPattern(fromEnv);
-      return {
-        pattern: compiled.pattern,
-        patternWarning: compiled.usedFallback ? INVALID_CUSTOM_ID_PATTERN_WARNING : undefined,
-      };
-    }
-
+    let configPattern: string | undefined;
     try {
       const configPath = this.resolveConfigPath();
       const raw = await this.configLoader.load(configPath);
       const parsed = RunConfigSchema.safeParse(raw);
-      if (parsed.success && parsed.data.clickup?.customIdPattern?.trim()) {
-        const compiled = compileClickUpCustomIdPattern(parsed.data.clickup.customIdPattern);
-        return {
-          pattern: compiled.pattern,
-          patternWarning: compiled.usedFallback ? INVALID_CUSTOM_ID_PATTERN_WARNING : undefined,
-        };
+      if (parsed.success) {
+        configPattern = parsed.data.clickup?.customIdPattern?.trim() || undefined;
       }
     } catch {
-      // fall through to default pattern
+      // fall through to env/default resolution
     }
 
-    return { pattern: resolveClickUpCustomIdPattern().pattern };
+    const result = resolveClickUpCustomIdPattern({
+      env: process.env,
+      configPattern,
+    });
+    return { pattern: result.pattern, patternWarning: result.warning };
   }
 
   private resolveGitHubToken(): string {

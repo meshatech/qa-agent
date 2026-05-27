@@ -9,6 +9,7 @@ export function resolveClickUpTaskId(options?: {
   env?: NodeJS.ProcessEnv;
   configTaskId?: string | undefined;
 }): string {
+  // Config is the canonical source; deprecated CLICKUP_TASK_ID env is fallback only.
   const fromConfig = options?.configTaskId?.trim();
   if (fromConfig) {
     return fromConfig;

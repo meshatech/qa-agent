@@ -1,4 +1,5 @@
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
+import { Logger } from '@nestjs/common';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -99,6 +100,20 @@ describe('mapGitHubActionsToPullRequestContext', () => {
       title: 'Fix login flow',
       author: 'octocat',
     });
+  });
+
+  it('logs warning when CLICKUP_CUSTOM_ID_PATTERN env is invalid', async () => {
+    const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const { eventPath } = await writePullRequestEvent();
+    const env = buildPrEnv(eventPath, { CLICKUP_CUSTOM_ID_PATTERN: '[PRJ-\\d+' });
+
+    await mapGitHubActionsToPullRequestContext({ env });
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      'Invalid custom ID pattern; using default PRJ-\\d+',
+    );
+
+    warnSpy.mockRestore();
   });
 
   it('fails when GITHUB_HEAD_REF is missing', async () => {

@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { Logger } from '@nestjs/common';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -92,6 +93,7 @@ describe('extractClickUpTaskIdFromGitHubEvent', () => {
   });
 
   it('does not extract task ID from body content beyond 10000 characters', async () => {
+    const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     const padding = 'x'.repeat(10001);
     const eventPath = await writeEvent({
       pull_request: {
@@ -104,5 +106,10 @@ describe('extractClickUpTaskIdFromGitHubEvent', () => {
     await expect(
       extractClickUpTaskIdFromGitHubEvent({ GITHUB_EVENT_PATH: eventPath }),
     ).resolves.toBeUndefined();
+    expect(warnSpy).toHaveBeenCalledWith(
+      'PR body truncated to 10000 characters; ClickUp task IDs beyond this limit may not be detected',
+    );
+
+    warnSpy.mockRestore();
   });
 });

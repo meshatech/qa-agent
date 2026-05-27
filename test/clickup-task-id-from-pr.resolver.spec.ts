@@ -4,6 +4,8 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   compileClickUpCustomIdPattern,
   extractClickUpTaskIdFromPullRequestText,
+  INVALID_CUSTOM_ID_PATTERN_WARNING,
+  resolveClickUpCustomIdPattern,
 } from '../src/infra/github/clickup-task-id-from-pr.resolver.js';
 
 describe('extractClickUpTaskIdFromPullRequestText', () => {
@@ -117,5 +119,26 @@ describe('compileClickUpCustomIdPattern', () => {
   it('accepts valid custom patterns', () => {
     expect(compileClickUpCustomIdPattern('TASK-\\d+').usedFallback).toBe(false);
     expect(compileClickUpCustomIdPattern('PRJ-\\d+').usedFallback).toBe(false);
+  });
+});
+
+describe('resolveClickUpCustomIdPattern', () => {
+  it('returns warning when env pattern is invalid', () => {
+    const result = resolveClickUpCustomIdPattern({
+      env: { CLICKUP_CUSTOM_ID_PATTERN: '[PRJ-\\d+' },
+    });
+
+    expect(result.usedFallback).toBe(true);
+    expect(result.warning).toBe(INVALID_CUSTOM_ID_PATTERN_WARNING);
+  });
+
+  it('returns warning when config pattern is invalid', () => {
+    const result = resolveClickUpCustomIdPattern({
+      env: {},
+      configPattern: '(a+)+',
+    });
+
+    expect(result.usedFallback).toBe(true);
+    expect(result.warning).toBe(INVALID_CUSTOM_ID_PATTERN_WARNING);
   });
 });

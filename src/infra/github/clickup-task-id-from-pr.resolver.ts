@@ -11,10 +11,14 @@ const CLICKUP_CUSTOM_ID_PATTERN_ENV = 'CLICKUP_CUSTOM_ID_PATTERN';
 const MAX_PATTERN_SOURCE_LENGTH = 100;
 const SAFE_PATTERN_CHARS = /^[\w\d\\\[\]\(\)\{\}\^\$\.\|\?\*\+\-]+$/;
 
+export const INVALID_CUSTOM_ID_PATTERN_WARNING =
+  'Invalid custom ID pattern; using default PRJ-\\d+';
+
 export type ClickUpCustomIdPatternResult = {
   pattern: RegExp;
   usedFallback: boolean;
   invalidSource?: string;
+  warning?: string;
 };
 
 function defaultPatternResult(): ClickUpCustomIdPatternResult {
@@ -33,6 +37,7 @@ function fallbackPatternResult(invalidSource: string, reason: string | Error): C
     pattern: new RegExp(DEFAULT_CLICKUP_CUSTOM_ID_PATTERN.source, 'g'),
     usedFallback: true,
     invalidSource,
+    warning: INVALID_CUSTOM_ID_PATTERN_WARNING,
   };
 }
 

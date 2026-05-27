@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { Logger } from '@nestjs/common';
 import { ZodError } from 'zod';
 
 import { PrContextReaderError } from '../../domain/errors.js';
@@ -9,10 +10,15 @@ import {
 import { extractClickUpTaskIdFromPullRequestText, resolveClickUpCustomIdPattern } from './clickup-task-id-from-pr.resolver.js';
 import { resolveGitHubActionsPrRefs, resolveHeadBranchFromEnv, resolveBaseBranchFromEnv } from './github-actions-pr-refs.resolver.js';
 
+const logger = new Logger('GitHubActionsPrContextMapper');
+
 const ALLOWED_PR_EVENT_NAMES = ['pull_request', 'pull_request_target'] as const;
 
 const GITHUB_TOKEN_ENV_KEYS = ['GITHUB_TOKEN', 'GH_TOKEN', 'INPUT_GITHUB_TOKEN'] as const;
 const ABSOLUTE_PATH_PATTERN = /\/[\w./-]+\/[\w./-]+(?:\/[\w./-]+)*/g;
+const MAX_PR_BODY_EXTRACTION_LENGTH = 10000;
+const PR_BODY_TRUNCATION_WARNING =
+  'PR body truncated to 10000 characters; ClickUp task IDs beyond this limit may not be detected';
 
 type GitHubPullRequestEvent = {
   pull_request?: {
@@ -42,7 +48,11 @@ export function sanitizePullRequestBodyForExtraction(body?: string): string | un
   if (!trimmed) {
     return undefined;
   }
-  return trimmed.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '').slice(0, 10000);
+  const sanitized = trimmed.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+  if (sanitized.length > MAX_PR_BODY_EXTRACTION_LENGTH) {
+    logger.warn(PR_BODY_TRUNCATION_WARNING);
+  }
+  return sanitized.slice(0, MAX_PR_BODY_EXTRACTION_LENGTH);
 }
 
 export { sanitizePrContextErrorMessage };
@@ -173,7 +183,10 @@ export async function mapGitHubActionsToPullRequestContext(
   }
 
   const { title, author, body } = await readPullRequestMetadata(env);
-  const { pattern } = resolveClickUpCustomIdPattern({ env });
+  const { pattern, warning: patternWarning } = resolveClickUpCustomIdPattern({ env });
+  if (patternWarning) {
+    logger.warn(patternWarning);
+  }
   const clickUpTaskId = extractClickUpTaskIdFromPullRequestText(title, body, pattern);
 
   try {
