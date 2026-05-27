@@ -3,6 +3,7 @@ import type { ConsumedMemorySearchContext } from './memory-search-consumer.js';
 import type { ConsumedPrDiffContext } from './pr-diff-context-consumer.js';
 import { createCorrelationItem } from '../schemas/correlation-item.schema.js';
 import type { CorrelationItem } from '../schemas/correlation.schema.js';
+import type { ChangedFile } from '../schemas/changed-file.schema.js';
 
 export interface CriterionDiffCorrelationInput {
   criterion: string;
@@ -36,7 +37,8 @@ export function correlateCriterionWithDiff(
     const score = overlapScore(criterionTokens, tokenize(route));
     if (score > bestScore) {
       bestScore = score;
-      bestFile = undefined;
+      const routeFile = findChangedFileForRoute(input.prDiff.changedFiles, route);
+      bestFile = routeFile ?? bestFile;
       bestRationale = `Criterion tokens overlap with affected route ${route}`;
     }
   }
@@ -45,7 +47,8 @@ export function correlateCriterionWithDiff(
     const score = overlapScore(criterionTokens, pathTokens(schema));
     if (score > bestScore) {
       bestScore = score;
-      bestFile = schema;
+      const schemaFile = findChangedFileForSchema(input.prDiff.changedFiles, schema);
+      bestFile = schemaFile ?? bestFile ?? schema;
       bestRationale = `Criterion tokens overlap with affected schema ${schema}`;
     }
   }
@@ -94,5 +97,54 @@ function applyMemoryBoost(
       };
     }
   }
+  return undefined;
+}
+
+function findChangedFileForRoute(changedFiles: ChangedFile[], route: string): string | undefined {
+  const routeTokens = pathTokens(route.startsWith('/') ? route.slice(1) : route);
+  let bestMatch: { path: string; score: number } | undefined;
+
+  for (const file of changedFiles) {
+    if (file.kind !== 'route') {
+      continue;
+    }
+
+    const score = overlapScore(routeTokens, pathTokens(file.path));
+    if (score > 0 && (!bestMatch || score > bestMatch.score)) {
+      bestMatch = { path: file.path, score };
+    }
+  }
+
+  if (bestMatch) {
+    return bestMatch.path;
+  }
+
+  const routeSlug = route.replace(/^\//, '').toLowerCase();
+  if (!routeSlug) {
+    return undefined;
+  }
+
+  return changedFiles.find(
+    (file) => file.kind === 'route' && file.path.toLowerCase().includes(routeSlug),
+  )?.path;
+}
+
+function findChangedFileForSchema(changedFiles: ChangedFile[], schemaId: string): string | undefined {
+  const schemaTokens = pathTokens(schemaId);
+
+  for (const file of changedFiles) {
+    if (file.kind !== 'schema') {
+      continue;
+    }
+
+    if (file.path.endsWith(`${schemaId}.schema.ts`)) {
+      return file.path;
+    }
+
+    if (overlapScore(schemaTokens, pathTokens(file.path)) > 0) {
+      return file.path;
+    }
+  }
+
   return undefined;
 }

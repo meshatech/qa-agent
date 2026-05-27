@@ -95,6 +95,72 @@ describe('correlateCriterionWithDiff', () => {
     expect(result.relatedFiles).toEqual([]);
   });
 
+  it('keeps route file in relatedFiles when route match beats file overlap', () => {
+    const prDiff = consumePrDiffContext({
+      ...BASE_PR_DIFF,
+      changedFiles: [
+        {
+          path: 'src/routes/billing/dashboard.ts',
+          status: 'modified',
+          kind: 'route',
+          positiveLines: [],
+          negativeLines: [],
+          contextLines: [],
+        },
+        {
+          path: 'src/components/widget.tsx',
+          status: 'modified',
+          kind: 'other',
+          positiveLines: [],
+          negativeLines: [],
+          contextLines: [],
+        },
+      ],
+      affectedRoutes: ['/billing/dashboard/page'],
+      affectedSchemas: [],
+    });
+    const memory = consumeMemorySearchResults([]);
+
+    const result = correlateCriterionWithDiff({
+      criterion: 'Visit /billing/dashboard/page now',
+      prDiff,
+      memory,
+    });
+
+    expect(result.correlation.rationale).toContain('affected route /billing/dashboard/page');
+    expect(result.relatedFiles).toEqual(['src/routes/billing/dashboard.ts']);
+    expect(result.correlation.file).toBe('src/routes/billing/dashboard.ts');
+  });
+
+  it('resolves schema changed file path instead of schema identifier in relatedFiles', () => {
+    const prDiff = consumePrDiffContext({
+      ...BASE_PR_DIFF,
+      changedFiles: [
+        {
+          path: 'src/domain/schemas/user.schema.ts',
+          status: 'modified',
+          kind: 'schema',
+          positiveLines: [],
+          negativeLines: [],
+          contextLines: [],
+        },
+      ],
+      affectedRoutes: [],
+      affectedSchemas: ['user'],
+    });
+    const memory = consumeMemorySearchResults([]);
+
+    const result = correlateCriterionWithDiff({
+      criterion: 'User schema validates email fields',
+      prDiff,
+      memory,
+    });
+
+    expect(result.relatedFiles).toEqual(['src/domain/schemas/user.schema.ts']);
+    expect(result.relatedFiles).not.toEqual(['user']);
+    expect(result.correlation.file).toBe('src/domain/schemas/user.schema.ts');
+  });
+
   it('boosts score and sets memoryChunk when memory aligns with criterion', () => {
     const prDiff = consumePrDiffContext(BASE_PR_DIFF);
     const memory = consumeMemorySearchResults([ROUTE_MEMORY_CHUNK]);
