@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 
 import type { GitHubActionsPrContextReaderPort } from '../ports/github-actions-pr-context-reader.port.js';
 import type { PrDiffContextWriterPort } from '../ports/pr-diff-context-writer.port.js';
@@ -9,6 +9,8 @@ import {
 } from '../../domain/schemas/pr-diff-context.schema.js';
 import { collectKnownSecretsFromEnv } from './known-secrets.collector.js';
 import { SanitizerService } from './sanitizer.service.js';
+
+const logger = new Logger('PrDiffContextPersistenceService');
 
 export interface PrDiffContextPersistResult {
   path: string;
@@ -38,9 +40,19 @@ export class PrDiffContextPersistenceService {
     const validated = PrDiffContextSchema.parse(built);
     const env = options?.env ?? process.env;
     const secrets = collectKnownSecretsFromEnv(env, options?.knownSecrets ?? []);
-    const leakDetected = this.sanitizer.containsLeakedSecrets(JSON.stringify(validated), secrets);
+    const preSanitizeLeakDetected = this.sanitizer.containsLeakedSecrets(
+      JSON.stringify(validated),
+      secrets,
+    );
     const sanitized = this.sanitizer.sanitizeForOutput(validated, secrets);
-    const tokensMasked = !leakDetected;
+    const postSanitizeLeakDetected = this.sanitizer.containsLeakedSecrets(
+      JSON.stringify(sanitized),
+      secrets,
+    );
+    if (preSanitizeLeakDetected) {
+      logger.warn('Potential secret material detected in PR diff context before sanitization');
+    }
+    const tokensMasked = !postSanitizeLeakDetected;
     const path = await this.writer.write(outputDir, sanitized);
     return { path, context: sanitized, tokensMasked };
   }

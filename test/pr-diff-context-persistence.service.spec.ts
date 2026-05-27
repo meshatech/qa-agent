@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Logger } from '@nestjs/common';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -101,7 +102,50 @@ describe('PrDiffContextPersistenceService', () => {
     expect(context.changedFiles[0]?.positiveLines[0]?.content).toContain('***REDACTED***');
   });
 
-  it('sets tokensMasked false when leak is detected in original context before sanitize', async () => {
+  it('warns on pre-sanitize leak and sets tokensMasked true when sanitize removes secrets', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'agent-qa-pr-diff-context-persist-'));
+    tempDirs.push(dir);
+    const leakedSecret = 'ghp_redactible_secret_value_12345678';
+    const prContextReader: GitHubActionsPrContextReaderPort = {
+      read: vi.fn(async () => ({
+        ...VALID_READ_RESULT,
+        changedFiles: [
+          {
+            ...VALID_READ_RESULT.changedFiles[0]!,
+            positiveLines: [
+              {
+                type: 'added' as const,
+                lineNumber: 1,
+                content: `Authorization: Bearer ${leakedSecret}`,
+              },
+            ],
+          },
+        ],
+      })),
+    };
+    const sanitizer = new SanitizerService();
+    const containsLeakedSecrets = vi.spyOn(sanitizer, 'containsLeakedSecrets');
+    const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const service = new PrDiffContextPersistenceService(
+      new FilePrDiffContextWriterAdapter(),
+      prContextReader,
+      sanitizer,
+    );
+
+    const { tokensMasked } = await service.persistFromGitHubActions(dir, {
+      knownSecrets: [leakedSecret],
+    });
+
+    expect(tokensMasked).toBe(true);
+    expect(containsLeakedSecrets).toHaveBeenCalledTimes(2);
+    expect(containsLeakedSecrets.mock.calls[0]?.[0]).toContain(leakedSecret);
+    expect(warnSpy).toHaveBeenCalledWith(
+      'Potential secret material detected in PR diff context before sanitization',
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('sets tokensMasked false when sanitized output still contains secrets', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'agent-qa-pr-diff-context-persist-'));
     tempDirs.push(dir);
     const leakedSecret = 'residual_leak_secret_value';
@@ -122,14 +166,16 @@ describe('PrDiffContextPersistenceService', () => {
         ],
       })),
     };
-    const sanitizer = new SanitizerService();
-    const containsLeakedSecrets = vi
-      .spyOn(sanitizer, 'containsLeakedSecrets')
-      .mockReturnValueOnce(true);
+    const passthroughSanitizer = {
+      sanitizeForOutput: <T>(input: T) => input,
+      containsLeakedSecrets: (serialized: string, secrets: string[]) =>
+        new SanitizerService().containsLeakedSecrets(serialized, secrets),
+    } as unknown as SanitizerService;
+    const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     const service = new PrDiffContextPersistenceService(
       new FilePrDiffContextWriterAdapter(),
       prContextReader,
-      sanitizer,
+      passthroughSanitizer,
     );
 
     const { tokensMasked } = await service.persistFromGitHubActions(dir, {
@@ -137,8 +183,10 @@ describe('PrDiffContextPersistenceService', () => {
     });
 
     expect(tokensMasked).toBe(false);
-    expect(containsLeakedSecrets).toHaveBeenCalledTimes(1);
-    expect(containsLeakedSecrets.mock.calls[0]?.[0]).toContain(leakedSecret);
+    expect(warnSpy).toHaveBeenCalledWith(
+      'Potential secret material detected in PR diff context before sanitization',
+    );
+    warnSpy.mockRestore();
   });
 
   it('redacts secrets from env without explicit knownSecrets option', async () => {
