@@ -36,7 +36,9 @@ export type BugCategory =
   | 'DEPRECATION_WARNING'
   | 'BROWSER_EXTENSION_NOISE';
 
-export type ScenarioIntent = 'POSITIVE' | 'NEGATIVE' | 'EDGE' | 'EXPLORATORY';
+import type { ScenarioIntent } from '../schemas/scenario-intent.schema.js';
+
+export type { ScenarioIntent };
 
 export interface QuiescenceResult {
   stable: boolean;

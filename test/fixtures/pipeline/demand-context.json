@@ -1,0 +1,14 @@
+{
+  "taskId": "PRJ-11392",
+  "title": "DemandDiffMemoryCorrelator",
+  "description": "Correlate demand, diff and memory.",
+  "acceptanceCriteria": [
+    "Login route validates user credentials",
+    "Invalid login shows error message"
+  ],
+  "attachments": [],
+  "status": "fazendo",
+  "assignees": ["Joao da silva"],
+  "priority": null,
+  "dueDate": null
+}

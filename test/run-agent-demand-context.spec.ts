@@ -28,6 +28,7 @@ describe('RunAgentUseCase ClickUp demand context', () => {
     const persist = vi.fn();
     useCase.demandContextPersistence = { persistFromClickUpTask: persist };
     vi.stubEnv('CLICKUP_TOKEN', 'pk_test');
+    vi.stubEnv('CLICKUP_TASK_ID', '');
 
     await useCase.persistClickUpDemandContext('/run', {});
 

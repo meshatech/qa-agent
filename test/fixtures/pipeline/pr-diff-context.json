@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "pr-diff-context.v1",
+  "pullRequest": {
+    "prNumber": 42,
+    "baseBranch": "main",
+    "headBranch": "feature/login",
+    "title": "PRJ-11392 — Improve login route",
+    "author": "dev",
+    "clickUpTaskId": "PRJ-11392"
+  },
+  "changedFiles": [
+    {
+      "path": "src/routes/login.ts",
+      "status": "modified",
+      "kind": "route",
+      "positiveLines": [{ "type": "added", "lineNumber": 10, "content": "validate credentials" }],
+      "negativeLines": [{ "type": "removed", "lineNumber": 8, "content": "legacy auth" }],
+      "contextLines": []
+    }
+  ],
+  "affectedRoutes": ["/login"],
+  "affectedSchemas": []
+}

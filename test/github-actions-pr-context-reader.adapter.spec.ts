@@ -189,7 +189,7 @@ describe('GitHubActionsPrContextReaderAdapter', () => {
 
   it('captures raw git diff end-to-end with real git repository', async () => {
     const repoDir = await initRepoWithOriginMain();
-    const { dir, eventPath } = await writePullRequestEvent();
+    const { eventPath } = await writePullRequestEvent();
     const env = buildPrEnv(eventPath, repoDir);
     const adapter = new GitHubActionsPrContextReaderAdapter(new ExecGitRepositoryAdapter());
 
