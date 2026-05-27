@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
+import { consumeDemandContext } from '../../domain/helpers/demand-context-consumer.js';
 import { overlapScore, pathTokens, tokenize, truncate } from '../../domain/helpers/correlation-lexical.js';
 import type {
   CorrelationItem,
@@ -30,7 +31,9 @@ export class DemandDiffMemoryCorrelatorService {
   correlate(input: DemandDiffMemoryCorrelatorInput): CorrelationResult {
     const warnings = [...(input.warnings ?? [])];
 
-    if (!input.demand.acceptanceCriteria.length) {
+    const demand = consumeDemandContext(input.demand);
+
+    if (!demand.acceptanceCriteria.length) {
       return createBlockedCorrelationResult(
         'acceptanceCriteria is empty; cannot derive required scenarios',
         warnings,
@@ -51,7 +54,7 @@ export class DemandDiffMemoryCorrelatorService {
     const correlations: CorrelationItem[] = [];
     const scenarios: RequiredScenario[] = [];
 
-    for (const criterion of input.demand.acceptanceCriteria) {
+    for (const criterion of demand.acceptanceCriteria) {
       const match = this.findBestCriterionMatch(criterion, input.prDiff, input.memoryResults);
       correlations.push(match.correlation);
 
