@@ -5,6 +5,7 @@ import { createRiskItem } from '../schemas/risk-item.schema.js';
 import type { RiskItem } from '../schemas/correlation.schema.js';
 
 const MISMATCH_THRESHOLD = 0.15;
+const MISMATCH_MIN_COVERAGE_RATIO = 0.5;
 
 export interface DemandDiffMismatchInput {
   demand: ConsumedDemandContext;
@@ -14,15 +15,17 @@ export interface DemandDiffMismatchInput {
 export function detectDemandDiffMismatch(input: DemandDiffMismatchInput): RiskItem[] {
   const diffTokens = buildDiffTokens(input.prDiff);
 
-  if (!diffTokens.size) {
+  if (!diffTokens.size || !input.demand.acceptanceCriteria.length) {
     return [];
   }
 
-  for (const criterion of input.demand.acceptanceCriteria) {
+  const coveredCount = input.demand.acceptanceCriteria.filter((criterion) => {
     const criterionTokens = tokenize(criterion);
-    if (criterionTokens.size && overlapScore(criterionTokens, diffTokens) >= MISMATCH_THRESHOLD) {
-      return [];
-    }
+    return criterionTokens.size && overlapScore(criterionTokens, diffTokens) >= MISMATCH_THRESHOLD;
+  }).length;
+
+  if (coveredCount / input.demand.acceptanceCriteria.length >= MISMATCH_MIN_COVERAGE_RATIO) {
+    return [];
   }
 
   const demandTokens = tokenize(
@@ -34,14 +37,11 @@ export function detectDemandDiffMismatch(input: DemandDiffMismatchInput): RiskIt
   }
 
   const score = overlapScore(demandTokens, diffTokens);
-  if (score >= MISMATCH_THRESHOLD) {
-    return [];
-  }
 
   return [
     createRiskItem({
       severity: 'MEDIUM',
-      description: `Demand "${input.demand.title}" has low lexical overlap with PR diff (score ${score.toFixed(2)}); PR may not cover the demand`,
+      description: `Demand "${input.demand.title}" has low lexical overlap with PR diff (score ${score.toFixed(2)}, ${coveredCount}/${input.demand.acceptanceCriteria.length} criteria covered); PR may not cover the demand`,
       type: 'demand_diff_mismatch',
     }),
   ];

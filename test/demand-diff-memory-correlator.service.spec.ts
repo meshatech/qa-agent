@@ -196,5 +196,11 @@ describe('DemandDiffMemoryCorrelatorService', () => {
         warning.includes('scenarios derived from affected routes only'),
       ),
     ).toBe(true);
+    expect(
+      result.warnings.some((warning) =>
+        warning.includes('Criteria below correlation threshold') &&
+          warning.includes('Billing invoice export supports CSV format'),
+      ),
+    ).toBe(true);
   });
 });

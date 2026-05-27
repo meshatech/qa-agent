@@ -176,13 +176,21 @@ function applyMemoryBoost(
     );
     const criterionHit = overlapScore(criterionTokens, tokenize(`${chunk.title} ${chunk.content}`)) > 0;
 
-    if (routeHit || criterionHit) {
-      return {
-        boost: Math.min(0.35, result.relevanceScore * 0.1 + 0.1),
-        chunkId: chunk.id,
-        rationale: `BM25 memory chunk ${chunk.id} (${chunk.type}) aligns with affected routes or criterion`,
-      };
+    if (!criterionHit) {
+      continue;
     }
+
+    const boost = routeHit
+      ? Math.min(0.35, result.relevanceScore * 0.1 + 0.1)
+      : Math.min(0.25, result.relevanceScore * 0.1 + 0.05);
+
+    return {
+      boost,
+      chunkId: chunk.id,
+      rationale: routeHit
+        ? `BM25 memory chunk ${chunk.id} (${chunk.type}) aligns with affected routes and criterion`
+        : `BM25 memory chunk ${chunk.id} (${chunk.type}) aligns with criterion`,
+    };
   }
   return undefined;
 }

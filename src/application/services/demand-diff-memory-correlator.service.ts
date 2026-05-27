@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ZodError } from 'zod';
 
-import { correlateCriterionWithDiff } from '../../domain/helpers/criterion-diff-correlator.js';
+import { correlateCriterionWithDiff, type CriterionDiffCorrelationResult } from '../../domain/helpers/criterion-diff-correlator.js';
 import { detectDemandDiffMismatch } from '../../domain/helpers/demand-diff-mismatch-detector.js';
 import { correlateNegativeDiffRegressions } from '../../domain/helpers/negative-diff-regression-correlator.js';
 import { consumeDemandContext, type ConsumedDemandContext } from '../../domain/helpers/demand-context-consumer.js';
@@ -21,6 +21,7 @@ import type { PrDiffContext } from '../../domain/schemas/pr-diff-context.schema.
 
 const MAX_SCENARIOS = 10;
 const MIN_OVERLAP_SCORE = 0.15;
+const FALLBACK_CRITERIA_WARNING_LIMIT = 5;
 
 export interface DemandDiffMemoryCorrelatorInput {
   demand: DemandContext;
@@ -138,6 +139,7 @@ export class DemandDiffMemoryCorrelatorService {
         warnings.push(
           'No acceptance criterion reached minimum correlation score; scenarios derived from affected routes only',
         );
+        appendCriteriaBelowThresholdWarning(warnings, matches, MIN_OVERLAP_SCORE);
       }
       scenarios.push(...routeScenarios.slice(0, MAX_SCENARIOS));
     }
@@ -195,4 +197,33 @@ export class DemandDiffMemoryCorrelatorService {
     }
     return scenarios;
   }
+}
+
+function collectCriteriaBelowThreshold(
+  matches: CriterionDiffCorrelationResult[],
+  minScore: number,
+): string[] {
+  return matches
+    .filter((match) => match.correlation.score < minScore)
+    .map((match) => truncate(match.correlation.criterion, 80));
+}
+
+function appendCriteriaBelowThresholdWarning(
+  warnings: string[],
+  matches: CriterionDiffCorrelationResult[],
+  minScore: number,
+): void {
+  const belowThreshold = collectCriteriaBelowThreshold(matches, minScore);
+  if (!belowThreshold.length) {
+    return;
+  }
+
+  const preview = belowThreshold.slice(0, FALLBACK_CRITERIA_WARNING_LIMIT);
+  const suffix =
+    belowThreshold.length > FALLBACK_CRITERIA_WARNING_LIMIT
+      ? `; and ${belowThreshold.length - FALLBACK_CRITERIA_WARNING_LIMIT} more`
+      : '';
+  warnings.push(
+    `Criteria below correlation threshold (${minScore}): ${preview.join('; ')}${suffix}`,
+  );
 }

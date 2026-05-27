@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -67,9 +67,17 @@ describe('RunPipelineCorrelateUseCase', () => {
       readConfiguredTask: vi.fn(),
     });
 
-    await expect(useCase.execute(outputDir)).rejects.toBeInstanceOf(CorrelationBlockedError);
-    const scenarios = JSON.parse(await readFile(join(outputDir, 'required-scenarios.json'), 'utf8'));
-    expect(scenarios.status).toBe('BLOCKED');
+    try {
+      await useCase.execute(outputDir);
+      expect.fail('expected CorrelationBlockedError');
+    } catch (error) {
+      expectBlockedError(error, (blocked) => {
+        expect(blocked.result.status).toBe('BLOCKED');
+        expect(blocked.result.blockReason).toContain('clickUpTaskId');
+      });
+    }
+
+    await expectNoCorrelationArtifacts(outputDir);
   });
 
   it('throws CorrelationBlockedError when CLICKUP_TOKEN is missing', async () => {
@@ -81,9 +89,17 @@ describe('RunPipelineCorrelateUseCase', () => {
       readConfiguredTask: vi.fn(),
     });
 
-    await expect(useCase.execute(outputDir, { env: process.env })).rejects.toBeInstanceOf(
-      CorrelationBlockedError,
-    );
+    try {
+      await useCase.execute(outputDir, { env: process.env });
+      expect.fail('expected CorrelationBlockedError');
+    } catch (error) {
+      expectBlockedError(error, (blocked) => {
+        expect(blocked.result.status).toBe('BLOCKED');
+        expect(blocked.result.blockReason).toContain('CLICKUP_TOKEN');
+      });
+    }
+
+    await expectNoCorrelationArtifacts(outputDir);
   });
 
   it('throws CorrelationBlockedError when pr-diff-context.json is missing', async () => {
@@ -96,14 +112,19 @@ describe('RunPipelineCorrelateUseCase', () => {
       readConfiguredTask: vi.fn(),
     });
 
-    await expect(useCase.execute(outputDir)).rejects.toBeInstanceOf(CorrelationBlockedError);
+    try {
+      await useCase.execute(outputDir);
+      expect.fail('expected CorrelationBlockedError');
+    } catch (error) {
+      expectBlockedError(error, (blocked) => {
+        expect(blocked.result.status).toBe('BLOCKED');
+        expect(blocked.result.blockReason).toContain('not found');
+        expect(blocked.requiredScenariosPath).toBeUndefined();
+        expect(blocked.correlationReportPath).toBeUndefined();
+      });
+    }
 
-    const scenarios = JSON.parse(await readFile(join(outputDir, 'required-scenarios.json'), 'utf8'));
-    expect(scenarios.status).toBe('BLOCKED');
-    expect(scenarios.blockReason).toContain('not found');
-
-    const report = await readFile(join(outputDir, 'correlation-report.md'), 'utf8');
-    expect(report).not.toContain('PR: #');
+    await expectNoCorrelationArtifacts(outputDir);
   });
 
   it('throws CorrelationBlockedError with Zod details when pr-diff-context.json fails schema validation', async () => {
@@ -117,12 +138,17 @@ describe('RunPipelineCorrelateUseCase', () => {
       readConfiguredTask: vi.fn(),
     });
 
-    await expect(useCase.execute(outputDir)).rejects.toBeInstanceOf(CorrelationBlockedError);
+    try {
+      await useCase.execute(outputDir);
+      expect.fail('expected CorrelationBlockedError');
+    } catch (error) {
+      expectBlockedError(error, (blocked) => {
+        expect(blocked.result.blockReason).toContain('Pipeline artifact validation failed');
+        expect(blocked.result.blockReason).toContain('schemaVersion');
+      });
+    }
 
-    const scenarios = JSON.parse(await readFile(join(outputDir, 'required-scenarios.json'), 'utf8'));
-    expect(scenarios.status).toBe('BLOCKED');
-    expect(scenarios.blockReason).toContain('Pipeline artifact validation failed');
-    expect(scenarios.blockReason).toContain('schemaVersion');
+    await expectNoCorrelationArtifacts(outputDir);
   });
 
   it('throws CorrelationBlockedError with parse details when pr-diff-context.json has invalid JSON', async () => {
@@ -136,11 +162,16 @@ describe('RunPipelineCorrelateUseCase', () => {
       readConfiguredTask: vi.fn(),
     });
 
-    await expect(useCase.execute(outputDir)).rejects.toBeInstanceOf(CorrelationBlockedError);
+    try {
+      await useCase.execute(outputDir);
+      expect.fail('expected CorrelationBlockedError');
+    } catch (error) {
+      expectBlockedError(error, (blocked) => {
+        expect(blocked.result.blockReason).toContain('Pipeline artifact invalid JSON');
+      });
+    }
 
-    const scenarios = JSON.parse(await readFile(join(outputDir, 'required-scenarios.json'), 'utf8'));
-    expect(scenarios.status).toBe('BLOCKED');
-    expect(scenarios.blockReason).toContain('Pipeline artifact invalid JSON');
+    await expectNoCorrelationArtifacts(outputDir);
   });
 
   it('throws CorrelationBlockedError when ClickUp fetch fails', async () => {
@@ -154,11 +185,16 @@ describe('RunPipelineCorrelateUseCase', () => {
       }),
     });
 
-    await expect(useCase.execute(outputDir)).rejects.toBeInstanceOf(CorrelationBlockedError);
+    try {
+      await useCase.execute(outputDir);
+      expect.fail('expected CorrelationBlockedError');
+    } catch (error) {
+      expectBlockedError(error, (blocked) => {
+        expect(blocked.result.blockReason).toContain('Failed to fetch demand from ClickUp');
+      });
+    }
 
-    const scenarios = JSON.parse(await readFile(join(outputDir, 'required-scenarios.json'), 'utf8'));
-    expect(scenarios.status).toBe('BLOCKED');
-    expect(scenarios.blockReason).toContain('Failed to fetch demand from ClickUp');
+    await expectNoCorrelationArtifacts(outputDir);
   });
 
   it('redacts CLICKUP_TOKEN from ClickUp blockReason when token appears in error message', async () => {
@@ -173,13 +209,17 @@ describe('RunPipelineCorrelateUseCase', () => {
       }),
     });
 
-    await expect(useCase.execute(outputDir, { env: process.env })).rejects.toBeInstanceOf(
-      CorrelationBlockedError,
-    );
+    try {
+      await useCase.execute(outputDir, { env: process.env });
+      expect.fail('expected CorrelationBlockedError');
+    } catch (error) {
+      expectBlockedError(error, (blocked) => {
+        expect(blocked.result.blockReason).not.toContain(secretToken);
+        expect(blocked.result.blockReason).toContain('***REDACTED***');
+      });
+    }
 
-    const scenarios = JSON.parse(await readFile(join(outputDir, 'required-scenarios.json'), 'utf8'));
-    expect(scenarios.blockReason).not.toContain(secretToken);
-    expect(scenarios.blockReason).toContain('***REDACTED***');
+    await expectNoCorrelationArtifacts(outputDir);
   });
 
   it('redacts CLICKUP_TOKEN from HarnessFatalError when token appears in error message', async () => {
@@ -219,14 +259,17 @@ describe('RunPipelineCorrelateUseCase', () => {
       throw new Error('logic bug');
     });
 
-    await expect(
-      useCase.execute(outputDir, { projectPath: process.cwd(), env: process.env }),
-    ).rejects.toBeInstanceOf(CorrelationBlockedError);
+    try {
+      await useCase.execute(outputDir, { projectPath: process.cwd(), env: process.env });
+      expect.fail('expected CorrelationBlockedError');
+    } catch (error) {
+      expectBlockedError(error, (blocked) => {
+        expect(blocked.result.blockReason).toContain('Correlation failed');
+        expect(blocked.result.blockReason).toContain('logic bug');
+      });
+    }
 
-    const scenarios = JSON.parse(await readFile(join(outputDir, 'required-scenarios.json'), 'utf8'));
-    expect(scenarios.status).toBe('BLOCKED');
-    expect(scenarios.blockReason).toContain('Correlation failed');
-    expect(scenarios.blockReason).toContain('logic bug');
+    await expectNoCorrelationArtifacts(outputDir);
   });
 
   it('throws HarnessFatalError for infrastructure failures during demand persistence', async () => {
@@ -256,15 +299,31 @@ describe('RunPipelineCorrelateUseCase', () => {
 
     vi.spyOn(MemorySearchService.prototype, 'search').mockRejectedValue(new Error('permission denied'));
 
-    await expect(
-      useCase.execute(outputDir, { projectPath: process.cwd(), env: process.env }),
-    ).rejects.toBeInstanceOf(CorrelationBlockedError);
+    try {
+      await useCase.execute(outputDir, { projectPath: process.cwd(), env: process.env });
+      expect.fail('expected CorrelationBlockedError');
+    } catch (error) {
+      expectBlockedError(error, (blocked) => {
+        expect(blocked.result.blockReason).toContain('Failed to search BM25 memory');
+      });
+    }
 
-    const scenarios = JSON.parse(await readFile(join(outputDir, 'required-scenarios.json'), 'utf8'));
-    expect(scenarios.status).toBe('BLOCKED');
-    expect(scenarios.blockReason).toContain('Failed to search BM25 memory');
+    await expectNoCorrelationArtifacts(outputDir);
   });
 });
+
+function expectBlockedError(
+  error: unknown,
+  assertions: (blocked: CorrelationBlockedError) => void,
+): void {
+  expect(error).toBeInstanceOf(CorrelationBlockedError);
+  assertions(error as CorrelationBlockedError);
+}
+
+async function expectNoCorrelationArtifacts(outputDir: string): Promise<void> {
+  await expect(access(join(outputDir, 'required-scenarios.json'))).rejects.toThrow();
+  await expect(access(join(outputDir, 'correlation-report.md'))).rejects.toThrow();
+}
 
 function buildUseCase(clickUpReader: ClickUpReaderPort): RunPipelineCorrelateUseCase {
   const loader = new MemoryMarkdownLoader();

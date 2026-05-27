@@ -254,6 +254,25 @@ describe('correlateCriterionWithDiff', () => {
     expect(withMemory.correlation.rationale).toContain('BM25 memory chunk route-login');
   });
 
+  it('does not boost score when memory chunk only matches affected route', () => {
+    const prDiff = consumePrDiffContext(BASE_PR_DIFF);
+    const memory = consumeMemorySearchResults([ROUTE_MEMORY_CHUNK]);
+
+    const withoutMemory = correlateCriterionWithDiff({
+      criterion: 'Billing invoice export supports CSV format',
+      prDiff,
+      memory: consumeMemorySearchResults([]),
+    });
+    const withMemory = correlateCriterionWithDiff({
+      criterion: 'Billing invoice export supports CSV format',
+      prDiff,
+      memory,
+    });
+
+    expect(withMemory.correlation.memoryChunk).toBeUndefined();
+    expect(withMemory.correlation.score).toBe(withoutMemory.correlation.score);
+  });
+
   it('does not retain a stale file when route match wins without a resolved route file', () => {
     const prDiff = consumePrDiffContext({
       ...BASE_PR_DIFF,

@@ -47,12 +47,12 @@ export class RunPipelineCorrelateUseCase {
       prDiff = await readPipelineArtifact(outputDir, 'pr-diff-context.json', PrDiffContextSchema);
     } catch (error) {
       if (error instanceof ConfigError && error.message.includes('not found')) {
-        return this.blockAndThrow(outputDir, {
+        return this.blockAndThrow({
           blockReason: 'Pipeline artifact not found: pr-diff-context.json',
         });
       }
       if (error instanceof ConfigError) {
-        return this.blockAndThrow(outputDir, {
+        return this.blockAndThrow({
           blockReason: describePipelineArtifactError(error),
         });
       }
@@ -61,8 +61,7 @@ export class RunPipelineCorrelateUseCase {
     const clickUpTaskId = prDiff.pullRequest.clickUpTaskId?.trim();
 
     if (!clickUpTaskId) {
-      return this.blockAndThrow(outputDir, {
-        prNumber: prDiff.pullRequest.prNumber,
+      return this.blockAndThrow({
         blockReason:
           'pullRequest.clickUpTaskId is missing; run pipeline prepare with a PR linked to ClickUp',
       });
@@ -70,8 +69,7 @@ export class RunPipelineCorrelateUseCase {
 
     const token = env.CLICKUP_TOKEN?.trim() ?? '';
     if (!token) {
-      return this.blockAndThrow(outputDir, {
-        prNumber: prDiff.pullRequest.prNumber,
+      return this.blockAndThrow({
         blockReason: 'CLICKUP_TOKEN is missing; cannot fetch demand context',
       });
     }
@@ -88,14 +86,12 @@ export class RunPipelineCorrelateUseCase {
       demand = persisted.demand;
     } catch (error) {
       if (error instanceof ClickUpReaderError) {
-        return this.blockAndThrow(outputDir, {
-          prNumber: prDiff.pullRequest.prNumber,
+        return this.blockAndThrow({
           blockReason: safeUserMessage(`Failed to fetch demand from ClickUp: ${error.message}`),
         });
       }
       if (error instanceof ZodError) {
-        return this.blockAndThrow(outputDir, {
-          prNumber: prDiff.pullRequest.prNumber,
+        return this.blockAndThrow({
           blockReason: safeUserMessage(`Invalid demand context schema: ${error.message}`),
         });
       }
@@ -110,8 +106,7 @@ export class RunPipelineCorrelateUseCase {
       memoryQuery = buildMemorySearchQuery(demand, prDiff);
     } catch (error) {
       if (error instanceof ZodError) {
-        return this.blockAndThrow(outputDir, {
-          prNumber: prDiff.pullRequest.prNumber,
+        return this.blockAndThrow({
           blockReason: safeUserMessage(`Invalid correlation input schema: ${error.message}`),
         });
       }
@@ -127,8 +122,7 @@ export class RunPipelineCorrelateUseCase {
         types: ['route', 'flow', 'scenario', 'semantic_locator'],
       });
     } catch (error) {
-      return this.blockAndThrow(outputDir, {
-        prNumber: prDiff.pullRequest.prNumber,
+      return this.blockAndThrow({
         blockReason: safeUserMessage(
           `Failed to search BM25 memory: ${error instanceof Error ? error.message : String(error)}`,
         ),
@@ -144,22 +138,21 @@ export class RunPipelineCorrelateUseCase {
         warnings: memoryResponse.warnings,
       });
     } catch (error) {
-      return this.blockAndThrow(outputDir, {
-        prNumber: prDiff.pullRequest.prNumber,
+      return this.blockAndThrow({
         blockReason: safeUserMessage(
           `Correlation failed: ${error instanceof Error ? error.message : String(error)}`,
         ),
       });
     }
 
+    if (result.status === 'BLOCKED') {
+      throw new CorrelationBlockedError(result);
+    }
+
     const paths = await this.persistArtifacts(outputDir, result, {
       demandTitle: demand.title,
       prNumber: prDiff.pullRequest.prNumber,
     });
-
-    if (result.status === 'BLOCKED') {
-      throw new CorrelationBlockedError(result, paths.requiredScenariosPath, paths.correlationReportPath);
-    }
 
     return {
       result,
@@ -178,12 +171,8 @@ export class RunPipelineCorrelateUseCase {
     return this.artifactsWriter.write(outputDir, result, context);
   }
 
-  private async blockAndThrow(
-    outputDir: string,
-    input: { prNumber?: number; blockReason: string },
-  ): Promise<never> {
+  private blockAndThrow(input: { blockReason: string }): never {
     const result = createBlockedCorrelationResult(input.blockReason);
-    const paths = await this.persistArtifacts(outputDir, result, { prNumber: input.prNumber });
-    throw new CorrelationBlockedError(result, paths.requiredScenariosPath, paths.correlationReportPath);
+    throw new CorrelationBlockedError(result);
   }
 }

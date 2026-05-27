@@ -104,6 +104,64 @@ describe('detectDemandDiffMismatch', () => {
     expect(detectDemandDiffMismatch({ demand, prDiff })).toEqual([]);
   });
 
+  it('emits mismatch when only one of many criteria aligns with the diff', () => {
+    const billingCriteria = Array.from({ length: 10 }, (_, index) =>
+      `Billing invoice export feature ${index + 1} supports CSV format`,
+    );
+    const demand = consumeDemandContext({
+      ...LOGIN_DEMAND,
+      title: 'Billing and login platform work',
+      description: 'Mixed billing exports and login validation',
+      acceptanceCriteria: [
+        ...billingCriteria,
+        'Login routes validates user credentials on /login path',
+      ],
+    });
+    const prDiff = consumePrDiffContext(LOGIN_PR_DIFF);
+
+    const risks = detectDemandDiffMismatch({ demand, prDiff });
+
+    expect(risks).toHaveLength(1);
+    expect(risks[0]?.type).toBe('demand_diff_mismatch');
+    expect(risks[0]?.description).toContain('1/11 criteria covered');
+  });
+
+  it('emits mismatch when fewer than half of criteria align with the diff', () => {
+    const demand = consumeDemandContext({
+      ...LOGIN_DEMAND,
+      title: 'Login and billing updates',
+      description: 'Session and billing maintenance',
+      acceptanceCriteria: [
+        'Login routes validates user credentials on /login path',
+        'Authentication session timeout policy on dashboard',
+        'Billing invoice export supports CSV format',
+        'Billing dashboard reconciles monthly statements',
+      ],
+    });
+    const prDiff = consumePrDiffContext(LOGIN_PR_DIFF);
+
+    const risks = detectDemandDiffMismatch({ demand, prDiff });
+
+    expect(risks).toHaveLength(1);
+    expect(risks[0]?.type).toBe('demand_diff_mismatch');
+    expect(risks[0]?.description).toContain('1/4 criteria covered');
+  });
+
+  it('returns no mismatch when at least half of criteria align with the diff', () => {
+    const demand = consumeDemandContext({
+      ...LOGIN_DEMAND,
+      title: 'Login hardening',
+      description: 'Improve login route validation',
+      acceptanceCriteria: [
+        'Login routes validates user credentials on /login path',
+        'Login route rejects invalid passwords on /login path',
+      ],
+    });
+    const prDiff = consumePrDiffContext(LOGIN_PR_DIFF);
+
+    expect(detectDemandDiffMismatch({ demand, prDiff })).toEqual([]);
+  });
+
   it('returns no risks when demand has no tokenizable text', () => {
     const demand = consumeDemandContext({
       ...LOGIN_DEMAND,
