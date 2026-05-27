@@ -9,6 +9,7 @@ import type {
 } from '../../domain/schemas/correlation.schema.js';
 import { createBlockedCorrelationResult } from '../../domain/schemas/correlation.schema.js';
 import { createCorrelationItem } from '../../domain/schemas/correlation-item.schema.js';
+import { createRiskItem } from '../../domain/schemas/risk-item.schema.js';
 import type { DemandContext } from '../../domain/schemas/demand-context.schema.js';
 import type { MemorySearchResult } from '../../domain/schemas/memory.schema.js';
 import type { PrDiffContext } from '../../domain/schemas/pr-diff-context.schema.js';
@@ -54,11 +55,13 @@ export class DemandDiffMemoryCorrelatorService {
       correlations.push(match.correlation);
 
       if (match.correlation.score < MIN_OVERLAP_SCORE) {
-        risks.push({
-          severity: 'HIGH',
-          description: `Acceptance criterion has no related changed file or route: "${truncate(criterion, 120)}"`,
-          type: 'uncovered_criterion',
-        });
+        risks.push(
+          createRiskItem({
+            severity: 'HIGH',
+            description: `Acceptance criterion has no related changed file or route: "${truncate(criterion, 120)}"`,
+            type: 'uncovered_criterion',
+          }),
+        );
         continue;
       }
 
@@ -109,12 +112,14 @@ export class DemandDiffMemoryCorrelatorService {
       if (!file.negativeLines.length) {
         continue;
       }
-      risks.push({
-        severity: file.negativeLines.length > 5 ? 'HIGH' : 'MEDIUM',
-        description: `${file.negativeLines.length} removed line(s) in ${file.path} may indicate regression risk`,
-        relatedFile: file.path,
-        type: 'regression',
-      });
+      risks.push(
+        createRiskItem({
+          severity: file.negativeLines.length > 5 ? 'HIGH' : 'MEDIUM',
+          description: `${file.negativeLines.length} removed line(s) in ${file.path} may indicate regression risk`,
+          relatedFile: file.path,
+          type: 'regression',
+        }),
+      );
     }
     return risks;
   }

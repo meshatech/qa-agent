@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { CorrelationItemSchema } from './correlation-item.schema.js';
+import { RiskItemSchema } from './risk-item.schema.js';
 import { ScenarioIntentSchema } from './scenario-intent.schema.js';
 
 export {
@@ -9,18 +10,15 @@ export {
   type CorrelationItem,
 } from './correlation-item.schema.js';
 
-export const RiskSeveritySchema = z.enum(['LOW', 'MEDIUM', 'HIGH']);
-
-export const RiskTypeSchema = z.enum(['regression', 'uncovered_criterion', 'missing_memory', 'other']);
-
-export const RiskItemSchema = z
-  .object({
-    severity: RiskSeveritySchema,
-    description: z.string().min(1),
-    relatedFile: z.string().optional(),
-    type: RiskTypeSchema,
-  })
-  .strict();
+export {
+  RiskItemSchema,
+  RiskSeveritySchema,
+  RiskTypeSchema,
+  createRiskItem,
+  type RiskItem,
+  type RiskSeverity,
+  type RiskType,
+} from './risk-item.schema.js';
 
 export const RequiredScenarioSchema = z
   .object({
@@ -47,9 +45,6 @@ export const CorrelationResultSchema = z
   })
   .strict();
 
-export type RiskSeverity = z.infer<typeof RiskSeveritySchema>;
-export type RiskType = z.infer<typeof RiskTypeSchema>;
-export type RiskItem = z.infer<typeof RiskItemSchema>;
 export type RequiredScenario = z.infer<typeof RequiredScenarioSchema>;
 export type CorrelationStatus = z.infer<typeof CorrelationStatusSchema>;
 export type CorrelationResult = z.infer<typeof CorrelationResultSchema>;
