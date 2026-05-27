@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 
 import { consumeDemandContext } from '../../domain/helpers/demand-context-consumer.js';
+import type { ConsumedPrDiffContext } from '../../domain/helpers/pr-diff-context-consumer.js';
+import { consumePrDiffContext } from '../../domain/helpers/pr-diff-context-consumer.js';
 import { overlapScore, pathTokens, tokenize, truncate } from '../../domain/helpers/correlation-lexical.js';
 import type {
   CorrelationItem,
@@ -40,22 +42,21 @@ export class DemandDiffMemoryCorrelatorService {
       );
     }
 
-    const hasChangedFiles = input.prDiff.changedFiles.length > 0;
-    const hasAffectedSignals =
-      input.prDiff.affectedRoutes.length > 0 || input.prDiff.affectedSchemas.length > 0;
-    if (!hasChangedFiles && !hasAffectedSignals) {
+    const prDiff = consumePrDiffContext(input.prDiff);
+
+    if (!prDiff.hasDiffSignal) {
       return createBlockedCorrelationResult(
         'changedFiles is empty and no affectedRoutes/affectedSchemas; insufficient PR diff signal',
         warnings,
       );
     }
 
-    const risks = this.collectRegressionRisks(input.prDiff);
+    const risks = this.collectRegressionRisks(prDiff);
     const correlations: CorrelationItem[] = [];
     const scenarios: RequiredScenario[] = [];
 
     for (const criterion of demand.acceptanceCriteria) {
-      const match = this.findBestCriterionMatch(criterion, input.prDiff, input.memoryResults);
+      const match = this.findBestCriterionMatch(criterion, prDiff, input.memoryResults);
       correlations.push(match.correlation);
 
       if (match.correlation.score < MIN_OVERLAP_SCORE) {
@@ -87,7 +88,7 @@ export class DemandDiffMemoryCorrelatorService {
     }
 
     if (!scenarios.length) {
-      const routeScenarios = this.buildRouteFallbackScenarios(input.prDiff, input.memoryResults);
+      const routeScenarios = this.buildRouteFallbackScenarios(prDiff, input.memoryResults);
       scenarios.push(...routeScenarios.slice(0, MAX_SCENARIOS));
     }
 
@@ -112,7 +113,7 @@ export class DemandDiffMemoryCorrelatorService {
     };
   }
 
-  private collectRegressionRisks(prDiff: PrDiffContext): RiskItem[] {
+  private collectRegressionRisks(prDiff: ConsumedPrDiffContext): RiskItem[] {
     const risks: RiskItem[] = [];
     for (const file of prDiff.changedFiles) {
       if (!file.negativeLines.length) {
@@ -132,7 +133,7 @@ export class DemandDiffMemoryCorrelatorService {
 
   private findBestCriterionMatch(
     criterion: string,
-    prDiff: PrDiffContext,
+    prDiff: ConsumedPrDiffContext,
     memoryResults: MemorySearchResult[],
   ): { correlation: CorrelationItem; relatedFiles: string[] } {
     const criterionTokens = tokenize(criterion);
@@ -190,7 +191,7 @@ export class DemandDiffMemoryCorrelatorService {
 
   private memoryBoost(
     criterionTokens: Set<string>,
-    prDiff: PrDiffContext,
+    prDiff: ConsumedPrDiffContext,
     memoryResults: MemorySearchResult[],
   ): { boost: number; chunkId: string; rationale: string } | undefined {
     const relevantTypes = new Set(['route', 'flow', 'scenario']);
@@ -220,7 +221,7 @@ export class DemandDiffMemoryCorrelatorService {
   }
 
   private buildRouteFallbackScenarios(
-    prDiff: PrDiffContext,
+    prDiff: ConsumedPrDiffContext,
     memoryResults: MemorySearchResult[],
   ): RequiredScenario[] {
     const scenarios: RequiredScenario[] = [];
