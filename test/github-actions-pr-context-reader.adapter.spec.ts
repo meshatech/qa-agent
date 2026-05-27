@@ -5,7 +5,9 @@ import { tmpdir } from 'node:os';
 
 import { PrContextReaderError } from '../src/domain/errors.js';
 import type { GitRepositoryPort } from '../src/application/ports/git-repository.port.js';
+import { ExecGitRepositoryAdapter } from '../src/infra/git/exec-git-repository.adapter.js';
 import { GitHubActionsPrContextReaderAdapter } from '../src/infra/github/github-actions-pr-context-reader.adapter.js';
+import { cleanupGitFixtures, initRepoWithOriginMain } from './helpers/git-fixtures.js';
 
 let tempDirs: string[] = [];
 let originalEnv: NodeJS.ProcessEnv;
@@ -19,6 +21,7 @@ afterEach(async () => {
   Object.entries(originalEnv).forEach(([key, value]) => {
     if (value !== undefined) process.env[key] = value;
   });
+  await cleanupGitFixtures();
   await Promise.all(tempDirs.map((dir) => rm(dir, { recursive: true, force: true })));
   tempDirs = [];
 });
@@ -119,5 +122,25 @@ describe('GitHubActionsPrContextReaderAdapter', () => {
     const adapter = new GitHubActionsPrContextReaderAdapter(git);
 
     await expect(adapter.read({ cwd: dir, env })).rejects.toBe(gitError);
+  });
+
+  it('captures raw git diff end-to-end with real git repository', async () => {
+    const repoDir = await initRepoWithOriginMain();
+    const { dir, eventPath } = await writePullRequestEvent();
+    const env = buildPrEnv(eventPath, repoDir);
+    const adapter = new GitHubActionsPrContextReaderAdapter(new ExecGitRepositoryAdapter());
+
+    const result = await adapter.read({ cwd: repoDir, env });
+
+    expect(result.pullRequest).toEqual({
+      prNumber: 42,
+      baseBranch: 'main',
+      headBranch: 'feature/test',
+      title: 'Fix login flow',
+      author: 'octocat',
+    });
+    expect(result.rawDiff).toContain('README.md');
+    expect(result.rawDiff).toContain('-base');
+    expect(result.rawDiff).toContain('+changed');
   });
 });

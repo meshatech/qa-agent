@@ -20,6 +20,10 @@ function sanitizeGitErrorMessage(message: string): string {
   return sanitized;
 }
 
+export function buildPullRequestDiffArgs(baseBranch: string): readonly [string, string] {
+  return ['diff', `origin/${baseBranch}...HEAD`] as const;
+}
+
 @Injectable()
 export class ExecGitRepositoryAdapter implements GitRepositoryPort {
   async isShallowRepository(cwd: string): Promise<boolean> {
@@ -81,15 +85,11 @@ export class ExecGitRepositoryAdapter implements GitRepositoryPort {
 
   async diffPullRequest(baseBranch: string, cwd: string): Promise<string> {
     try {
-      const { stdout } = await execFileAsync(
-        'git',
-        ['diff', `origin/${baseBranch}...HEAD`],
-        {
-          cwd,
-          encoding: 'utf8',
-          maxBuffer: 10 * 1024 * 1024,
-        },
-      );
+      const { stdout } = await execFileAsync('git', [...buildPullRequestDiffArgs(baseBranch)], {
+        cwd,
+        encoding: 'utf8',
+        maxBuffer: 10 * 1024 * 1024,
+      });
       return stdout;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
