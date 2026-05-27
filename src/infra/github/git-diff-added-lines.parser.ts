@@ -1,17 +1,5 @@
 import { DiffLineSchema, type DiffLine } from '../../domain/schemas/diff-line.schema.js';
-
-const HUNK_HEADER_PATTERN = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
-
-function isFileMetadataLine(line: string): boolean {
-  return (
-    line.startsWith('diff --git ') ||
-    line.startsWith('index ') ||
-    line.startsWith('--- ') ||
-    line.startsWith('+++ ') ||
-    line.startsWith('Binary files ') ||
-    line.startsWith('GIT binary patch')
-  );
-}
+import { HUNK_HEADER_PATTERN, isFileMetadataLine } from './git-diff.parser.shared.js';
 
 export function parseGitDiffAddedLines(rawDiff: string): DiffLine[] {
   if (rawDiff === '') {
