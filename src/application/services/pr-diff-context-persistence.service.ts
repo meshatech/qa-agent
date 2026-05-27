@@ -2,11 +2,12 @@ import { Inject, Injectable } from '@nestjs/common';
 
 import type { GitHubActionsPrContextReaderPort } from '../ports/github-actions-pr-context-reader.port.js';
 import type { PrDiffContextWriterPort } from '../ports/pr-diff-context-writer.port.js';
+import { buildPrDiffContextFromReadResult } from '../mappers/pr-diff-context.mapper.js';
 import {
   PrDiffContextSchema,
-  buildPrDiffContextFromReadResult,
   type PrDiffContext,
 } from '../../domain/schemas/pr-diff-context.schema.js';
+import { collectKnownSecretsFromEnv } from './known-secrets.collector.js';
 import { SanitizerService } from './sanitizer.service.js';
 
 export interface PrDiffContextPersistResult {
@@ -34,7 +35,9 @@ export class PrDiffContextPersistenceService {
     });
     const built = buildPrDiffContextFromReadResult(readResult);
     const validated = PrDiffContextSchema.parse(built);
-    const sanitized = this.sanitizer.sanitizeForOutput(validated, options?.knownSecrets ?? []);
+    const env = options?.env ?? process.env;
+    const secrets = collectKnownSecretsFromEnv(env, options?.knownSecrets ?? []);
+    const sanitized = this.sanitizer.sanitizeForOutput(validated, secrets);
     const path = await this.writer.write(outputDir, sanitized);
     return { path, context: sanitized };
   }

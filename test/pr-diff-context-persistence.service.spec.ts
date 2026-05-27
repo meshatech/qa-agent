@@ -100,6 +100,42 @@ describe('PrDiffContextPersistenceService', () => {
     expect(context.changedFiles[0]?.positiveLines[0]?.content).toContain('***REDACTED***');
   });
 
+  it('redacts secrets from env without explicit knownSecrets option', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'agent-qa-pr-diff-context-persist-'));
+    tempDirs.push(dir);
+    const envSecret = 'custom_pipeline_secret_xyz';
+    const prContextReader: GitHubActionsPrContextReaderPort = {
+      read: vi.fn(async () => ({
+        ...VALID_READ_RESULT,
+        changedFiles: [
+          {
+            ...VALID_READ_RESULT.changedFiles[0]!,
+            positiveLines: [
+              {
+                type: 'added' as const,
+                lineNumber: 1,
+                content: `token=${envSecret}`,
+              },
+            ],
+          },
+        ],
+      })),
+    };
+    const service = new PrDiffContextPersistenceService(
+      new FilePrDiffContextWriterAdapter(),
+      prContextReader,
+      new SanitizerService(),
+    );
+
+    const { path } = await service.persistFromGitHubActions(dir, {
+      env: { GITHUB_TOKEN: envSecret },
+    });
+    const raw = await readFile(path, 'utf8');
+
+    expect(raw).not.toContain(envSecret);
+    expect(raw).toContain('***REDACTED***');
+  });
+
   it('persists empty diff when reader returns no changed files', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'agent-qa-pr-diff-context-persist-'));
     tempDirs.push(dir);

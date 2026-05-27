@@ -170,6 +170,12 @@ describe('PipelinePreflightService', () => {
   });
 
   it('returns BLOCKED when required env is missing', async () => {
+    delete process.env.CLICKUP_TOKEN;
+    delete process.env.CLICKUP_TASK_ID;
+    delete process.env.GITHUB_TOKEN;
+    delete process.env.GH_TOKEN;
+    delete process.env.INPUT_GITHUB_TOKEN;
+
     const outputDir = await tempDir();
     const result = await makeService().run(outputDir);
 
