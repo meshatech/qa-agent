@@ -8,16 +8,15 @@ import type { ConsumedMemorySearchContext } from '../../domain/helpers/memory-se
 import { consumeMemorySearchResults } from '../../domain/helpers/memory-search-consumer.js';
 import type { ConsumedPrDiffContext } from '../../domain/helpers/pr-diff-context-consumer.js';
 import { consumePrDiffContext } from '../../domain/helpers/pr-diff-context-consumer.js';
+import { detectUncoveredCriteria } from '../../domain/helpers/uncovered-criterion-detector.js';
 import { pathTokens, truncate } from '../../domain/helpers/correlation-lexical.js';
 import type {
-  CorrelationItem,
   CorrelationResult,
   RequiredScenario,
   RiskItem,
 } from '../../domain/schemas/correlation.schema.js';
 import { createBlockedCorrelationResult } from '../../domain/schemas/correlation.schema.js';
 import { createRequiredScenario } from '../../domain/schemas/required-scenario.schema.js';
-import { createRiskItem } from '../../domain/schemas/risk-item.schema.js';
 import type { DemandContext } from '../../domain/schemas/demand-context.schema.js';
 import type { MemorySearchResult } from '../../domain/schemas/memory.schema.js';
 import type { PrDiffContext } from '../../domain/schemas/pr-diff-context.schema.js';
@@ -61,28 +60,30 @@ export class DemandDiffMemoryCorrelatorService {
       ...correlateNegativeDiffRegressions({ prDiff, memory }),
       ...detectDemandDiffMismatch({ demand, prDiff }),
     ];
-    const correlations: CorrelationItem[] = [];
     const scenarios: RequiredScenario[] = [];
 
-    for (const criterion of demand.acceptanceCriteria) {
-      const match = correlateCriterionWithDiff({ criterion, prDiff, memory });
-      correlations.push(match.correlation);
+    const matches = demand.acceptanceCriteria.map((criterion) =>
+      correlateCriterionWithDiff({ criterion, prDiff, memory }),
+    );
+    const correlations = matches.map((match) => match.correlation);
 
+    risks.push(
+      ...detectUncoveredCriteria({
+        acceptanceCriteria: demand.acceptanceCriteria,
+        correlations,
+        minOverlapScore: MIN_OVERLAP_SCORE,
+      }).risks,
+    );
+
+    for (const match of matches) {
       if (match.correlation.score < MIN_OVERLAP_SCORE) {
-        risks.push(
-          createRiskItem({
-            severity: 'HIGH',
-            description: `Acceptance criterion has no related changed file or route: "${truncate(criterion, 120)}"`,
-            type: 'uncovered_criterion',
-          }),
-        );
         continue;
       }
 
       scenarios.push(
         createRequiredScenario({
           id: `required-scenario-${scenarios.length + 1}`,
-          title: truncate(criterion, 100),
+          title: truncate(match.correlation.criterion, 100),
           intent: 'POSITIVE',
           rationale: match.correlation.rationale,
           relatedFiles: match.relatedFiles,

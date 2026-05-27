@@ -103,4 +103,48 @@ describe('renderCorrelationReport', () => {
     expect(markdown).toContain('demand_diff_mismatch');
     expect(markdown).toContain('low lexical overlap');
   });
+
+  it('renders uncovered_criterion risk in markdown report', () => {
+    const service = new DemandDiffMemoryCorrelatorService();
+    const result = service.correlate({
+      demand: {
+        taskId: 'PRJ-11402',
+        title: 'Login improvements',
+        description: 'Improve login',
+        acceptanceCriteria: ['Billing invoice export supports CSV format'],
+        attachments: [],
+        status: 'fazendo',
+        assignees: [],
+        priority: null,
+        dueDate: null,
+      },
+      prDiff: {
+        schemaVersion: 'pr-diff-context.v1',
+        pullRequest: {
+          prNumber: 1,
+          baseBranch: 'main',
+          headBranch: 'feature/login',
+          title: 'PRJ-11402 login',
+          author: 'dev',
+        },
+        changedFiles: [
+          {
+            path: 'src/routes/login.ts',
+            status: 'modified',
+            kind: 'route',
+            positiveLines: [],
+            negativeLines: [],
+            contextLines: [],
+          },
+        ],
+        affectedRoutes: ['/login'],
+        affectedSchemas: [],
+      },
+      memoryResults: [],
+    });
+
+    const markdown = renderCorrelationReport(result);
+    expect(markdown).toContain('uncovered_criterion');
+    expect(markdown).toContain('Billing invoice export supports CSV format');
+  });
 });
