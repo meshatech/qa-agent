@@ -54,7 +54,7 @@ afterEach(async () => {
 });
 
 describe('FileCorrelationArtifactsWriterAdapter', () => {
-  it('writes required-scenarios.json and returns absolute path', async () => {
+  it('writes required-scenarios.json and correlation-report.md from result', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'agent-qa-correlation-artifacts-writer-'));
     tempDirs.push(dir);
     const adapter = new FileCorrelationArtifactsWriterAdapter();
@@ -64,11 +64,17 @@ describe('FileCorrelationArtifactsWriterAdapter', () => {
       memoryResults: [],
     });
 
-    const reportMarkdown = prepareCorrelationReportArtifact(result);
-    const paths = await adapter.write(dir, result, reportMarkdown);
+    const paths = await adapter.write(dir, result, {
+      demandTitle: BASE_DEMAND.title,
+      prNumber: BASE_PR_DIFF.pullRequest.prNumber,
+    });
 
     const raw = await readFile(paths.requiredScenariosPath, 'utf8');
     const parsed = CorrelationResultSchema.parse(JSON.parse(raw));
+    const reportMarkdown = prepareCorrelationReportArtifact(result, {
+      demandTitle: BASE_DEMAND.title,
+      prNumber: BASE_PR_DIFF.pullRequest.prNumber,
+    });
 
     expect(paths.requiredScenariosPath.endsWith('required-scenarios.json')).toBe(true);
     expect(paths.correlationReportPath.endsWith('correlation-report.md')).toBe(true);
@@ -86,7 +92,7 @@ describe('FileCorrelationArtifactsWriterAdapter', () => {
       memoryResults: [],
     });
 
-    const paths = await adapter.write(dir, result, '# Correlation Report');
+    const paths = await adapter.write(dir, result);
 
     await expect(access(`${paths.requiredScenariosPath}.tmp`)).rejects.toThrow();
     await expect(access(`${paths.correlationReportPath}.tmp`)).rejects.toThrow();
@@ -108,7 +114,7 @@ describe('FileCorrelationArtifactsWriterAdapter', () => {
     const tmpPath = `${finalPath}.tmp`;
     await mkdir(finalPath);
 
-    await expect(adapter.write(dir, result, '# Correlation Report')).rejects.toThrow();
+    await expect(adapter.write(dir, result)).rejects.toThrow();
     await expect(access(tmpPath)).rejects.toThrow();
   });
 });

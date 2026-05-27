@@ -1,3 +1,4 @@
+import type { CorrelationReportContext } from '../../domain/helpers/correlation-report.renderer.js';
 import type { CorrelationResult } from '../../domain/schemas/correlation.schema.js';
 
 export interface CorrelationArtifactsWriteResult {
@@ -9,6 +10,6 @@ export interface CorrelationArtifactsWriterPort {
   write(
     outputDir: string,
     result: CorrelationResult,
-    reportMarkdown: string,
+    context?: CorrelationReportContext,
   ): Promise<CorrelationArtifactsWriteResult>;
 }

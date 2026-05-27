@@ -13,7 +13,6 @@ import {
   type CorrelationResult,
 } from '../../domain/schemas/correlation.schema.js';
 import { PrDiffContextSchema } from '../../domain/schemas/pr-diff-context.schema.js';
-import { prepareCorrelationReportArtifact } from '../../domain/helpers/correlation-report-artifact.js';
 import type { CorrelationReportContext } from '../../domain/helpers/correlation-report.renderer.js';
 
 @Injectable()
@@ -109,8 +108,7 @@ export class RunPipelineCorrelateUseCase {
     result: CorrelationResult,
     context: CorrelationReportContext,
   ) {
-    const reportMarkdown = prepareCorrelationReportArtifact(result, context);
-    return this.artifactsWriter.write(outputDir, result, reportMarkdown);
+    return this.artifactsWriter.write(outputDir, result, context);
   }
 
   private async blockAndThrow(
