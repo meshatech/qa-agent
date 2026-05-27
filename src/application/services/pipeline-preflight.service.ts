@@ -20,6 +20,8 @@ import {
   type PreflightReport,
 } from '../../domain/schemas/preflight-report.schema.js';
 import { ConfigError, PreflightBlockedError } from '../../domain/errors.js';
+import { resolveHeadBranchFromEnv } from '../../infra/github/github-actions-pr-refs.resolver.js';
+import { collectKnownSecretsFromEnv } from './known-secrets.collector.js';
 import { SanitizerService } from './sanitizer.service.js';
 
 type PreflightCheckStatus = PreflightCheckItem['status'];
@@ -209,7 +211,7 @@ export class PipelinePreflightService {
   }
 
   private readBranchHead(): { ok: boolean; branchHead?: string; missing: string[] } {
-    const branchHead = process.env.GITHUB_HEAD_REF?.trim() ?? '';
+    const branchHead = resolveHeadBranchFromEnv(process.env);
     if (!branchHead) {
       return { ok: false, missing: ['GITHUB_HEAD_REF'] };
     }
@@ -284,21 +286,8 @@ export class PipelinePreflightService {
     return { ok: errors.length === 0, errors, configPath };
   }
 
-  private collectKnownSecrets(): string[] {
-    const unique = new Set<string>();
-    for (const value of [
-      process.env.CLICKUP_TOKEN,
-      process.env.CLICKUP_TASK_ID,
-      ...GITHUB_TOKEN_ENV_KEYS.map((key) => process.env[key]),
-    ]) {
-      const trimmed = value?.trim() ?? '';
-      if (trimmed) unique.add(trimmed);
-    }
-    return [...unique];
-  }
-
   private sanitizeReport(report: PreflightReport): PreflightReport {
-    const secrets = this.collectKnownSecrets();
+    const secrets = collectKnownSecretsFromEnv();
     const sanitized = this.sanitizer.sanitizeForOutput(report, secrets);
     const tokensMasked = !this.sanitizer.containsLeakedSecrets(JSON.stringify(sanitized), secrets);
     return { ...sanitized, tokensMasked };

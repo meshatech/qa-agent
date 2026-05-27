@@ -50,3 +50,21 @@ export class ClickUpReaderError extends Error {
     super(message);
   }
 }
+
+export type PrContextReaderErrorCode =
+  | 'MISSING_CONTEXT'
+  | 'INVALID_EVENT'
+  | 'BASE_BRANCH_UNAVAILABLE'
+  | 'GIT_DIFF_FAILED'
+  | 'VALIDATION_FAILED';
+
+export class PrContextReaderError extends Error {
+  readonly name = 'PrContextReaderError';
+  constructor(
+    message: string,
+    public readonly cause?: unknown,
+    public readonly code?: PrContextReaderErrorCode,
+  ) {
+    super(message);
+  }
+}

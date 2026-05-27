@@ -97,6 +97,50 @@ Princípio: LLM decide, harness executa, orchestrator governa, schemas validam, 
 
 ## Aprendizados de runtime
 
+<!-- type: runtime_learning | id: LEARN-CLICKUP-DEMAND-RUN-001 -->
+
+`RunAgentUseCase` persiste `demand-context.json` no diretório do run quando `CLICKUP_TOKEN` está no env e há task id via `CLICKUP_TASK_ID` ou `config.clickup.taskId` (opcional `config.clickup.teamId` para custom IDs). Sem token ou task id, o run segue sem persistência ClickUp. Falha na leitura/persistência ClickUp loga warning e o run continua. Preflight continua validando token/leitura/task id antes do pipeline CI.
+
+<!-- type: runtime_learning | id: LEARN-GITHUB-PR-CONTEXT-001 -->
+
+`GitHubActionsPrContextReaderPort.read()` monta `PullRequestContext` a partir de `GITHUB_*` + `GITHUB_EVENT_PATH` (eventos `pull_request` / `pull_request_target`) e retorna também `rawDiff` via `git diff origin/${GITHUB_BASE_REF}...HEAD` (`buildPullRequestDiffArgs`), `changedFiles` classificados (`parseGitDiffChangedFiles` + `classifyChangedFiles`, PRJ-11388), `affectedRoutes` (`detectAffectedRoutes`, PRJ-11389) e `affectedSchemas` (`detectAffectedSchemas`, PRJ-11390). `headBranch` é metadado; tip do diff é `HEAD` (merge ref em GHA). Diff vazio → `rawDiff === ''`, `changedFiles === []`, `affectedRoutes === []`, `affectedSchemas === []`. Persistência em `pr-diff-context.json` via `qa-agent read-pr-context` (PRJ-11391). Testes E2E: reader + `ExecGitRepositoryAdapter` real. Erros estruturados: `PrContextReaderError`. Preflight (`validateCheckoutHistory`) já garante shallow checkout e `origin/${base}` antes do pipeline.
+
+<!-- type: runtime_learning | id: LEARN-GITHUB-DIFF-PARSER-001 -->
+
+`parseGitDiffAddedLines(rawDiff)` em `git-diff-added-lines.parser.ts` extrai `DiffLine[]` com `type: 'added'`. Metadados compartilhados em `git-diff.parser.shared.ts`. Linhas `+` (não `+++`) viram `content` sem prefixo; `lineNumber` segue contador do lado novo do hunk (`@@ ... +newStart ... @@`), incrementando também em linhas de contexto (` `). Removidas (`-`) e marcadores `\ No newline` não incrementam o contador novo. Saída validada por `DiffLineSchema`. Wiring no reader/`ChangedFile.positiveLines` adiado para PRJ-11388.
+
+<!-- type: runtime_learning | id: LEARN-GITHUB-DIFF-PARSER-002 -->
+
+`parseGitDiffRemovedLines(rawDiff)` em `git-diff-removed-lines.parser.ts` extrai `DiffLine[]` com `type: 'removed'`. Mesmos metadados ignorados que PRJ-11385. Linhas `-` (não `---`) viram `content` sem prefixo; `lineNumber` segue contador do lado antigo do hunk (`@@ -oldStart ... @@`), incrementando também em linhas de contexto (` `). Adicionadas (`+`) e marcadores `\ No newline` não incrementam o contador antigo. Saída validada por `DiffLineSchema`. Wiring no reader/`ChangedFile.negativeLines` adiado para PRJ-11388.
+
+<!-- type: runtime_learning | id: LEARN-GITHUB-DIFF-PARSER-003 -->
+
+`parseGitDiffContextLines(rawDiff)` em `git-diff-context-lines.parser.ts` extrai `DiffLine[]` com `type: 'context'`. Metadados compartilhados em `git-diff.parser.shared.ts` (`HUNK_HEADER_PATTERN`, `isFileMetadataLine`). Linhas com prefixo espaço (` `) viram `content` sem prefixo; `lineNumber` segue contador do lado novo do hunk (`@@ ... +newStart ... @@`). Adicionadas (`+`) incrementam contador sem emitir; removidas (`-`) não incrementam. Limite de contexto fica para consumidor (PRJ-11388+).
+
+<!-- type: runtime_learning | id: LEARN-GITHUB-CHANGED-FILES-001 -->
+
+`parseGitDiffChangedFiles(rawDiff)` monta `ChangedFile[]` por seção `diff --git` (`path`, `status`, `positiveLines`, `negativeLines`, `contextLines`). Status: `--- /dev/null` → `added`; `+++ /dev/null` → `removed`; senão `modified`. `classifyChangedFileKind(path)` atribui `kind` determinístico (`test` > `schema` > `route` > `infra` > `docs` > `other`) por path/extensão. `GitHubActionsPrContextReaderAdapter.read()` retorna `changedFiles` em `PrContextReadResult`. PRJ-11389/11390 filtram por `kind`; PRJ-11391 persiste JSON.
+
+<!-- type: runtime_learning | id: LEARN-GITHUB-AFFECTED-ROUTES-001 -->
+
+`detectAffectedRoutes(changedFiles)` filtra `kind === 'route'` e deriva rotas via `extractRouteFromChangedFilePath` (segmento `routes/` ou `pages/`, strip extensão, colapsa `index`). Saída deduplicada e ordenada (`/home`, `/admin/users`, …). Exposta em `PrContextReadResult.affectedRoutes` e serializada em `pr-diff-context.json` (PRJ-11391).
+
+<!-- type: runtime_learning | id: LEARN-GITHUB-AFFECTED-SCHEMAS-001 -->
+
+`detectAffectedSchemas(changedFiles)` filtra `kind === 'schema'` e deriva identificadores via `extractSchemaIdentifierFromChangedFilePath` (`.schema.ts` → basename sem sufixo; senão path sem extensão final). Saída deduplicada e ordenada (`changed-file`, `pull-request-context`, …). Exposta em `PrContextReadResult.affectedSchemas` e serializada em `pr-diff-context.json` (PRJ-11391).
+
+<!-- type: runtime_learning | id: LEARN-GITHUB-PR-DIFF-CONTEXT-001 -->
+
+`PrDiffContextPersistenceService.persistFromGitHubActions(outputDir)` chama `GitHubActionsPrContextReaderPort.read()`, mapeia via `buildPrDiffContextFromReadResult` em `application/mappers/pr-diff-context.mapper.ts` (sem `rawDiff`), valida `PrDiffContextSchema` (`schemaVersion: pr-diff-context.v1`), sanitiza com `SanitizerService` + `collectKnownSecretsFromEnv` (CLICKUP/GITHUB tokens do env) e grava `{outputDir}/pr-diff-context.json` via writer atômico (tmp + rename). CLI: `qa-agent read-pr-context --output-dir ./.agent-qa/pipeline`. Falha propaga `PrContextReaderError`. Consumo pelo correlator fica para PRJ-11392+.
+
+<!-- type: runtime_learning | id: LEARN-GITHUB-PR-REFS-001 -->
+
+Refs do PR vêm de `github-actions-pr-refs.resolver.ts`: `prNumber` via `GITHUB_REF` (`refs/pull/N/merge`) → `GITHUB_PR_NUMBER` → `pull_request.number` em `GITHUB_EVENT_PATH`; `baseBranch`/`headBranch` de `GITHUB_BASE_REF`/`GITHUB_HEAD_REF`. `FileGitHubEventContextAdapter` reutiliza o mesmo resolver de `prNumber`. Ausência de qualquer ref retorna `undefined` em `resolveGitHubActionsPrRefs` (mapper lança `PrContextReaderError` `MISSING_CONTEXT`). Preflight `readBranchHead()` usa o mesmo `resolveHeadBranchFromEnv` e reporta ausência em `preflight-report.checks.branchHead`.
+
+<!-- type: runtime_learning | id: LEARN-GITHUB-BASE-BRANCH-001 -->
+
+Antes do `git diff`, `GitHubActionsPrContextReaderAdapter` chama `GitRepositoryPort.ensureBaseBranchAvailable(baseBranch, cwd)`: verifica `origin/${baseBranch}`; se ausente e checkout não-shallow, executa `git fetch origin ${base}:refs/remotes/origin/${base}` via `execFile`. Falha com `PrContextReaderError` code `BASE_BRANCH_UNAVAILABLE`. Preflight continua gate CI sem fetch. Testes de integração cobrem fetch que restaura `origin/main` ausente e bloqueio em checkout shallow.
+
 <!-- type: runtime_learning | id: LEARN-PLACEHOLDER-001 -->
 
 _Placeholder_: learnings de locators, cenários pass/fail e recovery serão appendados aqui ou via pipeline de learning (PRJ-11323) após runs reais documentadas.

@@ -28,6 +28,7 @@ import { ReadinessEvaluatorService } from './services/readiness-evaluator.servic
 import { BaselineSmokeBuilderService } from './services/baseline-smoke-builder.service.js';
 import { PipelinePreflightService } from './services/pipeline-preflight.service.js';
 import { DemandContextPersistenceService } from './services/demand-context-persistence.service.js';
+import { PrDiffContextPersistenceService } from './services/pr-diff-context-persistence.service.js';
 import { QaToolRegistry } from './tools/qa-tool-registry.js';
 import { ALL_QA_TOOLS } from './tools/built-in/index.js';
 import { CaptureAuthUseCase } from './use-cases/capture-auth.usecase.js';
@@ -37,12 +38,14 @@ import { RunAgentUseCase } from './use-cases/run-agent.usecase.js';
 import { ValidateConfigUseCase } from './use-cases/validate-config.usecase.js';
 import { RunOnboardingUseCase } from './use-cases/run-onboarding.usecase.js';
 import { RunPipelinePreflightUseCase } from './use-cases/run-pipeline-preflight.usecase.js';
+import { RunPrDiffContextUseCase } from './use-cases/run-pr-diff-context.usecase.js';
+import { RunPipelinePrepareUseCase } from './use-cases/run-pipeline-prepare.usecase.js';
 import { InfraModule } from '../infra/infra.module.js';
 
 export const APPLICATION_PROVIDERS = [
-  AgentService, RunAgentUseCase, ValidateConfigUseCase, InspectRunUseCase, ReportRunUseCase, CaptureAuthUseCase, RunOnboardingUseCase, RunPipelinePreflightUseCase,
+  AgentService, RunAgentUseCase, ValidateConfigUseCase, InspectRunUseCase, ReportRunUseCase, CaptureAuthUseCase, RunOnboardingUseCase, RunPipelinePreflightUseCase, RunPrDiffContextUseCase, RunPipelinePrepareUseCase,
   DataHarnessService, LocatorResolverService, ValidationBinderService, ActionPolicyService, RecoveryPolicyService,
-  SanitizerService, BugClassifierService, EvidenceService, ScenarioPlannerService, TaskMemoryService, ExecutionPlanFactoryService, ExecutionPlanPlannerService, ElementAvailabilityResolver, PlanPatchApplierService, PlanExecutorService, PlanReplannerService, PlaywrightSpecExporter, AgentQaLayoutService, MemoryMarkdownLoader, MemoryChunker, BM25MemoryIndex, RunHistoryService, ProjectOnboardingService, ReadinessEvaluatorService, BaselineSmokeBuilderService, PipelinePreflightService, DemandContextPersistenceService,
+  SanitizerService, BugClassifierService, EvidenceService, ScenarioPlannerService, TaskMemoryService, ExecutionPlanFactoryService, ExecutionPlanPlannerService, ElementAvailabilityResolver, PlanPatchApplierService, PlanExecutorService, PlanReplannerService, PlaywrightSpecExporter, AgentQaLayoutService, MemoryMarkdownLoader, MemoryChunker, BM25MemoryIndex, RunHistoryService, ProjectOnboardingService, ReadinessEvaluatorService, BaselineSmokeBuilderService, PipelinePreflightService, DemandContextPersistenceService, PrDiffContextPersistenceService,
   { provide: QaToolRegistry, useFactory: () => new QaToolRegistry(ALL_QA_TOOLS) },
   {
     provide: MemorySearchService,

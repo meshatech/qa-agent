@@ -109,7 +109,7 @@ describe('mapClickUpTaskToReadResult', () => {
     vi.spyOn(BugContextSchema, 'safeParse').mockReturnValue({
       success: false,
       error: new ZodError([]),
-    });
+    } as ReturnType<typeof BugContextSchema.safeParse>);
     const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
 
     const result = mapClickUpTaskToReadResult({

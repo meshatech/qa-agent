@@ -2,19 +2,19 @@ import { Injectable } from '@nestjs/common';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
-import type { DemandContextWriterPort } from '../../application/ports/demand-context-writer.port.js';
-import type { DemandContext } from '../../domain/schemas/demand-context.schema.js';
+import type { PrDiffContextWriterPort } from '../../application/ports/pr-diff-context-writer.port.js';
+import type { PrDiffContext } from '../../domain/schemas/pr-diff-context.schema.js';
 import { commitAtomicJsonWrite } from './atomic-json-write.js';
 
-const DEMAND_CONTEXT_FILE = 'demand-context.json';
+const PR_DIFF_CONTEXT_FILE = 'pr-diff-context.json';
 
 @Injectable()
-export class FileDemandContextWriterAdapter implements DemandContextWriterPort {
-  async write(runDir: string, demand: DemandContext): Promise<string> {
-    await mkdir(runDir, { recursive: true });
-    const path = resolve(join(runDir, DEMAND_CONTEXT_FILE));
+export class FilePrDiffContextWriterAdapter implements PrDiffContextWriterPort {
+  async write(outputDir: string, context: PrDiffContext): Promise<string> {
+    await mkdir(outputDir, { recursive: true });
+    const path = resolve(join(outputDir, PR_DIFF_CONTEXT_FILE));
     const tmpPath = `${path}.tmp`;
-    const payload = JSON.stringify(demand, null, 2);
+    const payload = JSON.stringify(context, null, 2);
     let committed = false;
 
     try {

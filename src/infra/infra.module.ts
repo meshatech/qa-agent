@@ -2,11 +2,13 @@ import { Module } from '@nestjs/common';
 import { FileConfigLoader } from './config/file-config.loader.js';
 import { FilePreflightReportWriterAdapter } from './persistence/file-preflight-report-writer.adapter.js';
 import { FileDemandContextWriterAdapter } from './persistence/file-demand-context-writer.adapter.js';
+import { FilePrDiffContextWriterAdapter } from './persistence/file-pr-diff-context-writer.adapter.js';
 import { FetchClickUpApiAdapter } from './clickup/fetch-clickup-api.adapter.js';
 import { ClickUpHttpReaderAdapter } from './clickup/clickup-http-reader.adapter.js';
 import { FakeClickUpReaderAdapter } from './clickup/fake-clickup-reader.adapter.js';
 import { FetchGitHubApiAdapter } from './github/fetch-github-api.adapter.js';
 import { FileGitHubEventContextAdapter } from './github/file-github-event-context.adapter.js';
+import { GitHubActionsPrContextReaderAdapter } from './github/github-actions-pr-context-reader.adapter.js';
 import { ExecGitRepositoryAdapter } from './git/exec-git-repository.adapter.js';
 import { DecisionRouterProvider } from './llm/decision-router.provider.js';
 import { FakeDecisionProvider } from './llm/fake-decision.provider.js';
@@ -48,23 +50,27 @@ export const INFRA_PROVIDERS = [
   FileConfigLoader,
   FilePreflightReportWriterAdapter,
   FileDemandContextWriterAdapter,
+  FilePrDiffContextWriterAdapter,
   ExecGitRepositoryAdapter,
   FetchClickUpApiAdapter,
   ClickUpHttpReaderAdapter,
   FakeClickUpReaderAdapter,
   FetchGitHubApiAdapter,
   FileGitHubEventContextAdapter,
+  GitHubActionsPrContextReaderAdapter,
   { provide: 'BrowserHarnessPort', useExisting: PlaywrightHarness },
   { provide: 'RunRepositoryPort', useExisting: FileRunRepository },
   { provide: 'DecisionProviderPort', useExisting: DecisionRouterProvider },
   { provide: 'ConfigLoaderPort', useExisting: FileConfigLoader },
   { provide: 'PreflightReportWriterPort', useExisting: FilePreflightReportWriterAdapter },
   { provide: 'DemandContextWriterPort', useExisting: FileDemandContextWriterAdapter },
+  { provide: 'PrDiffContextWriterPort', useExisting: FilePrDiffContextWriterAdapter },
   { provide: 'GitRepositoryPort', useExisting: ExecGitRepositoryAdapter },
   { provide: 'ClickUpApiPort', useExisting: FetchClickUpApiAdapter },
   { provide: 'ClickUpReaderPort', useExisting: ClickUpHttpReaderAdapter },
   { provide: 'GitHubApiPort', useExisting: FetchGitHubApiAdapter },
   { provide: 'GitHubEventContextPort', useExisting: FileGitHubEventContextAdapter },
+  { provide: 'GitHubActionsPrContextReaderPort', useExisting: GitHubActionsPrContextReaderAdapter },
 ];
 
 @Module({ providers: INFRA_PROVIDERS, exports: INFRA_PROVIDERS })

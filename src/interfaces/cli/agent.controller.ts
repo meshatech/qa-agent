@@ -36,4 +36,12 @@ export class AgentController {
   preflight(outputDir: string) {
     return this.service.preflight(outputDir);
   }
+
+  readPrContext(outputDir: string) {
+    return this.service.readPrContext(outputDir);
+  }
+
+  pipelinePrepare(outputDir: string) {
+    return this.service.pipelinePrepare(outputDir);
+  }
 }
