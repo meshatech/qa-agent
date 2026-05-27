@@ -8,6 +8,7 @@ import type {
   RiskItem,
 } from '../../domain/schemas/correlation.schema.js';
 import { createBlockedCorrelationResult } from '../../domain/schemas/correlation.schema.js';
+import { createCorrelationItem } from '../../domain/schemas/correlation-item.schema.js';
 import type { DemandContext } from '../../domain/schemas/demand-context.schema.js';
 import type { MemorySearchResult } from '../../domain/schemas/memory.schema.js';
 import type { PrDiffContext } from '../../domain/schemas/pr-diff-context.schema.js';
@@ -165,13 +166,13 @@ export class DemandDiffMemoryCorrelatorService {
 
     const relatedFiles = bestFile ? [bestFile] : [];
     return {
-      correlation: {
+      correlation: createCorrelationItem({
         criterion,
         file: bestFile,
         memoryChunk,
         score: bestScore,
         rationale: bestRationale,
-      },
+      }),
       relatedFiles,
     };
   }

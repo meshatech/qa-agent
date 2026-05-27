@@ -1,16 +1,13 @@
 import { z } from 'zod';
 
+import { CorrelationItemSchema } from './correlation-item.schema.js';
 import { ScenarioIntentSchema } from './scenario-intent.schema.js';
 
-export const CorrelationItemSchema = z
-  .object({
-    criterion: z.string().min(1),
-    file: z.string().optional(),
-    memoryChunk: z.string().optional(),
-    score: z.number(),
-    rationale: z.string().min(1),
-  })
-  .strict();
+export {
+  CorrelationItemSchema,
+  createCorrelationItem,
+  type CorrelationItem,
+} from './correlation-item.schema.js';
 
 export const RiskSeveritySchema = z.enum(['LOW', 'MEDIUM', 'HIGH']);
 
@@ -50,7 +47,6 @@ export const CorrelationResultSchema = z
   })
   .strict();
 
-export type CorrelationItem = z.infer<typeof CorrelationItemSchema>;
 export type RiskSeverity = z.infer<typeof RiskSeveritySchema>;
 export type RiskType = z.infer<typeof RiskTypeSchema>;
 export type RiskItem = z.infer<typeof RiskItemSchema>;
