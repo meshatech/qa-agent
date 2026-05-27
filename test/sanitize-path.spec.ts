@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('node:os', () => ({
+  homedir: () => '/custom/root',
+}));
 
 import { sanitizePath } from '../src/domain/helpers/sanitize-path.js';
 
@@ -33,5 +37,14 @@ describe('sanitizePath', () => {
 
   it('normalizes Windows-style separators', () => {
     expect(sanitizePath('src\\routes\\login.ts')).toBe('.../routes/login.ts');
+  });
+
+  it('redacts Windows user profile prefixes from absolute paths', () => {
+    expect(sanitizePath('C:/Users/dev/proj/src/api.ts')).toBe('<redacted>/.../src/api.ts');
+    expect(sanitizePath('C:\\Users\\dev\\proj\\src\\api.ts')).toBe('<redacted>/.../src/api.ts');
+  });
+
+  it('redacts paths under the process home directory', () => {
+    expect(sanitizePath('/custom/root/project/src/api.ts')).toBe('<redacted>/.../src/api.ts');
   });
 });

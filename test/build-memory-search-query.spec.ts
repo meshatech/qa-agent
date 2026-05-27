@@ -84,4 +84,40 @@ describe('buildMemorySearchQuery', () => {
       'Login route validates user credentials /login /logout LoginSchema src/routes/login.ts',
     );
   });
+
+  it('builds query from routes, schemas, and paths when acceptance criteria is empty', () => {
+    const query = buildMemorySearchQuery(
+      { ...BASE_DEMAND, acceptanceCriteria: [] },
+      createPrDiff([createChangedFile('src/routes/login.ts')]),
+    );
+
+    expect(query).toBe('/login /logout LoginSchema src/routes/login.ts');
+    expect(query).not.toContain('Login route validates user credentials');
+  });
+
+  it('returns a minimal query when routes, schemas, and changed files are absent', () => {
+    const query = buildMemorySearchQuery(
+      { ...BASE_DEMAND, acceptanceCriteria: ['Login route validates user credentials'] },
+      {
+        ...createPrDiff([]),
+        affectedRoutes: [],
+        affectedSchemas: [],
+      },
+    );
+
+    expect(query).toBe('Login route validates user credentials');
+  });
+
+  it('returns an empty string when all query parts are absent', () => {
+    const query = buildMemorySearchQuery(
+      { ...BASE_DEMAND, acceptanceCriteria: [] },
+      {
+        ...createPrDiff([]),
+        affectedRoutes: [],
+        affectedSchemas: [],
+      },
+    );
+
+    expect(query).toBe('');
+  });
 });

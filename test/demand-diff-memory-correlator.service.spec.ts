@@ -307,4 +307,22 @@ describe('DemandDiffMemoryCorrelatorService', () => {
       result.warnings.some((warning) => warning.includes('Scenario cap reached (10)')),
     ).toBe(true);
   });
+
+  it('does not create duplicate scenarios for duplicate acceptance criteria', () => {
+    const criterion = 'Login route validates user credentials';
+    const result = service.correlate({
+      demand: {
+        ...BASE_DEMAND,
+        acceptanceCriteria: [criterion, criterion, 'Invalid login shows error message'],
+      },
+      prDiff: BASE_PR_DIFF,
+      memoryResults: [],
+    });
+
+    expect(result.status).toBe('OK');
+    expect(result.scenarios).toHaveLength(2);
+    expect(result.scenarios.filter((scenario) => scenario.title.includes('Login route'))).toHaveLength(
+      1,
+    );
+  });
 });

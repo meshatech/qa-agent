@@ -4,7 +4,10 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { ZodError } from 'zod';
 
-import { readPipelineArtifact } from '../src/application/helpers/read-pipeline-artifact.js';
+import {
+  describePipelineArtifactError,
+  readPipelineArtifact,
+} from '../src/application/helpers/read-pipeline-artifact.js';
 import { ConfigError } from '../src/domain/errors.js';
 import { PrDiffContextSchema } from '../src/domain/schemas/pr-diff-context.schema.js';
 
@@ -66,6 +69,28 @@ describe('readPipelineArtifact', () => {
       expect((error as ConfigError).message).toContain('Pipeline artifact validation failed');
       expect((error as ConfigError).cause).toBeInstanceOf(ZodError);
     }
+  });
+});
+
+describe('describePipelineArtifactError', () => {
+  it('includes Zod validation details when the cause is a ZodError', () => {
+    const zodError = new ZodError([]);
+    const configError = new ConfigError('Pipeline artifact validation failed: pr-diff-context.json', zodError);
+
+    expect(describePipelineArtifactError(configError)).toContain(
+      'Pipeline artifact validation failed: pr-diff-context.json',
+    );
+    expect(describePipelineArtifactError(configError)).toContain(zodError.message);
+  });
+
+  it('includes syntax error details when the cause is a SyntaxError', () => {
+    const syntaxError = new SyntaxError('Unexpected token');
+    const configError = new ConfigError('Pipeline artifact invalid JSON: pr-diff-context.json', syntaxError);
+
+    expect(describePipelineArtifactError(configError)).toContain(
+      'Pipeline artifact invalid JSON: pr-diff-context.json',
+    );
+    expect(describePipelineArtifactError(configError)).toContain('Unexpected token');
   });
 });
 

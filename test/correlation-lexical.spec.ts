@@ -44,6 +44,24 @@ describe('tokenize', () => {
     expect(tokenize('validate UserService behavior').has('service')).toBe(true);
     expect(tokenize('XMLHttpRequest')).toEqual(new Set(['xml', 'http', 'request']));
   });
+
+  it('returns an empty set for punctuation-only input', () => {
+    expect(tokenize('!!! ,,, ...')).toEqual(new Set());
+  });
+
+  it('tokenizes unicode and underscore or hyphenated words', () => {
+    expect(tokenize('café_route-check')).toEqual(new Set(['caf', '_route-check']));
+    expect(tokenize('user_profile-name')).toEqual(new Set(['user_profile-name']));
+  });
+
+  it('filters short tokens from long repeated strings', () => {
+    const longText = `${'alpha '.repeat(50)}beta`;
+    const tokens = tokenize(longText);
+
+    expect(tokens.has('alpha')).toBe(true);
+    expect(tokens.has('beta')).toBe(true);
+    expect(tokens.size).toBe(2);
+  });
 });
 
 describe('pathTokens', () => {
@@ -61,6 +79,16 @@ describe('pathTokens', () => {
 
   it('returns an empty set for empty path', () => {
     expect(pathTokens('')).toEqual(new Set());
+  });
+
+  it('ignores empty and dot segments in paths', () => {
+    expect(pathTokens('//')).toEqual(new Set());
+    expect(pathTokens('.')).toEqual(new Set());
+    expect(pathTokens('..')).toEqual(new Set());
+  });
+
+  it('returns an empty set for extension-only paths', () => {
+    expect(pathTokens('.ts')).toEqual(new Set());
   });
 });
 
@@ -87,5 +115,19 @@ describe('overlapScore', () => {
     const fileTokens = pathTokens('src/UserService.ts');
 
     expect(overlapScore(criterionTokens, fileTokens)).toBeGreaterThan(0);
+  });
+
+  it('returns 1 for identical token sets', () => {
+    const tokens = new Set(['login', 'route']);
+    expect(overlapScore(tokens, new Set(['login', 'route']))).toBe(1);
+  });
+
+  it('scores partial coverage when the left set is a subset of the right set', () => {
+    expect(overlapScore(new Set(['login']), new Set(['login', 'route', 'auth']))).toBe(1);
+    expect(overlapScore(new Set(['login', 'route']), new Set(['login', 'route', 'auth']))).toBe(1);
+  });
+
+  it('matches tokens containing slashes across sets', () => {
+    expect(overlapScore(new Set(['login/route']), new Set(['login/route', 'auth']))).toBe(1);
   });
 });

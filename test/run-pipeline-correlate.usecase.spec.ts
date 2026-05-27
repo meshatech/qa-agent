@@ -13,7 +13,7 @@ import { MemoryChunker } from '../src/application/services/memory-chunker.servic
 import { MemoryMarkdownLoader } from '../src/application/services/memory-markdown-loader.service.js';
 import { SanitizerService } from '../src/application/services/sanitizer.service.js';
 import { CorrelationBlockedError, ClickUpReaderError, ConfigError, HarnessFatalError } from '../src/domain/errors.js';
-import { CorrelationResultSchema } from '../src/domain/schemas/correlation.schema.js';
+import { CorrelationResultSchema, createBlockedCorrelationResult } from '../src/domain/schemas/correlation.schema.js';
 import type { ClickUpReaderPort } from '../src/application/ports/clickup-reader.port.js';
 import { FileDemandContextWriterAdapter } from '../src/infra/persistence/file-demand-context-writer.adapter.js';
 import { FileCorrelationArtifactsWriterAdapter } from '../src/infra/persistence/file-correlation-artifacts-writer.adapter.js';
@@ -277,6 +277,30 @@ describe('RunPipelineCorrelateUseCase', () => {
     }
   });
 
+  it('redacts URL-encoded CLICKUP_TOKEN from HarnessFatalError', async () => {
+    const outputDir = await prepareOutputDir();
+    const secretToken = 'pk_leaked_secret_token_value';
+    const encodedToken = encodeURIComponent(secretToken);
+    vi.stubEnv('CLICKUP_TOKEN', secretToken);
+
+    const useCase = buildUseCase({
+      readTask: vi.fn(),
+      readConfiguredTask: vi.fn(async () => {
+        throw new Error(`ClickUp request failed: ?Authorization=${encodedToken}`);
+      }),
+    });
+
+    try {
+      await useCase.execute(outputDir, { env: process.env });
+      expect.fail('expected HarnessFatalError');
+    } catch (error) {
+      expect(error).toBeInstanceOf(HarnessFatalError);
+      expect((error as HarnessFatalError).message).not.toContain(secretToken);
+      expect((error as HarnessFatalError).message).not.toContain(encodedToken);
+      expect((error as HarnessFatalError).message).toContain('***REDACTED***');
+    }
+  });
+
   it('throws CorrelationBlockedError when correlator throws unexpectedly', async () => {
     const outputDir = await prepareOutputDir();
     vi.stubEnv('CLICKUP_TOKEN', 'pk_test_token');
@@ -332,6 +356,40 @@ describe('RunPipelineCorrelateUseCase', () => {
         expect(blocked.result.blockReason).toContain('Correlation failed');
         expect(blocked.result.blockReason).toContain('logic bug');
         expect(blocked.result.warnings).toContain('BM25 memory context warning');
+      });
+    }
+
+    await expectNoCorrelationArtifacts(outputDir);
+  });
+
+  it('redacts CLICKUP_TOKEN from correlator BLOCKED blockReason and warnings', async () => {
+    const outputDir = await prepareOutputDir();
+    const secretToken = 'pk_leaked_secret_token_value';
+    vi.stubEnv('CLICKUP_TOKEN', secretToken);
+
+    const useCase = buildUseCase({
+      readTask: vi.fn(),
+      readConfiguredTask: vi.fn(async () => ({
+        demand: JSON.parse(await readFile(join(FIXTURES_DIR, 'demand-context.json'), 'utf8')),
+      })),
+    });
+
+    vi.spyOn(DemandDiffMemoryCorrelatorService.prototype, 'correlate').mockReturnValue(
+      createBlockedCorrelationResult(`Correlator blocked with token ${secretToken}`, [
+        `Warning leaked ${secretToken}`,
+      ]),
+    );
+
+    try {
+      await useCase.execute(outputDir, { projectPath: process.cwd(), env: process.env });
+      expect.fail('expected CorrelationBlockedError');
+    } catch (error) {
+      expectBlockedError(error, (blocked) => {
+        expect(blocked.result.status).toBe('BLOCKED');
+        expect(blocked.result.blockReason).not.toContain(secretToken);
+        expect(blocked.result.blockReason).toContain('***REDACTED***');
+        expect(blocked.result.warnings[0]).not.toContain(secretToken);
+        expect(blocked.result.warnings[0]).toContain('***REDACTED***');
       });
     }
 

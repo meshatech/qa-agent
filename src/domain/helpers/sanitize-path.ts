@@ -1,16 +1,70 @@
-const HOME_PREFIX_PATTERN = /^\/(?:home|Users)\/[^/]+\//;
+import { homedir } from 'node:os';
+
+const STATIC_HOME_PREFIX_PATTERNS = [
+  /^\/(?:home|Users)\/[^/]+\//,
+  /^[A-Za-z]:\/Users\/[^/]+\//,
+];
+
+function normalizePathSeparators(path: string): string {
+  return path.replace(/\\/g, '/').trim();
+}
+
+function resolveHomeDirectory(): string | undefined {
+  const home = homedir()?.replace(/\\/g, '/').replace(/\/+$/, '');
+  return home || undefined;
+}
+
+function stripStaticHomePrefix(normalized: string): { stripped: string; hadHomePrefix: boolean } {
+  for (const pattern of STATIC_HOME_PREFIX_PATTERNS) {
+    if (pattern.test(normalized)) {
+      return { stripped: normalized.replace(pattern, ''), hadHomePrefix: true };
+    }
+  }
+  return { stripped: normalized, hadHomePrefix: false };
+}
+
+function stripProcessHomePrefix(normalized: string): { stripped: string; hadHomePrefix: boolean } {
+  const home = resolveHomeDirectory();
+  if (!home) {
+    return { stripped: normalized, hadHomePrefix: false };
+  }
+
+  const prefix = `${home}/`;
+  if (normalized.toLowerCase().startsWith(prefix.toLowerCase())) {
+    return {
+      stripped: normalized.slice(home.length),
+      hadHomePrefix: true,
+    };
+  }
+
+  return { stripped: normalized, hadHomePrefix: false };
+}
 
 export function sanitizePath(path: string): string {
-  const normalized = path.replace(/\\/g, '/').trim();
+  const normalized = normalizePathSeparators(path);
   if (!normalized) {
     return normalized;
   }
 
-  const hadHomePrefix = HOME_PREFIX_PATTERN.test(normalized);
-  let working = normalized.replace(HOME_PREFIX_PATTERN, '');
-  const isAbsolute = working.startsWith('/') || hadHomePrefix;
-  if (hadHomePrefix && !working.startsWith('/')) {
-    working = `/${working}`;
+  let hadHomePrefix = false;
+  let working = normalized;
+
+  const staticStrip = stripStaticHomePrefix(working);
+  if (staticStrip.hadHomePrefix) {
+    hadHomePrefix = true;
+    working = staticStrip.stripped;
+  } else {
+    const processStrip = stripProcessHomePrefix(working);
+    if (processStrip.hadHomePrefix) {
+      hadHomePrefix = true;
+      working = processStrip.stripped;
+    }
+  }
+
+  const isAbsolute =
+    working.startsWith('/') || /^[A-Za-z]:\//.test(working) || hadHomePrefix;
+  if (hadHomePrefix && !working.startsWith('/') && !/^[A-Za-z]:\//.test(working)) {
+    working = `/${working.replace(/^\/+/, '')}`;
   }
 
   const segments = working.split('/').filter(Boolean);
