@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import { DemandDiffMemoryCorrelatorService } from '../src/application/services/demand-diff-memory-correlator.service.js';
+import { correlateCriterionWithDiff } from '../src/domain/helpers/criterion-diff-correlator.js';
+import { truncate } from '../src/domain/helpers/correlation-lexical.js';
+import { consumeMemorySearchResults } from '../src/domain/helpers/memory-search-consumer.js';
+import { consumePrDiffContext } from '../src/domain/helpers/pr-diff-context-consumer.js';
 import type { DemandContext } from '../src/domain/schemas/demand-context.schema.js';
 import type { PrDiffContext } from '../src/domain/schemas/pr-diff-context.schema.js';
 
@@ -248,6 +252,57 @@ describe('DemandDiffMemoryCorrelatorService', () => {
 
     expect(result.status).toBe('OK');
     expect(result.scenarios).toHaveLength(10);
+    expect(
+      result.warnings.some((warning) => warning.includes('Scenario cap reached (10)')),
+    ).toBe(true);
+  });
+
+  it('prefers higher-scoring criteria when scenario cap is reached', () => {
+    const weakCriteria = Array.from({ length: 10 }, (_, index) =>
+      `Alpha beta gamma delta login check ${String(index + 1).padStart(2, '0')}`,
+    );
+    const strongCriteria = [
+      'Login route credentials check eleven',
+      'Login route credentials check twelve',
+    ];
+    const acceptanceCriteria = [...weakCriteria, ...strongCriteria];
+
+    const prDiff = consumePrDiffContext(BASE_PR_DIFF);
+    const memory = consumeMemorySearchResults([]);
+    const scored = acceptanceCriteria.map((criterion) => ({
+      criterion,
+      score: correlateCriterionWithDiff({ criterion, prDiff, memory }).correlation.score,
+    }));
+    const passing = scored.filter((entry) => entry.score >= 0.15);
+    const topTwo = [...passing]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 2)
+      .map((entry) => entry.criterion);
+
+    expect(passing.length).toBeGreaterThan(10);
+    expect(topTwo).toEqual(
+      expect.arrayContaining([
+        'Login route credentials check eleven',
+        'Login route credentials check twelve',
+      ]),
+    );
+
+    const result = service.correlate({
+      demand: {
+        ...BASE_DEMAND,
+        acceptanceCriteria,
+      },
+      prDiff: BASE_PR_DIFF,
+      memoryResults: [],
+    });
+
+    const scenarioTitles = result.scenarios.map((scenario) => scenario.title);
+
+    expect(result.status).toBe('OK');
+    expect(result.scenarios).toHaveLength(10);
+    expect(scenarioTitles).toContain(truncate(strongCriteria[0]!, 100));
+    expect(scenarioTitles).toContain(truncate(strongCriteria[1]!, 100));
+    expect(scenarioTitles).not.toContain(truncate(weakCriteria[9]!, 100));
     expect(
       result.warnings.some((warning) => warning.includes('Scenario cap reached (10)')),
     ).toBe(true);

@@ -107,10 +107,21 @@ export class DemandDiffMemoryCorrelatorService {
       }).risks,
     );
 
-    for (const match of matches) {
-      if (match.correlation.score < MIN_OVERLAP_SCORE) {
+    const rankedMatches = matches
+      .map((match, index) => ({ match, index }))
+      .filter(({ match }) => match.correlation.score >= MIN_OVERLAP_SCORE)
+      .sort(
+        (a, b) =>
+          b.match.correlation.score - a.match.correlation.score || a.index - b.index,
+      );
+
+    const seenCriteria = new Set<string>();
+    for (const { match } of rankedMatches) {
+      const criterion = match.correlation.criterion;
+      if (seenCriteria.has(criterion)) {
         continue;
       }
+      seenCriteria.add(criterion);
 
       scenarios.push(
         createRequiredScenario({
