@@ -11,7 +11,7 @@ import { BM25MemoryIndex } from '../src/application/services/bm25-memory-index.s
 import { MemoryChunker } from '../src/application/services/memory-chunker.service.js';
 import { MemoryMarkdownLoader } from '../src/application/services/memory-markdown-loader.service.js';
 import { SanitizerService } from '../src/application/services/sanitizer.service.js';
-import { CorrelationBlockedError } from '../src/domain/errors.js';
+import { CorrelationBlockedError, ClickUpReaderError, HarnessFatalError } from '../src/domain/errors.js';
 import { CorrelationResultSchema } from '../src/domain/schemas/correlation.schema.js';
 import type { ClickUpReaderPort } from '../src/application/ports/clickup-reader.port.js';
 import { FileDemandContextWriterAdapter } from '../src/infra/persistence/file-demand-context-writer.adapter.js';
@@ -83,6 +83,58 @@ describe('RunPipelineCorrelateUseCase', () => {
     await expect(useCase.execute(outputDir, { env: process.env })).rejects.toBeInstanceOf(
       CorrelationBlockedError,
     );
+  });
+
+  it('throws CorrelationBlockedError when pr-diff-context.json is missing', async () => {
+    const outputDir = await mkdtemp(join(tmpdir(), 'agent-qa-pipeline-correlate-'));
+    tempDirs.push(outputDir);
+    vi.stubEnv('CLICKUP_TOKEN', 'pk_test_token');
+
+    const useCase = buildUseCase({
+      readTask: vi.fn(),
+      readConfiguredTask: vi.fn(),
+    });
+
+    await expect(useCase.execute(outputDir)).rejects.toBeInstanceOf(CorrelationBlockedError);
+
+    const scenarios = JSON.parse(await readFile(join(outputDir, 'required-scenarios.json'), 'utf8'));
+    expect(scenarios.status).toBe('BLOCKED');
+    expect(scenarios.blockReason).toContain('not found');
+
+    const report = await readFile(join(outputDir, 'correlation-report.md'), 'utf8');
+    expect(report).not.toContain('PR: #');
+  });
+
+  it('throws CorrelationBlockedError when ClickUp fetch fails', async () => {
+    const outputDir = await prepareOutputDir();
+    vi.stubEnv('CLICKUP_TOKEN', 'pk_test_token');
+
+    const useCase = buildUseCase({
+      readTask: vi.fn(),
+      readConfiguredTask: vi.fn(async () => {
+        throw new ClickUpReaderError('TASK_NOT_FOUND');
+      }),
+    });
+
+    await expect(useCase.execute(outputDir)).rejects.toBeInstanceOf(CorrelationBlockedError);
+
+    const scenarios = JSON.parse(await readFile(join(outputDir, 'required-scenarios.json'), 'utf8'));
+    expect(scenarios.status).toBe('BLOCKED');
+    expect(scenarios.blockReason).toContain('Failed to fetch demand from ClickUp');
+  });
+
+  it('throws HarnessFatalError for infrastructure failures during demand persistence', async () => {
+    const outputDir = await prepareOutputDir();
+    vi.stubEnv('CLICKUP_TOKEN', 'pk_test_token');
+
+    const useCase = buildUseCase({
+      readTask: vi.fn(),
+      readConfiguredTask: vi.fn(async () => {
+        throw new Error('disk write failed');
+      }),
+    });
+
+    await expect(useCase.execute(outputDir)).rejects.toBeInstanceOf(HarnessFatalError);
   });
 });
 

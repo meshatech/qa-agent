@@ -7,12 +7,17 @@ import type { CorrelationArtifactsWriterPort } from '../ports/correlation-artifa
 import { DemandContextPersistenceService } from '../services/demand-context-persistence.service.js';
 import { DemandDiffMemoryCorrelatorService } from '../services/demand-diff-memory-correlator.service.js';
 import { MemorySearchService } from '../services/memory-search.service.js';
-import { ClickUpReaderError, CorrelationBlockedError } from '../../domain/errors.js';
+import {
+  ClickUpReaderError,
+  ConfigError,
+  CorrelationBlockedError,
+  HarnessFatalError,
+} from '../../domain/errors.js';
 import {
   createBlockedCorrelationResult,
   type CorrelationResult,
 } from '../../domain/schemas/correlation.schema.js';
-import { PrDiffContextSchema } from '../../domain/schemas/pr-diff-context.schema.js';
+import { PrDiffContextSchema, type PrDiffContext } from '../../domain/schemas/pr-diff-context.schema.js';
 import type { CorrelationReportContext } from '../../domain/helpers/correlation-report.renderer.js';
 
 @Injectable()
@@ -32,7 +37,20 @@ export class RunPipelineCorrelateUseCase {
     options?: { projectPath?: string; env?: NodeJS.ProcessEnv },
   ): Promise<PipelineCorrelateRunResult> {
     const env = options?.env ?? process.env;
-    const prDiff = await readPipelineArtifact(outputDir, 'pr-diff-context.json', PrDiffContextSchema);
+    let prDiff: PrDiffContext;
+    try {
+      prDiff = await readPipelineArtifact(outputDir, 'pr-diff-context.json', PrDiffContextSchema);
+    } catch (error) {
+      if (error instanceof ConfigError && error.message.includes('not found')) {
+        return this.blockAndThrow(outputDir, {
+          blockReason: 'Pipeline artifact not found: pr-diff-context.json',
+        });
+      }
+      if (error instanceof ConfigError) {
+        throw new HarnessFatalError(error.message, error);
+      }
+      throw error;
+    }
     const clickUpTaskId = prDiff.pullRequest.clickUpTaskId?.trim();
 
     if (!clickUpTaskId) {
@@ -60,14 +78,16 @@ export class RunPipelineCorrelateUseCase {
       demandContextPath = persisted.path;
       demand = persisted.demand;
     } catch (error) {
-      const message =
-        error instanceof ClickUpReaderError
-          ? `Failed to fetch demand from ClickUp: ${error.message}`
-          : `Failed to persist demand context: ${error instanceof Error ? error.message : String(error)}`;
-      return this.blockAndThrow(outputDir, {
-        prNumber: prDiff.pullRequest.prNumber,
-        blockReason: message,
-      });
+      if (error instanceof ClickUpReaderError) {
+        return this.blockAndThrow(outputDir, {
+          prNumber: prDiff.pullRequest.prNumber,
+          blockReason: `Failed to fetch demand from ClickUp: ${error.message}`,
+        });
+      }
+      throw new HarnessFatalError(
+        error instanceof Error ? error.message : String(error),
+        error,
+      );
     }
 
     const memoryQuery = buildMemorySearchQuery(demand, prDiff);
@@ -113,7 +133,7 @@ export class RunPipelineCorrelateUseCase {
 
   private async blockAndThrow(
     outputDir: string,
-    input: { prNumber: number; blockReason: string },
+    input: { prNumber?: number; blockReason: string },
   ): Promise<never> {
     const result = createBlockedCorrelationResult(input.blockReason);
     const paths = await this.persistArtifacts(outputDir, result, { prNumber: input.prNumber });
