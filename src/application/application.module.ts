@@ -46,12 +46,13 @@ import { DemandDiffMemoryCorrelatorService } from './services/demand-diff-memory
 import { ScenarioSelectorService } from './services/scenario-selector.service.js';
 import { ScenarioOrchestratorService } from './services/scenario-orchestrator.service.js';
 import { ScenarioGeneratorService } from './services/scenario-generator.service.js';
+import { ExecutionPlanBuilder } from './services/execution-plan-builder.service.js';
 import { InfraModule } from '../infra/infra.module.js';
 
 export const APPLICATION_PROVIDERS = [
   AgentService, RunAgentUseCase, ValidateConfigUseCase, InspectRunUseCase, ReportRunUseCase, CaptureAuthUseCase, RunOnboardingUseCase, RunPipelinePreflightUseCase, RunPrDiffContextUseCase, RunPipelinePrepareUseCase, RunPipelineCorrelateUseCase,
   DataHarnessService, LocatorResolverService, ValidationBinderService, ActionPolicyService, RecoveryPolicyService,
-  SanitizerService, BugClassifierService, EvidenceService, ScenarioPlannerService, ScenarioGeneratorService, TaskMemoryService, ExecutionPlanFactoryService, ExecutionPlanPlannerService, ElementAvailabilityResolver, PlanPatchApplierService, PlanExecutorService, PlanReplannerService, PlaywrightSpecExporter, AgentQaLayoutService, MemoryMarkdownLoader, MemoryChunker, BM25MemoryIndex, RunHistoryService, ProjectOnboardingService, ReadinessEvaluatorService, BaselineSmokeBuilderService, PipelinePreflightService, DemandContextPersistenceService, PrDiffContextPersistenceService, DemandDiffMemoryCorrelatorService, ScenarioSelectorService, ScenarioOrchestratorService, PersistSelectedScenariosUseCase,
+  SanitizerService, BugClassifierService, EvidenceService, ScenarioPlannerService, ScenarioGeneratorService, TaskMemoryService, ExecutionPlanFactoryService, ExecutionPlanPlannerService, ExecutionPlanBuilder, ElementAvailabilityResolver, PlanPatchApplierService, PlanExecutorService, PlanReplannerService, PlaywrightSpecExporter, AgentQaLayoutService, MemoryMarkdownLoader, MemoryChunker, BM25MemoryIndex, RunHistoryService, ProjectOnboardingService, ReadinessEvaluatorService, BaselineSmokeBuilderService, PipelinePreflightService, DemandContextPersistenceService, PrDiffContextPersistenceService, DemandDiffMemoryCorrelatorService, ScenarioSelectorService, ScenarioOrchestratorService, PersistSelectedScenariosUseCase,
   { provide: QaToolRegistry, useFactory: () => new QaToolRegistry(ALL_QA_TOOLS) },
   {
     provide: MemorySearchService,

@@ -5,8 +5,12 @@ import type { RunConfig } from '../../domain/schemas/config.schema.js';
 
 @Injectable()
 export class ExecutionPlanFactoryService {
+  buildFromScenarios(config: RunConfig, scenarios: QaScenario[]): ExecutionPlan | undefined {
+    return this.fromScenarios(config, scenarios);
+  }
+
   fromScenarios(config: RunConfig, scenarios: QaScenario[]): ExecutionPlan | undefined {
-    const steps = scenarios.flatMap((scenario) => scenario.tasks.flatMap((task) => this.stepsForTask(scenario.id, task)));
+    const steps = scenarios.flatMap((scenario) => scenario.tasks.flatMap((task) => this.stepsForTask(scenario.id, task, config)));
     if (!steps.length) return undefined;
     return {
       schemaVersion: 'execution-plan.v1',
@@ -24,7 +28,7 @@ export class ExecutionPlanFactoryService {
     };
   }
 
-  private stepsForTask(scenarioId: string, task: QaTask): ExecutionStep[] {
+  private stepsForTask(scenarioId: string, task: QaTask, config: RunConfig): ExecutionStep[] {
     const text = `${task.title} ${task.expected}`;
     if (/(área autenticada|area autenticada|authenticated area)/i.test(text)) {
       return [{
@@ -116,7 +120,94 @@ export class ExecutionPlanFactoryService {
         onFailure: 'RECOVER',
       }];
     }
-    return [];
+
+    return [this.genericStep(scenarioId, task, config)];
+  }
+
+  private genericStep(scenarioId: string, task: QaTask, config: RunConfig): ExecutionStep {
+    const text = `${task.title} ${task.expected}`;
+
+    const routeMatch = text.match(/(\/\w+(?:\/\w+)*)/);
+    if (routeMatch) {
+      const route = routeMatch[1]!;
+      const url = `${config.baseUrl}${route}`;
+      return {
+        id: `${task.id}-navigate`,
+        scenarioId,
+        taskId: task.id,
+        description: task.title,
+        preconditions: [],
+        action: { type: 'navigate', to: url, reason: task.title },
+        postconditions: [{ type: 'url_contains', value: route }],
+        assertions: [],
+        onFailure: 'RECOVER',
+      };
+    }
+
+    if (/\b(clicar|click|selecionar|selecionar opção|abrir menu)\b/i.test(task.title)) {
+      return {
+        id: `${task.id}-click`,
+        scenarioId,
+        taskId: task.id,
+        description: task.title,
+        preconditions: [],
+        action: {
+          type: 'click',
+          target: {
+            strategy: 'semantic',
+            semanticKey: `action_${task.id}`,
+            intent: task.title,
+            candidates: [
+              { strategy: 'text_any', texts: [task.title] },
+              { strategy: 'role', role: 'button', name: task.title },
+            ],
+          },
+          reason: task.title,
+        },
+        postconditions: [{ type: 'no_console_errors' }],
+        assertions: [],
+        onFailure: 'RECOVER',
+      };
+    }
+
+    if (/\b(preencher|fill|digitar|type)\b/i.test(task.title)) {
+      return {
+        id: `${task.id}-fill`,
+        scenarioId,
+        taskId: task.id,
+        description: task.title,
+        preconditions: [],
+        action: {
+          type: 'fill',
+          target: {
+            strategy: 'semantic',
+            semanticKey: `input_${task.id}`,
+            intent: task.title,
+            candidates: [
+              { strategy: 'text_any', texts: [task.title] },
+              { strategy: 'role', role: 'textbox', name: task.title },
+            ],
+          },
+          value: 'safe-test-value',
+          reason: task.title,
+        },
+        postconditions: [{ type: 'no_console_errors' }],
+        assertions: [],
+        onFailure: 'RECOVER',
+      };
+    }
+
+    return {
+      id: `${task.id}-step`,
+      scenarioId,
+      taskId: task.id,
+      description: task.title,
+      preconditions: [],
+      action: { type: 'navigate', to: config.baseUrl, reason: task.title },
+      postconditions: task.expected.length <= 40 ? [{ type: 'text_visible', text: task.expected }] : [{ type: 'no_console_errors' }],
+      assertions: [],
+      onFailure: 'RECOVER',
+    };
   }
 
   private isLogoutTask(task: QaTask): boolean {
