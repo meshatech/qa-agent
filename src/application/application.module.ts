@@ -43,17 +43,19 @@ import { RunPipelinePrepareUseCase } from './use-cases/run-pipeline-prepare.usec
 import { RunPipelineCorrelateUseCase } from './use-cases/run-pipeline-correlate.usecase.js';
 import { PersistSelectedScenariosUseCase } from './use-cases/persist-selected-scenarios.usecase.js';
 import { PersistExecutionPlanUseCase } from './use-cases/persist-execution-plan.usecase.js';
+import { PersistGherkinScenariosUseCase } from './use-cases/persist-gherkin-scenarios.usecase.js';
 import { DemandDiffMemoryCorrelatorService } from './services/demand-diff-memory-correlator.service.js';
 import { ScenarioSelectorService } from './services/scenario-selector.service.js';
 import { ScenarioOrchestratorService } from './services/scenario-orchestrator.service.js';
 import { ScenarioGeneratorService } from './services/scenario-generator.service.js';
 import { ExecutionPlanBuilder } from './services/execution-plan-builder.service.js';
+import { GherkinRendererService } from './services/gherkin-renderer.service.js';
 import { InfraModule } from '../infra/infra.module.js';
 
 export const APPLICATION_PROVIDERS = [
   AgentService, RunAgentUseCase, ValidateConfigUseCase, InspectRunUseCase, ReportRunUseCase, CaptureAuthUseCase, RunOnboardingUseCase, RunPipelinePreflightUseCase, RunPrDiffContextUseCase, RunPipelinePrepareUseCase, RunPipelineCorrelateUseCase,
   DataHarnessService, LocatorResolverService, ValidationBinderService, ActionPolicyService, RecoveryPolicyService,
-  SanitizerService, BugClassifierService, EvidenceService, ScenarioPlannerService, ScenarioGeneratorService, TaskMemoryService, ExecutionPlanFactoryService, ExecutionPlanPlannerService, ExecutionPlanBuilder, ElementAvailabilityResolver, PlanPatchApplierService, PlanExecutorService, PlanReplannerService, PlaywrightSpecExporter, AgentQaLayoutService, MemoryMarkdownLoader, MemoryChunker, BM25MemoryIndex, RunHistoryService, ProjectOnboardingService, ReadinessEvaluatorService, BaselineSmokeBuilderService, PipelinePreflightService, DemandContextPersistenceService, PrDiffContextPersistenceService, DemandDiffMemoryCorrelatorService, ScenarioSelectorService, ScenarioOrchestratorService, PersistSelectedScenariosUseCase, PersistExecutionPlanUseCase,
+  SanitizerService, BugClassifierService, EvidenceService, ScenarioPlannerService, ScenarioGeneratorService, TaskMemoryService, ExecutionPlanFactoryService, ExecutionPlanPlannerService, ExecutionPlanBuilder, GherkinRendererService, ElementAvailabilityResolver, PlanPatchApplierService, PlanExecutorService, PlanReplannerService, PlaywrightSpecExporter, AgentQaLayoutService, MemoryMarkdownLoader, MemoryChunker, BM25MemoryIndex, RunHistoryService, ProjectOnboardingService, ReadinessEvaluatorService, BaselineSmokeBuilderService, PipelinePreflightService, DemandContextPersistenceService, PrDiffContextPersistenceService, DemandDiffMemoryCorrelatorService, ScenarioSelectorService, ScenarioOrchestratorService, PersistSelectedScenariosUseCase, PersistExecutionPlanUseCase, PersistGherkinScenariosUseCase,
   { provide: QaToolRegistry, useFactory: () => new QaToolRegistry(ALL_QA_TOOLS) },
   {
     provide: MemorySearchService,
