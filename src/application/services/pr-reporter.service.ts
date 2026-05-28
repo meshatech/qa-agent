@@ -10,6 +10,8 @@ import type { EvidenceLink } from './evidence-link.mapper.js';
 import { extractBlocksFromResult } from './block-extractor.helper.js';
 import { buildPublicationWarning } from './pr-publication-warning-sanitizer.js';
 import type { PRPublicationStatus } from './pr-report-renderer.service.js';
+import { buildPublicationStatusArtifact } from './pr-publication-status-artifact.js';
+import { GitHubCommentError } from '../../domain/errors.js';
 
 export interface PRReportResult {
   reportPath: string;
@@ -71,11 +73,14 @@ export class PRReporterService {
 
     let publicationStatus: PRPublicationStatus;
     let publicationWarning: string | undefined;
+    let attempted = false;
+    let statusCode: number | undefined;
 
     if (!input.token) {
       publicationStatus = { published: false, fallback: true, reason: 'Not published: token not provided' };
       publicationWarning = publicationStatus.reason;
     } else {
+      attempted = true;
       const commentBody = this.renderer.render(renderInput);
       try {
         await this.githubComment.postComment({
@@ -86,11 +91,28 @@ export class PRReporterService {
         });
         publicationStatus = { published: true, fallback: false };
       } catch (error) {
+        if (error instanceof GitHubCommentError && error.statusCode !== undefined) {
+          statusCode = error.statusCode;
+        }
         const warning = buildPublicationWarning(error);
         publicationStatus = { published: false, fallback: true, reason: warning };
         publicationWarning = warning;
       }
     }
+
+    const artifact = buildPublicationStatusArtifact({
+      attempted,
+      published: publicationStatus.published,
+      fallback: publicationStatus.fallback,
+      reason: publicationStatus.reason,
+      repository: input.repository,
+      pullNumber: input.pullNumber,
+      commitSha: input.commitSha,
+      headRef: input.headRef,
+      baseRef: input.baseRef,
+      statusCode,
+    });
+    await this.runRepository.writeJson(input.runDir, 'pr-publication-status.json', artifact);
 
     const finalMarkdown = this.renderer.render({ ...renderInput, publicationStatus });
     await this.runRepository.writeFile(input.runDir, 'pr-report.md', finalMarkdown);

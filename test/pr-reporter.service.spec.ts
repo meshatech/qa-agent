@@ -41,10 +41,14 @@ function makeResult(overrides?: Partial<QaRunResult>): QaRunResult {
 describe('PRReporterService', () => {
   it('generates pr-report.md locally without publishing when token is absent', async () => {
     const written: Array<{ runDir: string; name: string; data: string }> = [];
+    const jsonWritten: Array<{ runDir: string; name: string; data: unknown }> = [];
     const repo: RunRepositoryPort = {
       createRunDir: vi.fn(),
       ensureDir: vi.fn(),
-      writeJson: vi.fn(),
+      writeJson: vi.fn((runDir, name, data) => {
+        jsonWritten.push({ runDir, name, data });
+        return Promise.resolve();
+      }),
       writeFile: vi.fn((runDir, name, data) => {
         written.push({ runDir, name, data: String(data) });
         return Promise.resolve();
@@ -71,6 +75,18 @@ describe('PRReporterService', () => {
     expect(result.publicationWarning).toBe('Not published: token not provided');
     expect(result.publicationStatus).toEqual({ published: false, fallback: true, reason: 'Not published: token not provided' });
     expect(github.postComment).not.toHaveBeenCalled();
+
+    const artifact = jsonWritten.find((w) => w.name === 'pr-publication-status.json');
+    expect(artifact).toBeDefined();
+    expect(artifact!.data).toMatchObject({
+      version: 1,
+      attempted: false,
+      published: false,
+      fallback: true,
+      reason: 'Not published: token not provided',
+      repository: 'owner/repo',
+      pullNumber: 42,
+    });
 
     const report = written.find((w) => w.name === 'pr-report.md');
     expect(report).toBeDefined();
@@ -118,6 +134,18 @@ describe('PRReporterService', () => {
       body: expect.stringContaining('# QA Agent — PR Report'),
       token: 'ghp_fake_token_123',
     });
+
+    const writeJsonCalls = (repo.writeJson as ReturnType<typeof vi.fn>).mock.calls as Array<[string, string, unknown]>;
+    const artifactCall = writeJsonCalls.find((c) => c[1] === 'pr-publication-status.json');
+    expect(artifactCall).toBeDefined();
+    expect(artifactCall![2]).toMatchObject({
+      version: 1,
+      attempted: true,
+      published: true,
+      fallback: false,
+      repository: 'owner/repo',
+      pullNumber: 42,
+    });
   });
 
   it('falls back to local report when publication fails', async () => {
@@ -150,6 +178,20 @@ describe('PRReporterService', () => {
     expect(result.publicationWarning).toBe('Not published: token lacks permission');
     expect(result.publicationStatus).toEqual({ published: false, fallback: true, reason: 'Not published: token lacks permission' });
     expect(result.reportPath).toBe('pr-report.md');
+
+    const writeJsonCalls = (repo.writeJson as ReturnType<typeof vi.fn>).mock.calls as Array<[string, string, unknown]>;
+    const artifact = writeJsonCalls.find((c) => c[1] === 'pr-publication-status.json');
+    expect(artifact).toBeDefined();
+    expect(artifact![2]).toMatchObject({
+      version: 1,
+      attempted: true,
+      published: false,
+      fallback: true,
+      reason: 'Not published: token lacks permission',
+      repository: 'owner/repo',
+      pullNumber: 42,
+      statusCode: 403,
+    });
 
     const writeCalls = (repo.writeFile as ReturnType<typeof vi.fn>).mock.calls as Array<[string, string, string]>;
     const markdown = writeCalls.find((c) => c[1] === 'pr-report.md')?.[2] ?? '';
