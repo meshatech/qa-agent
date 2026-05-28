@@ -33,9 +33,11 @@ export class GherkinRendererService {
     lines.push('');
 
     const allScenarios = artifact.scenarios;
+    const selectedIds = new Set(artifact.selected.map((s) => s.id));
+    const generatedIds = new Set(artifact.generated.map((s) => s.id));
     let index = 1;
     for (const scenario of allScenarios) {
-      const origin = this.resolveOrigin(scenario, artifact);
+      const origin = this.resolveOrigin(scenario, selectedIds, generatedIds);
       lines.push(...this.renderScenarioSection(scenario, origin, index));
       index++;
     }
@@ -43,9 +45,9 @@ export class GherkinRendererService {
     return lines.join('\n');
   }
 
-  private resolveOrigin(scenario: QaScenario, artifact: SelectedScenariosArtifact): string {
-    if (artifact.selected.some((s) => s.id === scenario.id)) return 'selected';
-    if (artifact.generated.some((s) => s.id === scenario.id)) return 'generated';
+  private resolveOrigin(scenario: QaScenario, selectedIds: Set<string>, generatedIds: Set<string>): string {
+    if (selectedIds.has(scenario.id)) return 'selected';
+    if (generatedIds.has(scenario.id)) return 'generated';
     return 'desconhecida';
   }
 
@@ -54,7 +56,6 @@ export class GherkinRendererService {
     lines.push(`### ${index}. ${scenario.title}`);
     lines.push('');
     lines.push(`**Origem:** ${origin}`);
-    if (scenario.intent) lines.push(`**Intent:** ${scenario.intent}`);
     lines.push('');
 
     const gherkin = this.renderGherkinBlock(scenario);

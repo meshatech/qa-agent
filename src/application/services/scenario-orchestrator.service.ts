@@ -13,6 +13,14 @@ export interface ScenarioOrchestratorInput {
   scenarioChunks?: MemoryChunk[];
 }
 
+/**
+ * Result of the scenario orchestration pipeline.
+ *
+ * - `scenarios`: scenarios effectively executed (post-limit)
+ * - `selected`: all catalog-selected scenarios (pre-limit, for tracking)
+ * - `generated`: scenarios produced by the generator for uncovered requirements
+ * - `uncoveredRequiredScenarios`: IDs of required scenarios with no catalog match
+ */
 export interface ScenarioOrchestratorResult {
   scenarios: QaScenario[];
   selected: QaScenario[];
@@ -29,74 +37,22 @@ export class ScenarioOrchestratorService {
   ) {}
 
   async orchestrate(input: ScenarioOrchestratorInput): Promise<ScenarioOrchestratorResult> {
-    const warnings: string[] = [];
-    const selected: QaScenario[] = [];
-    const generated: QaScenario[] = [];
-    const uncoveredRequiredScenarios: string[] = [];
+    const hasCatalog = input.requiredScenarios?.length && input.scenarioChunks?.length;
     const maxScenarios = input.config.scenarioSelection.maxScenarios;
 
-    const hasCatalog = input.requiredScenarios?.length && input.scenarioChunks?.length;
-
     if (!hasCatalog) {
-      warnings.push('No required scenarios or catalog provided; falling back to full generator.');
-      const generatorResult = await this.generator.generate({
-        uncoveredRequiredScenarios: input.requiredScenarios ?? [],
-        config: input.config,
-      });
-      warnings.push(...generatorResult.warnings);
-      const { limited, removedCount } = this.applyScenarioLimit(
-        [],
-        generatorResult.generated,
-        [],
-        maxScenarios,
-      );
-      if (removedCount > 0) {
-        warnings.push(
-          `Scenario limit applied: kept ${limited.length} scenarios using maxScenarios=${maxScenarios}; removed ${removedCount}.`,
-        );
-      }
-      return {
-        scenarios: limited,
-        selected: [],
-        generated: generatorResult.generated,
-        uncoveredRequiredScenarios: [],
-        warnings,
-      };
+      return this.handleNoCatalogFallback(input, maxScenarios);
     }
 
-    const selectorResult = this.selector.select({
-      requiredScenarios: input.requiredScenarios!,
-      scenarioChunks: input.scenarioChunks!,
-    });
+    const { selected, warnings, uncoveredRequiredScenarios, selectorMetadata } =
+      await this.handleSelectorPhase(input);
 
-    warnings.push(...selectorResult.warnings);
-
-    const matchedRequiredIds = new Set(selectorResult.metadata.map((m) => m.requiredId));
-    selected.push(...selectorResult.selectedScenarios);
-
-    for (const required of input.requiredScenarios!) {
-      if (!matchedRequiredIds.has(required.id)) {
-        uncoveredRequiredScenarios.push(required.id);
-      }
-    }
-
-    if (uncoveredRequiredScenarios.length > 0) {
-      warnings.push(
-        `Uncovered required scenarios: ${uncoveredRequiredScenarios.join(', ')}. Generating via generator.`,
-      );
-      const uncovered = input.requiredScenarios!.filter((r) => uncoveredRequiredScenarios.includes(r.id));
-      const generatorResult = await this.generator.generate({
-        uncoveredRequiredScenarios: uncovered,
-        config: input.config,
-      });
-      warnings.push(...generatorResult.warnings);
-      generated.push(...generatorResult.generated);
-    }
+    const generated = await this.handleGenerationPhase(input, uncoveredRequiredScenarios, warnings);
 
     const { limited, removedCount } = this.applyScenarioLimit(
       selected,
       generated,
-      selectorResult.metadata,
+      selectorMetadata,
       maxScenarios,
     );
 
@@ -106,13 +62,89 @@ export class ScenarioOrchestratorService {
       );
     }
 
-    return {
-      scenarios: limited,
-      selected,
-      generated,
-      uncoveredRequiredScenarios,
-      warnings,
-    };
+    return this.buildResult(limited, selected, generated, uncoveredRequiredScenarios, warnings);
+  }
+
+  private async handleNoCatalogFallback(
+    input: ScenarioOrchestratorInput,
+    maxScenarios: number,
+  ): Promise<ScenarioOrchestratorResult> {
+    const warnings: string[] = [
+      'No required scenarios or catalog provided; falling back to full generator.',
+    ];
+    const generatorResult = await this.generator.generate({
+      uncoveredRequiredScenarios: input.requiredScenarios ?? [],
+      config: input.config,
+    });
+    warnings.push(...generatorResult.warnings);
+
+    const { limited, removedCount } = this.applyScenarioLimit(
+      [],
+      generatorResult.generated,
+      [],
+      maxScenarios,
+    );
+    if (removedCount > 0) {
+      warnings.push(
+        `Scenario limit applied: kept ${limited.length} scenarios using maxScenarios=${maxScenarios}; removed ${removedCount}.`,
+      );
+    }
+
+    return this.buildResult(limited, [], generatorResult.generated, [], warnings);
+  }
+
+  private async handleSelectorPhase(input: ScenarioOrchestratorInput): Promise<{
+    selected: QaScenario[];
+    warnings: string[];
+    uncoveredRequiredScenarios: string[];
+    selectorMetadata: ScenarioMatch[];
+  }> {
+    const selectorResult = this.selector.select({
+      requiredScenarios: input.requiredScenarios!,
+      scenarioChunks: input.scenarioChunks!,
+    });
+
+    const warnings = [...selectorResult.warnings];
+    const selected = [...selectorResult.selectedScenarios];
+    const matchedRequiredIds = new Set(selectorResult.metadata.map((m) => m.requiredId));
+    const uncoveredRequiredScenarios: string[] = [];
+
+    for (const required of input.requiredScenarios!) {
+      if (!matchedRequiredIds.has(required.id)) {
+        uncoveredRequiredScenarios.push(required.id);
+      }
+    }
+
+    return { selected, warnings, uncoveredRequiredScenarios, selectorMetadata: selectorResult.metadata };
+  }
+
+  private async handleGenerationPhase(
+    input: ScenarioOrchestratorInput,
+    uncoveredIds: string[],
+    warnings: string[],
+  ): Promise<QaScenario[]> {
+    if (uncoveredIds.length === 0) return [];
+
+    warnings.push(
+      `Uncovered required scenarios: ${uncoveredIds.join(', ')}. Generating via generator.`,
+    );
+    const uncovered = input.requiredScenarios!.filter((r) => uncoveredIds.includes(r.id));
+    const generatorResult = await this.generator.generate({
+      uncoveredRequiredScenarios: uncovered,
+      config: input.config,
+    });
+    warnings.push(...generatorResult.warnings);
+    return generatorResult.generated;
+  }
+
+  private buildResult(
+    limited: QaScenario[],
+    selected: QaScenario[],
+    generated: QaScenario[],
+    uncoveredRequiredScenarios: string[],
+    warnings: string[],
+  ): ScenarioOrchestratorResult {
+    return { scenarios: limited, selected, generated, uncoveredRequiredScenarios, warnings };
   }
 
   private applyScenarioLimit(

@@ -3,6 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { ScenarioOrchestratorService } from '../src/application/services/scenario-orchestrator.service.js';
 import { ScenarioGeneratorService } from '../src/application/services/scenario-generator.service.js';
 import { ScenarioSelectorService } from '../src/application/services/scenario-selector.service.js';
+import { MemoryScenarioSelector } from '../src/application/services/scenario-selectors/memory-scenario-selector.service.js';
+import { RouteScenarioSelector } from '../src/application/services/scenario-selectors/route-scenario-selector.service.js';
+import { ComponentScenarioSelector } from '../src/application/services/scenario-selectors/component-scenario-selector.service.js';
+import { CriteriaScenarioSelector } from '../src/application/services/scenario-selectors/criteria-scenario-selector.service.js';
 import type { QaScenario } from '../src/domain/models/run.model.js';
 import type { MemoryChunk } from '../src/domain/schemas/memory.schema.js';
 import type { RequiredScenario } from '../src/domain/schemas/correlation.schema.js';
@@ -42,7 +46,11 @@ function createMockMemorySearch(): import('../src/application/services/memory-se
 }
 
 describe('ScenarioOrchestratorService', () => {
-  const selector = new ScenarioSelectorService(createMockMemorySearch());
+  const memorySelector = new MemoryScenarioSelector(createMockMemorySearch());
+  const routeSelector = new RouteScenarioSelector();
+  const componentSelector = new ComponentScenarioSelector();
+  const criteriaSelector = new CriteriaScenarioSelector();
+  const selector = new ScenarioSelectorService(memorySelector, routeSelector, componentSelector, criteriaSelector);
   const generator = { generate: vi.fn() } as unknown as ScenarioGeneratorService;
   const orchestrator = new ScenarioOrchestratorService(selector, generator);
 

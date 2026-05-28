@@ -35,7 +35,7 @@ describe('ExecutionPlanFactoryService', () => {
     const scenario = makeScenario('SCN-001', 'Login do usuario', [
       { id: 'T001', title: 'Preencher email e senha', expected: 'Usuario logado', status: 'PENDING' },
     ]);
-    const plan = factory.buildFromScenarios(config, [scenario]);
+    const plan = factory.fromScenarios(config, [scenario]);
 
     expect(plan).toBeDefined();
     expect(plan!.steps.length).toBeGreaterThan(0);
@@ -48,7 +48,7 @@ describe('ExecutionPlanFactoryService', () => {
     const scenario = makeScenario('SCN-002', 'Acessar /profile', [
       { id: 'T002', title: 'Navegar para /profile', expected: 'Perfil carregado', status: 'PENDING' },
     ]);
-    const plan = factory.buildFromScenarios(config, [scenario]);
+    const plan = factory.fromScenarios(config, [scenario]);
 
     const step = plan!.steps[0];
     expect(step.action.type).toBe('navigate');
@@ -59,7 +59,7 @@ describe('ExecutionPlanFactoryService', () => {
     const scenario = makeScenario('SCN-003', 'Clicar botao salvar', [
       { id: 'T003', title: 'clicar no botao salvar', expected: 'Dados salvos', status: 'PENDING' },
     ]);
-    const plan = factory.buildFromScenarios(config, [scenario]);
+    const plan = factory.fromScenarios(config, [scenario]);
 
     const step = plan!.steps[0];
     expect(step.action.type).toBe('click');
@@ -70,7 +70,7 @@ describe('ExecutionPlanFactoryService', () => {
     const scenario = makeScenario('SCN-004', 'Preencher campo nome', [
       { id: 'T004', title: 'preencher campo nome', expected: 'Nome preenchido', status: 'PENDING' },
     ]);
-    const plan = factory.buildFromScenarios(config, [scenario]);
+    const plan = factory.fromScenarios(config, [scenario]);
 
     const step = plan!.steps[0];
     expect(step.action.type).toBe('fill');
@@ -81,7 +81,7 @@ describe('ExecutionPlanFactoryService', () => {
     const scenario = makeScenario('SCN-005', 'Alterar tema', [
       { id: 'T005', title: 'Alterar tema do app', expected: 'Tema alterado', status: 'PENDING' },
     ]);
-    const plan = factory.buildFromScenarios(config, [scenario]);
+    const plan = factory.fromScenarios(config, [scenario]);
 
     expect(plan).toBeDefined();
     expect(plan!.steps.length).toBeGreaterThan(0);
@@ -90,7 +90,7 @@ describe('ExecutionPlanFactoryService', () => {
 
   it('returns undefined when no steps can be generated', () => {
     const scenario = makeScenario('SCN-006', 'Empty', []);
-    const plan = factory.buildFromScenarios(config, [scenario]);
+    const plan = factory.fromScenarios(config, [scenario]);
 
     expect(plan).toBeUndefined();
   });

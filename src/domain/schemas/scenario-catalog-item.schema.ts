@@ -1,9 +1,10 @@
 import { z } from 'zod';
+import { QaScenarioSchema } from './qa-scenario.schema.js';
 
 export const ScenarioCatalogItemSourceSchema = z.enum(['memory', 'catalog', 'generated', 'manual']);
 export const ScenarioCatalogItemPrioritySchema = z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']);
 
-export const ScenarioCatalogItemSchema = z
+export const _ScenarioCatalogItemSchema = z
   .object({
     id: z.string().min(1),
     title: z.string().min(1),
@@ -15,15 +16,15 @@ export const ScenarioCatalogItemSchema = z
     priority: ScenarioCatalogItemPrioritySchema.optional(),
     source: ScenarioCatalogItemSourceSchema,
     memoryChunkId: z.string().optional(),
-    scenario: z.any().optional(),
+    scenario: QaScenarioSchema.optional(),
     createdAt: z.string().optional(),
     updatedAt: z.string().optional(),
   })
   .strict();
 
-export type ScenarioCatalogItemInput = z.input<typeof ScenarioCatalogItemSchema>;
-export type ScenarioCatalogItemValidated = z.infer<typeof ScenarioCatalogItemSchema>;
+export type ScenarioCatalogItemInput = z.input<typeof _ScenarioCatalogItemSchema>;
+export type ScenarioCatalogItemValidated = z.infer<typeof _ScenarioCatalogItemSchema>;
 
 export function validateScenarioCatalogItem(input: unknown): ScenarioCatalogItemValidated {
-  return ScenarioCatalogItemSchema.parse(input);
+  return _ScenarioCatalogItemSchema.parse(input);
 }

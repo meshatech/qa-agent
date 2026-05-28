@@ -33,7 +33,7 @@ describe('ExecutionPlanBuilder', () => {
   const config = makeConfig();
 
   it('calls factory and returns valid ExecutionPlan', () => {
-    const factory = { buildFromScenarios: vi.fn().mockReturnValue({
+    const factory = { fromScenarios: vi.fn().mockReturnValue({
       schemaVersion: 'execution-plan.v1',
       planId: 'plan_DEM-001',
       version: 1,
@@ -55,12 +55,12 @@ describe('ExecutionPlanBuilder', () => {
     const builder = new ExecutionPlanBuilder(factory);
     const plan = builder.build({ scenarios: [makeScenario('SCN-001', 'Test', [{ id: 'T001', title: 'Task', expected: 'Ok', status: 'PENDING' }])], config });
 
-    expect(factory.buildFromScenarios).toHaveBeenCalledTimes(1);
+    expect(factory.fromScenarios).toHaveBeenCalledTimes(1);
     expect(ExecutionPlanSchema.safeParse(plan).success).toBe(true);
   });
 
   it('normalizes scenario without tasks and still generates plan', () => {
-    const factory = { buildFromScenarios: vi.fn().mockImplementation((_cfg: RunConfig, scenarios: QaScenario[]) => {
+    const factory = { fromScenarios: vi.fn().mockImplementation((_cfg: RunConfig, scenarios: QaScenario[]) => {
       const steps = scenarios.flatMap((s) => s.tasks.map((t) => ({
         id: `${t.id}-step`,
         description: t.title,
@@ -86,30 +86,30 @@ describe('ExecutionPlanBuilder', () => {
     const scenario = makeScenario('SCN-001', 'Empty scenario', []);
     const plan = builder.build({ scenarios: [scenario], config });
 
-    expect(factory.buildFromScenarios).toHaveBeenCalledTimes(1);
-    const passedScenarios = (factory.buildFromScenarios as ReturnType<typeof vi.fn>).mock.calls[0][1] as QaScenario[];
+    expect(factory.fromScenarios).toHaveBeenCalledTimes(1);
+    const passedScenarios = (factory.fromScenarios as ReturnType<typeof vi.fn>).mock.calls[0][1] as QaScenario[];
     expect(passedScenarios[0].tasks.length).toBe(1);
     expect(passedScenarios[0].tasks[0].title).toBe('Empty scenario');
     expect(ExecutionPlanSchema.safeParse(plan).success).toBe(true);
   });
 
   it('throws ExecutionPlanBuildError when scenarios is empty', () => {
-    const factory = { buildFromScenarios: vi.fn() } as unknown as ExecutionPlanFactoryService;
+    const factory = { fromScenarios: vi.fn() } as unknown as ExecutionPlanFactoryService;
     const builder = new ExecutionPlanBuilder(factory);
 
     expect(() => builder.build({ scenarios: [], config })).toThrow(ExecutionPlanBuildError);
-    expect(factory.buildFromScenarios).not.toHaveBeenCalled();
+    expect(factory.fromScenarios).not.toHaveBeenCalled();
   });
 
   it('throws ExecutionPlanBuildError when factory returns undefined', () => {
-    const factory = { buildFromScenarios: vi.fn().mockReturnValue(undefined) } as unknown as ExecutionPlanFactoryService;
+    const factory = { fromScenarios: vi.fn().mockReturnValue(undefined) } as unknown as ExecutionPlanFactoryService;
     const builder = new ExecutionPlanBuilder(factory);
 
     expect(() => builder.build({ scenarios: [makeScenario('SCN-001', 'Test', [{ id: 'T001', title: 'Task', expected: 'Ok', status: 'PENDING' }])], config })).toThrow(ExecutionPlanBuildError);
   });
 
   it('throws ExecutionPlanBuildError when plan fails schema validation', () => {
-    const factory = { buildFromScenarios: vi.fn().mockReturnValue({ invalid: true }) } as unknown as ExecutionPlanFactoryService;
+    const factory = { fromScenarios: vi.fn().mockReturnValue({ invalid: true }) } as unknown as ExecutionPlanFactoryService;
     const builder = new ExecutionPlanBuilder(factory);
 
     expect(() => builder.build({ scenarios: [makeScenario('SCN-001', 'Test', [{ id: 'T001', title: 'Task', expected: 'Ok', status: 'PENDING' }])], config })).toThrow(ExecutionPlanBuildError);

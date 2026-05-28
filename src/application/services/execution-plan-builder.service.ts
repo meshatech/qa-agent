@@ -24,7 +24,7 @@ export class ExecutionPlanBuilder {
 
     const normalized = scenarios.map((scenario) => this.ensureTasks(scenario));
 
-    const plan = this.factory.buildFromScenarios(config, normalized);
+    const plan = this.factory.fromScenarios(config, normalized);
 
     if (!plan) {
       throw new ExecutionPlanBuildError('ExecutionPlanFactory returned undefined; no steps could be generated');

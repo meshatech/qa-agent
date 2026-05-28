@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  ScenarioCatalogItemSchema,
   validateScenarioCatalogItem,
 } from '../src/domain/schemas/scenario-catalog-item.schema.js';
 

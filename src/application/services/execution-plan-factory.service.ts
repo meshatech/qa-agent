@@ -5,10 +5,6 @@ import type { RunConfig } from '../../domain/schemas/config.schema.js';
 
 @Injectable()
 export class ExecutionPlanFactoryService {
-  buildFromScenarios(config: RunConfig, scenarios: QaScenario[]): ExecutionPlan | undefined {
-    return this.fromScenarios(config, scenarios);
-  }
-
   fromScenarios(config: RunConfig, scenarios: QaScenario[]): ExecutionPlan | undefined {
     const steps = scenarios.flatMap((scenario) => scenario.tasks.flatMap((task) => this.stepsForTask(scenario.id, task, config)));
     if (!steps.length) return undefined;

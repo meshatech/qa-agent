@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { ScenarioSelectorService } from '../src/application/services/scenario-selector.service.js';
+import { MemoryScenarioSelector } from '../src/application/services/scenario-selectors/memory-scenario-selector.service.js';
+import { RouteScenarioSelector } from '../src/application/services/scenario-selectors/route-scenario-selector.service.js';
+import { ComponentScenarioSelector } from '../src/application/services/scenario-selectors/component-scenario-selector.service.js';
+import { CriteriaScenarioSelector } from '../src/application/services/scenario-selectors/criteria-scenario-selector.service.js';
 import type { MemoryChunk, MemorySearchResponse } from '../src/domain/schemas/memory.schema.js';
 import type { RequiredScenario } from '../src/domain/schemas/correlation.schema.js';
 import type { MemorySearchService } from '../src/application/services/memory-search.service.js';
@@ -20,8 +24,17 @@ describe('ScenarioSelectorService', () => {
     } as unknown as MemorySearchService;
   }
 
+  function createFacade(memorySearch: MemorySearchService): ScenarioSelectorService {
+    return new ScenarioSelectorService(
+      new MemoryScenarioSelector(memorySearch),
+      new RouteScenarioSelector(),
+      new ComponentScenarioSelector(),
+      new CriteriaScenarioSelector(),
+    );
+  }
+
   describe('select (legacy synchronous selection)', () => {
-    const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+    const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
 
     function makeRequiredSync(id: string, title: string, rationale: string): RequiredScenario {
       return { id, title, intent: 'POSITIVE', rationale, relatedFiles: [], riskScore: 0.5 };
@@ -176,7 +189,7 @@ describe('ScenarioSelectorService', () => {
         chunks: [{ chunk, relevanceScore: 0.9 }],
         warnings: [],
       });
-      const service = new ScenarioSelectorService(mockSearch);
+      const service = createFacade(mockSearch);
       const required = [makeRequired('REQ-001', 'Fluxo de login', 'Validar que usuario consegue fazer login informando email e senha corretos')];
 
       const result = await service.findCatalogItems({ requiredScenarios: required });
@@ -198,7 +211,7 @@ describe('ScenarioSelectorService', () => {
         ],
         warnings: [],
       });
-      const service = new ScenarioSelectorService(mockSearch);
+      const service = createFacade(mockSearch);
       const required = [makeRequired('REQ-001', 'Fluxo de login', 'Validar que usuario consegue fazer login informando email e senha corretos')];
 
       const result = await service.findCatalogItems({ requiredScenarios: required });
@@ -221,7 +234,7 @@ describe('ScenarioSelectorService', () => {
         chunks: [{ chunk, relevanceScore: 0.9 }],
         warnings: [],
       });
-      const service = new ScenarioSelectorService(mockSearch);
+      const service = createFacade(mockSearch);
       const required = [makeRequired('REQ-001', 'Fluxo de login', 'Validar que usuario consegue fazer login informando email e senha corretos')];
 
       const result = await service.findCatalogItems({ requiredScenarios: required });
@@ -241,7 +254,7 @@ describe('ScenarioSelectorService', () => {
         chunks: [{ chunk, relevanceScore: 0.5 }],
         warnings: [],
       });
-      const service = new ScenarioSelectorService(mockSearch);
+      const service = createFacade(mockSearch);
       const required = [makeRequired('REQ-001', 'Teste', 'Teste qualquer')];
 
       const result = await service.findCatalogItems({ requiredScenarios: required });
@@ -255,7 +268,7 @@ describe('ScenarioSelectorService', () => {
 
     it('returns empty array when no matches', async () => {
       const mockSearch = createMockMemorySearch({ chunks: [], warnings: [] });
-      const service = new ScenarioSelectorService(mockSearch);
+      const service = createFacade(mockSearch);
       const required = [makeRequired('REQ-001', 'Teste', 'Teste qualquer')];
 
       const result = await service.findCatalogItems({ requiredScenarios: required });
@@ -269,7 +282,7 @@ describe('ScenarioSelectorService', () => {
         chunks: [{ chunk, relevanceScore: 0.9 }],
         warnings: [],
       });
-      const service = new ScenarioSelectorService(mockSearch);
+      const service = createFacade(mockSearch);
       const required = [
         makeRequired('REQ-001', 'Login com email', 'Validar login usando email e senha'),
         makeRequired('REQ-002', 'Login com senha', 'Confirmar login usando senha'),
@@ -285,7 +298,7 @@ describe('ScenarioSelectorService', () => {
       const chunk = makeChunk('SCN-001', 'Rota teste', 'Teste de rota.');
       const searchFn = vi.fn().mockResolvedValue({ chunks: [{ chunk, relevanceScore: 0.7 }], warnings: [] });
       const mockSearch = { search: searchFn } as unknown as MemorySearchService;
-      const service = new ScenarioSelectorService(mockSearch);
+      const service = createFacade(mockSearch);
       const required = [makeRequired('REQ-001', 'Teste', 'Teste qualquer', ['src/routes/login.ts'])];
 
       await service.findCatalogItems({ requiredScenarios: required });
@@ -304,7 +317,7 @@ describe('ScenarioSelectorService', () => {
     }
 
     it('selects item with exact route match', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [makeCatalogItem('SCN-001', 'Login', '/login')];
 
       const result = service.selectByRoute({ affectedRoutes: ['/login'], catalogItems: items });
@@ -314,7 +327,7 @@ describe('ScenarioSelectorService', () => {
     });
 
     it('selects item with child route', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [makeCatalogItem('SCN-001', 'Profile', '/login/profile')];
 
       const result = service.selectByRoute({ affectedRoutes: ['/login'], catalogItems: items });
@@ -324,7 +337,7 @@ describe('ScenarioSelectorService', () => {
     });
 
     it('does not select parent route when only child is affected', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [makeCatalogItem('SCN-001', 'Login', '/login')];
 
       const result = service.selectByRoute({ affectedRoutes: ['/login/profile'], catalogItems: items });
@@ -333,7 +346,7 @@ describe('ScenarioSelectorService', () => {
     });
 
     it('does not select substring that is not a prefix', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [
         makeCatalogItem('SCN-001', 'Admin Login', '/admin/login'),
         makeCatalogItem('SCN-002', 'Login History', '/login-history'),
@@ -345,7 +358,7 @@ describe('ScenarioSelectorService', () => {
     });
 
     it('does not select unrelated routes', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [makeCatalogItem('SCN-001', 'Logout', '/logout')];
 
       const result = service.selectByRoute({ affectedRoutes: ['/login'], catalogItems: items });
@@ -354,7 +367,7 @@ describe('ScenarioSelectorService', () => {
     });
 
     it('normalizes trailing slashes', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [makeCatalogItem('SCN-001', 'Login', '/login/')];
 
       const result = service.selectByRoute({ affectedRoutes: ['/login'], catalogItems: items });
@@ -363,7 +376,7 @@ describe('ScenarioSelectorService', () => {
     });
 
     it('normalizes query strings', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [makeCatalogItem('SCN-001', 'Login', '/login?foo=bar')];
 
       const result = service.selectByRoute({ affectedRoutes: ['/login'], catalogItems: items });
@@ -372,7 +385,7 @@ describe('ScenarioSelectorService', () => {
     });
 
     it('normalizes hashes', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [makeCatalogItem('SCN-001', 'Login', '/login#form')];
 
       const result = service.selectByRoute({ affectedRoutes: ['/login'], catalogItems: items });
@@ -381,7 +394,7 @@ describe('ScenarioSelectorService', () => {
     });
 
     it('handles multiple affected routes', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [
         makeCatalogItem('SCN-001', 'Login', '/login'),
         makeCatalogItem('SCN-002', 'Dashboard', '/dashboard'),
@@ -396,7 +409,7 @@ describe('ScenarioSelectorService', () => {
     });
 
     it('deduplicates items matching multiple routes', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [makeCatalogItem('SCN-001', 'Login Profile', '/login/profile')];
 
       const result = service.selectByRoute({ affectedRoutes: ['/login', '/login/profile'], catalogItems: items });
@@ -406,7 +419,7 @@ describe('ScenarioSelectorService', () => {
     });
 
     it('returns empty array when affectedRoutes is empty', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [makeCatalogItem('SCN-001', 'Login', '/login')];
 
       const result = service.selectByRoute({ affectedRoutes: [], catalogItems: items });
@@ -415,7 +428,7 @@ describe('ScenarioSelectorService', () => {
     });
 
     it('ignores items without route', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [makeCatalogItem('SCN-001', 'Generic', undefined)];
 
       const result = service.selectByRoute({ affectedRoutes: ['/login'], catalogItems: items });
@@ -424,7 +437,7 @@ describe('ScenarioSelectorService', () => {
     });
 
     it('preserves original catalog order', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [
         makeCatalogItem('SCN-002', 'Dashboard', '/dashboard'),
         makeCatalogItem('SCN-001', 'Login', '/login'),
@@ -442,7 +455,7 @@ describe('ScenarioSelectorService', () => {
     }
 
     it('selects item with exact component match', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [makeCatalogItem('SCN-001', 'Login Form', 'LoginForm')];
 
       const result = service.selectByComponent({ affectedComponents: ['LoginForm'], catalogItems: items });
@@ -452,7 +465,7 @@ describe('ScenarioSelectorService', () => {
     });
 
     it('selects item with normalized separator match', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [makeCatalogItem('SCN-001', 'Login Form', 'login-form')];
 
       const result = service.selectByComponent({ affectedComponents: ['LoginForm'], catalogItems: items });
@@ -462,7 +475,7 @@ describe('ScenarioSelectorService', () => {
     });
 
     it('does not select by substring', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [
         makeCatalogItem('SCN-001', 'Form', 'Form'),
         makeCatalogItem('SCN-002', 'Login', 'Login'),
@@ -474,7 +487,7 @@ describe('ScenarioSelectorService', () => {
     });
 
     it('handles multiple affected components', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [
         makeCatalogItem('SCN-001', 'Login', 'LoginForm'),
         makeCatalogItem('SCN-002', 'Dashboard', 'DashboardCard'),
@@ -489,7 +502,7 @@ describe('ScenarioSelectorService', () => {
     });
 
     it('deduplicates items matching multiple components', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [makeCatalogItem('SCN-001', 'Login Form', 'LoginForm')];
 
       const result = service.selectByComponent({ affectedComponents: ['LoginForm', 'login-form'], catalogItems: items });
@@ -499,7 +512,7 @@ describe('ScenarioSelectorService', () => {
     });
 
     it('returns empty array when affectedComponents is empty', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [makeCatalogItem('SCN-001', 'Login', 'LoginForm')];
 
       const result = service.selectByComponent({ affectedComponents: [], catalogItems: items });
@@ -508,7 +521,7 @@ describe('ScenarioSelectorService', () => {
     });
 
     it('ignores items without component', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [makeCatalogItem('SCN-001', 'Generic', undefined)];
 
       const result = service.selectByComponent({ affectedComponents: ['LoginForm'], catalogItems: items });
@@ -517,7 +530,7 @@ describe('ScenarioSelectorService', () => {
     });
 
     it('preserves original catalog order', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [
         makeCatalogItem('SCN-002', 'Dashboard', 'DashboardCard'),
         makeCatalogItem('SCN-001', 'Login', 'LoginForm'),
@@ -535,7 +548,7 @@ describe('ScenarioSelectorService', () => {
     }
 
     it('selects item with strong token overlap', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [makeCatalogItem('SCN-001', 'Login', ['O usuario preenche email e senha para fazer login'])];
 
       const result = service.selectByCriteria({
@@ -549,7 +562,7 @@ describe('ScenarioSelectorService', () => {
     });
 
     it('does not select item with irrelevant text', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [makeCatalogItem('SCN-001', 'Logout', ['O usuario clica no botao sair para encerrar sessao'])];
 
       const result = service.selectByCriteria({
@@ -562,7 +575,7 @@ describe('ScenarioSelectorService', () => {
     });
 
     it('returns uncoveredCriteria when no match', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [makeCatalogItem('SCN-001', 'Login', ['Login simples'])];
       const criterion = 'O sistema deve enviar email de confirmacao apos cadastro';
 
@@ -576,7 +589,7 @@ describe('ScenarioSelectorService', () => {
     });
 
     it('maps multiple criteria to different scenarios', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [
         makeCatalogItem('SCN-001', 'Login', ['usuario preenche email senha login sistema']),
         makeCatalogItem('SCN-002', 'Logout', ['usuario autenticado clica botao sair sessao encerrada redirecionado login']),
@@ -595,7 +608,7 @@ describe('ScenarioSelectorService', () => {
     });
 
     it('deduplicates when one scenario covers multiple criteria', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [
         makeCatalogItem('SCN-001', 'Login', [
           'usuario preenche email senha login sistema',
@@ -617,7 +630,7 @@ describe('ScenarioSelectorService', () => {
     });
 
     it('returns warning when acceptanceCriteria is empty', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [makeCatalogItem('SCN-001', 'Login', ['Login simples'])];
 
       const result = service.selectByCriteria({ acceptanceCriteria: [], catalogItems: items });
@@ -627,7 +640,7 @@ describe('ScenarioSelectorService', () => {
     });
 
     it('ignores items without criteria', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [makeCatalogItem('SCN-001', 'Generic', undefined)];
 
       const result = service.selectByCriteria({
@@ -640,7 +653,7 @@ describe('ScenarioSelectorService', () => {
     });
 
     it('preserves original catalog order', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [
         makeCatalogItem('SCN-002', 'Dashboard', ['usuario visualiza dashboard metricas graficos']),
         makeCatalogItem('SCN-001', 'Login', ['usuario preenche email senha login sistema']),
@@ -658,7 +671,7 @@ describe('ScenarioSelectorService', () => {
     });
 
     it('is case and accent insensitive', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [makeCatalogItem('SCN-001', 'Login', ['Usuário autentica email senha login'])];
 
       const result = service.selectByCriteria({
@@ -670,7 +683,7 @@ describe('ScenarioSelectorService', () => {
     });
 
     it('returns low score below threshold when overlap is weak', () => {
-      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const service = createFacade(createMockMemorySearch({ chunks: [], warnings: [] }));
       const items = [makeCatalogItem('SCN-001', 'Login', ['Usuario faz login com email'])];
       const criterion = 'O sistema deve enviar notificacao push quando pedido for concluido';
 
