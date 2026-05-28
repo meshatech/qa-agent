@@ -20,7 +20,7 @@ function isRetryableError(status: number | undefined): boolean {
 
 function sanitizeErrorMessage(message: string): string {
   return message
-    .replace(/Authorization:\s+Bearer\s+\S+/g, 'Authorization: Bearer [REDACTED]')
+    .replace(/Authorization:\s*Bearer\s+\S+/g, 'Authorization: Bearer [REDACTED]')
     .replace(/Bearer\s+\S+/g, 'Bearer [REDACTED]')
     .replace(/GITHUB_TOKEN=\S+/g, 'GITHUB_TOKEN=[REDACTED]')
     .replace(/CLICKUP_TOKEN=\S+/g, 'CLICKUP_TOKEN=[REDACTED]')
@@ -41,24 +41,26 @@ export class FetchGitHubCommentAdapter implements GitHubCommentPort {
     body: string;
     token: string;
   }): Promise<void> {
-    const existing = await this.hasExistingAgentComment(input);
-    if (existing) {
+    const existingCommentId = await this.findExistingAgentCommentId(input);
+    const preparedBody = this.prepareCommentBody(input.body);
+
+    if (existingCommentId !== undefined) {
+      const url = `https://api.github.com/repos/${input.repository}/issues/comments/${existingCommentId}`;
+      await this.doRequestWithRetry('PATCH', url, preparedBody, input.token);
       return;
     }
 
     const url = `https://api.github.com/repos/${input.repository}/issues/${input.pullNumber}/comments`;
-    const preparedBody = this.prepareCommentBody(input.body);
-
-    await this.doPostWithRetry(url, preparedBody, input.token);
+    await this.doRequestWithRetry('POST', url, preparedBody, input.token);
   }
 
-  private async doPostWithRetry(url: string, body: string, token: string): Promise<void> {
+  private async doRequestWithRetry(method: 'POST' | 'PATCH', url: string, body: string, token: string): Promise<void> {
     let lastError: GitHubCommentError | undefined;
 
     for (let attempt = 0; attempt < MAX_POST_COMMENT_ATTEMPTS; attempt++) {
       try {
         const response = await fetch(url, {
-          method: 'POST',
+          method,
           headers: {
             Authorization: `Bearer ${token}`,
             Accept: 'application/vnd.github+json',
@@ -115,11 +117,11 @@ export class FetchGitHubCommentAdapter implements GitHubCommentPort {
     return `${truncated}${marker}${footer}`;
   }
 
-  private async hasExistingAgentComment(input: {
+  private async findExistingAgentCommentId(input: {
     repository: string;
     pullNumber: number;
     token: string;
-  }): Promise<boolean> {
+  }): Promise<number | undefined> {
     try {
       const url = `https://api.github.com/repos/${input.repository}/issues/${input.pullNumber}/comments`;
       const response = await fetch(url, {
@@ -131,13 +133,14 @@ export class FetchGitHubCommentAdapter implements GitHubCommentPort {
       });
 
       if (!response.ok) {
-        return false;
+        return undefined;
       }
 
-      const comments = await response.json() as Array<{ body?: string }>;
-      return comments.some((c) => c.body?.includes(AGENT_QA_COMMENT_MARKER));
+      const comments = await response.json() as Array<{ id?: number; body?: string }>;
+      const existing = comments.find((c) => c.body?.includes(AGENT_QA_COMMENT_MARKER));
+      return existing?.id;
     } catch {
-      return false;
+      return undefined;
     }
   }
 }

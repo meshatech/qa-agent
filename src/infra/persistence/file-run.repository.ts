@@ -1,11 +1,15 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { access, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { realpath as realpathCallback } from 'node:fs';
+import { promisify } from 'node:util';
 import { dirname, join, resolve } from 'node:path';
 import type { RunRepositoryPort } from '../../application/ports/run-repository.port.js';
 import type { QaRunResult } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
 import { RunDirectoryManager } from './run-directory.manager.js';
 import { ReportRenderer } from './report-renderer.js';
+
+const realpathNative = promisify(realpathCallback.native);
 
 @Injectable()
 export class FileRunRepository implements RunRepositoryPort {
@@ -53,7 +57,7 @@ export class FileRunRepository implements RunRepositoryPort {
 
   async exists(runDir: string, relativePath: string): Promise<boolean> {
     try {
-      const target = this.resolveInsideRunDir(runDir, relativePath);
+      const target = await this.resolveInsideRunDir(runDir, relativePath);
       await access(target);
       return true;
     } catch {
@@ -63,7 +67,7 @@ export class FileRunRepository implements RunRepositoryPort {
 
   async listFiles(runDir: string, relativePath: string): Promise<string[]> {
     try {
-      const target = this.resolveInsideRunDir(runDir, relativePath);
+      const target = await this.resolveInsideRunDir(runDir, relativePath);
       const s = await stat(target);
       if (!s.isDirectory()) return [];
       const entries = await readdir(target, { withFileTypes: true });
@@ -73,9 +77,9 @@ export class FileRunRepository implements RunRepositoryPort {
     }
   }
 
-  private resolveInsideRunDir(runDir: string, relativePath: string): string {
-    const resolved = resolve(runDir, relativePath);
-    const normalizedRunDir = resolve(runDir);
+  private async resolveInsideRunDir(runDir: string, relativePath: string): Promise<string> {
+    const resolved = await realpathNative(resolve(runDir, relativePath));
+    const normalizedRunDir = await realpathNative(resolve(runDir));
     const prefix = normalizedRunDir.endsWith('/') ? normalizedRunDir : `${normalizedRunDir}/`;
     if (!resolved.startsWith(prefix)) {
       throw new Error(`Path traversal blocked: ${relativePath}`);

@@ -43,13 +43,14 @@ describe('FetchGitHubCommentAdapter', () => {
     expect(body.body).toContain('<!-- agent-qa-report -->');
   });
 
-  it('skips posting when existing marker is found', async () => {
+  it('updates existing comment via PATCH when marker is found', async () => {
     const fetchMock = createFetchMock([
       () => Promise.resolve({
         ok: true,
         status: 200,
-        json: () => Promise.resolve([{ body: 'Previous report\n<!-- agent-qa-report -->' }]),
+        json: () => Promise.resolve([{ id: 555, body: 'Previous report\n<!-- agent-qa-report -->' }]),
       } as Response),
+      () => Promise.resolve({ ok: true, status: 200 } as Response),
     ]);
     vi.stubGlobal('fetch', fetchMock);
 
@@ -60,10 +61,16 @@ describe('FetchGitHubCommentAdapter', () => {
       token: 'ghp_fake_token',
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     const getCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const patchCall = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
     expect(getCall[0]).toBe('https://api.github.com/repos/owner/repo/issues/42/comments');
     expect(getCall[1].method).toBeUndefined();
+    expect(patchCall[0]).toBe('https://api.github.com/repos/owner/repo/issues/comments/555');
+    expect(patchCall[1].method).toBe('PATCH');
+    const body = JSON.parse(patchCall[1].body as string) as { body: string };
+    expect(body.body).toContain('New report');
+    expect(body.body).toContain('<!-- agent-qa-report -->');
   });
 
   it('sends correct headers on POST', async () => {

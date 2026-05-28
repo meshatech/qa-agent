@@ -32,6 +32,8 @@ import type { QaToolContext } from '../tools/qa-tool-context.js';
 import { MemorySearchService } from '../services/memory-search.service.js';
 import { DemandContextPersistenceService } from '../services/demand-context-persistence.service.js';
 import { PRReporterService } from '../services/pr-reporter.service.js';
+import { collectKnownSecretsFromEnv } from '../services/known-secrets.collector.js';
+import { redactSecretsInMessage } from '../helpers/sanitize-token.js';
 
 const logger = new Logger('RunAgentUseCase');
 
@@ -1001,16 +1003,21 @@ export class RunAgentUseCase {
         if (prReportResult.publicationWarning) {
           const planRuntime = (result as QaRunResult & { planRuntime?: Record<string, unknown> }).planRuntime ?? {};
           const existingWarnings = Array.isArray(planRuntime.warnings) ? planRuntime.warnings : [];
-          planRuntime.warnings = [
-            ...existingWarnings,
-            { stepId: 'pr-reporter', message: prReportResult.publicationWarning },
-          ];
-          compactPlanRuntime = this.compactPlanRuntime(planRuntime);
+          // planRuntime is already compacted here; append the warning in place to avoid
+          // re-compacting (which would drop evaluation counts/phases already summarized).
+          compactPlanRuntime = {
+            ...planRuntime,
+            warnings: [
+              ...existingWarnings,
+              { stepId: 'pr-reporter', message: prReportResult.publicationWarning },
+            ],
+          };
           (result as QaRunResult & { planRuntime?: Record<string, unknown> }).planRuntime = compactPlanRuntime;
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        logger.warn(`PR report generation skipped: ${message}`);
+        const secrets = collectKnownSecretsFromEnv(process.env, config.pr.token ? [config.pr.token] : []);
+        logger.warn(`PR report generation skipped: ${redactSecretsInMessage(message, secrets)}`);
       }
     }
 

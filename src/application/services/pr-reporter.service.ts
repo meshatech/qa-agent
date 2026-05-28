@@ -22,19 +22,19 @@ export interface PRReportResult {
   publicationStatus?: PRPublicationStatus;
 }
 
-const REPORTER_SECRETS = collectKnownSecretsFromEnv();
-
-function finalSanitize(message: string): string {
-  return redactSecretsInMessage(message, REPORTER_SECRETS);
-}
-
 @Injectable()
 export class PRReporterService {
+  private readonly reporterSecrets = collectKnownSecretsFromEnv();
+
   constructor(
     @Inject('GitHubCommentPort') private readonly githubComment: GitHubCommentPort,
     @Inject('RunRepositoryPort') private readonly runRepository: RunRepositoryPort,
     private readonly renderer: PRReportRenderer,
   ) {}
+
+  private finalSanitize(message: string): string {
+    return redactSecretsInMessage(message, this.reporterSecrets);
+  }
 
   async report(input: {
     result: QaRunResult;
@@ -109,7 +109,7 @@ export class PRReporterService {
     }
 
     if (publicationStatus.reason) {
-      const safeReason = finalSanitize(publicationStatus.reason);
+      const safeReason = this.finalSanitize(publicationStatus.reason);
       publicationStatus = { ...publicationStatus, reason: safeReason };
       publicationWarning = safeReason;
     }
@@ -139,14 +139,19 @@ export class PRReporterService {
     result: QaRunResult,
   ): Promise<{ byBugId?: Record<string, EvidenceLink[]> }> {
     const byBugId: Record<string, EvidenceLink[]> = {};
-    for (const bug of result.bugs ?? []) {
-      if (!bug.path) continue;
-      const files = await this.runRepository.listFiles(runDir, bug.path);
-      const links = files
-        .map((file) => mapFileToEvidenceLink(`${bug.path}/${file}`))
-        .filter((link): link is EvidenceLink => link !== undefined);
+    const bugsWithPath = (result.bugs ?? []).filter((bug) => Boolean(bug.path));
+    const discovered = await Promise.all(
+      bugsWithPath.map(async (bug) => {
+        const files = await this.runRepository.listFiles(runDir, bug.path!);
+        const links = files
+          .map((file) => mapFileToEvidenceLink(`${bug.path}/${file}`))
+          .filter((link): link is EvidenceLink => link !== undefined);
+        return { bugId: bug.bugId, links };
+      }),
+    );
+    for (const { bugId, links } of discovered) {
       if (links.length > 0) {
-        byBugId[bug.bugId] = links;
+        byBugId[bugId] = links;
       }
     }
     return { byBugId };
