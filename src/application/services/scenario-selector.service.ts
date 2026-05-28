@@ -8,6 +8,7 @@ import { MemorySearchService } from './memory-search.service.js';
 import { mapScenarioChunkToCatalogItem } from '../mappers/chunk-to-scenario-catalog-item.mapper.js';
 import { truncate } from '../../domain/helpers/text-utils.js';
 import { normalizeRoute, routeMatches } from '../../domain/helpers/route-matcher.js';
+import { normalizeComponentName, componentMatches } from '../../domain/helpers/component-matcher.js';
 
 const MIN_MATCH_SCORE = 0.25;
 const MAX_SELECTED_SCENARIOS = 10;
@@ -91,6 +92,40 @@ export class ScenarioSelectorService {
 
       const matched = normalizedAffected.some((affected) =>
         routeMatches(affected, normalizedScenario),
+      );
+
+      if (matched && !seen.has(item.id)) {
+        seen.add(item.id);
+        result.push(item);
+      }
+    }
+
+    return result;
+  }
+
+  selectByComponent(input: {
+    affectedComponents: string[];
+    catalogItems: ScenarioCatalogItem[];
+  }): ScenarioCatalogItem[] {
+    if (!input.affectedComponents.length) return [];
+
+    const normalizedAffected = input.affectedComponents
+      .map(normalizeComponentName)
+      .filter((c) => c.length > 0);
+
+    if (!normalizedAffected.length) return [];
+
+    const seen = new Set<string>();
+    const result: ScenarioCatalogItem[] = [];
+
+    for (const item of input.catalogItems) {
+      if (!item.component) continue;
+
+      const normalizedScenario = normalizeComponentName(item.component);
+      if (!normalizedScenario) continue;
+
+      const matched = normalizedAffected.some((affected) =>
+        componentMatches(affected, normalizedScenario),
       );
 
       if (matched && !seen.has(item.id)) {

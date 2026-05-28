@@ -435,4 +435,97 @@ describe('ScenarioSelectorService', () => {
       expect(result.map((i) => i.id)).toEqual(['SCN-002', 'SCN-001']);
     });
   });
+
+  describe('selectByComponent', () => {
+    function makeCatalogItem(id: string, title: string, component?: string): import('../src/domain/models/scenario-catalog-item.model.js').ScenarioCatalogItem {
+      return { id, title, source: 'memory', component };
+    }
+
+    it('selects item with exact component match', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [makeCatalogItem('SCN-001', 'Login Form', 'LoginForm')];
+
+      const result = service.selectByComponent({ affectedComponents: ['LoginForm'], catalogItems: items });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('SCN-001');
+    });
+
+    it('selects item with normalized separator match', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [makeCatalogItem('SCN-001', 'Login Form', 'login-form')];
+
+      const result = service.selectByComponent({ affectedComponents: ['LoginForm'], catalogItems: items });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('SCN-001');
+    });
+
+    it('does not select by substring', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [
+        makeCatalogItem('SCN-001', 'Form', 'Form'),
+        makeCatalogItem('SCN-002', 'Login', 'Login'),
+      ];
+
+      const result = service.selectByComponent({ affectedComponents: ['LoginForm'], catalogItems: items });
+
+      expect(result).toHaveLength(0);
+    });
+
+    it('handles multiple affected components', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [
+        makeCatalogItem('SCN-001', 'Login', 'LoginForm'),
+        makeCatalogItem('SCN-002', 'Dashboard', 'DashboardCard'),
+        makeCatalogItem('SCN-003', 'Settings', 'SettingsPanel'),
+      ];
+
+      const result = service.selectByComponent({ affectedComponents: ['LoginForm', 'DashboardCard'], catalogItems: items });
+
+      expect(result).toHaveLength(2);
+      const ids = result.map((i) => i.id).sort();
+      expect(ids).toEqual(['SCN-001', 'SCN-002']);
+    });
+
+    it('deduplicates items matching multiple components', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [makeCatalogItem('SCN-001', 'Login Form', 'LoginForm')];
+
+      const result = service.selectByComponent({ affectedComponents: ['LoginForm', 'login-form'], catalogItems: items });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('SCN-001');
+    });
+
+    it('returns empty array when affectedComponents is empty', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [makeCatalogItem('SCN-001', 'Login', 'LoginForm')];
+
+      const result = service.selectByComponent({ affectedComponents: [], catalogItems: items });
+
+      expect(result).toHaveLength(0);
+    });
+
+    it('ignores items without component', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [makeCatalogItem('SCN-001', 'Generic', undefined)];
+
+      const result = service.selectByComponent({ affectedComponents: ['LoginForm'], catalogItems: items });
+
+      expect(result).toHaveLength(0);
+    });
+
+    it('preserves original catalog order', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [
+        makeCatalogItem('SCN-002', 'Dashboard', 'DashboardCard'),
+        makeCatalogItem('SCN-001', 'Login', 'LoginForm'),
+      ];
+
+      const result = service.selectByComponent({ affectedComponents: ['LoginForm', 'DashboardCard'], catalogItems: items });
+
+      expect(result.map((i) => i.id)).toEqual(['SCN-002', 'SCN-001']);
+    });
+  });
 });
