@@ -50,6 +50,11 @@ describe('mapFileToEvidenceLink', () => {
     expect(link).toBeUndefined();
   });
 
+  it('does not classify non-image files named screenshot as screenshot', () => {
+    expect(mapFileToEvidenceLink('bugs/B001/screenshot.txt')).toBeUndefined();
+    expect(mapFileToEvidenceLink('bugs/B001/myscreenshot.log')).toBeUndefined();
+  });
+
   it('returns undefined for absolute path', () => {
     const link = mapFileToEvidenceLink('/etc/passwd');
     expect(link).toBeUndefined();

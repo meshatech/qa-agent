@@ -35,7 +35,7 @@ export function mapFileToEvidenceLink(relativePath: string): EvidenceLink | unde
     return { type: 'bugReport', label: 'Bug report', path: relativePath };
   }
 
-  if (['png', 'jpg', 'jpeg', 'webp'].includes(ext) || filename.includes('screenshot')) {
+  if (['png', 'jpg', 'jpeg', 'webp'].includes(ext)) {
     return { type: 'screenshot', label: 'Screenshot', path: relativePath };
   }
 
