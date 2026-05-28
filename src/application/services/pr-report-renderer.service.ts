@@ -180,10 +180,25 @@ export class PRReportRenderer {
 
   private renderBugs(input: PRReportInput): string[] {
     const bugs = input.result.bugs ?? [];
-    if (!bugs.length) return [];
     const lines: string[] = ['', '## Bugs'];
+    if (!bugs.length) {
+      lines.push('_No bugs were reported._');
+      return lines;
+    }
     for (const b of bugs) {
-      lines.push('', `- **${b.bugId}** — ${b.classification.severity} — ${b.classification.reason}`);
+      const severity = b.classification?.severity ?? 'UNKNOWN';
+      const category = b.classification?.category ?? 'UNCLASSIFIED';
+      const reason = sanitizeTableCell(b.classification?.reason?.trim() || 'Bug found during QA execution');
+      lines.push('', `- **${b.bugId}** — ${severity} — ${category} — ${reason}`);
+
+      if (b.url) lines.push(`  - URL: \`${sanitizeTableCell(b.url)}\``);
+      if (b.expected) lines.push(`  - Expected: ${sanitizeTableCell(b.expected)}`);
+      if (b.actual) lines.push(`  - Actual: ${sanitizeTableCell(b.actual)}`);
+      if (b.signalType) lines.push(`  - Signal: ${sanitizeTableCell(b.signalType)}`);
+      if (b.scenarioId) lines.push(`  - Scenario: \`${sanitizeTableCell(b.scenarioId)}\``);
+      if (b.taskId) lines.push(`  - Task: \`${sanitizeTableCell(b.taskId)}\``);
+      if (b.stepId) lines.push(`  - Step: \`${sanitizeTableCell(b.stepId)}\``);
+
       const evidenceLinks = input.evidenceMap?.byBugId?.[b.bugId] ?? [];
       if (evidenceLinks.length) {
         for (const link of sortEvidenceLinks(evidenceLinks)) {

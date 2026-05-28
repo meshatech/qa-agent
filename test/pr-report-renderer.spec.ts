@@ -55,7 +55,8 @@ describe('PRReportRenderer', () => {
     expect(md).toContain('- Warnings: 0');
     expect(md).toContain('## Scenarios');
     expect(md).toContain('_No scenarios were reported._');
-    expect(md).not.toContain('## Bugs');
+    expect(md).toContain('## Bugs');
+    expect(md).toContain('_No bugs were reported._');
     expect(md).not.toContain('## Warnings');
     expect(md).toContain('## Artifacts');
   });
@@ -432,6 +433,7 @@ describe('PRReportRenderer', () => {
     expect(md).toContain('## Bugs');
     expect(md).toContain('BUG-001');
     expect(md).toContain('HIGH');
+    expect(md).toContain('APP_FAULT');
     expect(md).toContain('Crash');
   });
 
@@ -562,5 +564,118 @@ describe('PRReportRenderer', () => {
     expect(md).toContain('BUG-001');
     expect(md).not.toContain('Screenshot');
     expect(md).not.toContain('Video');
+  });
+
+  it('renders bug with all optional fields', () => {
+    const md = renderer.render({
+      result: makeResult({
+        bugs: [{
+          bugId: 'BUG-002',
+          stepId: 'STP-01',
+          scenarioId: 'SCN-01',
+          taskId: 'TSK-01',
+          classification: { isBug: true, severity: 'CRITICAL', category: 'ASSERTION_FAULT', reason: 'Button not clickable' },
+          path: 'bugs/BUG-002',
+          url: '/checkout',
+          expected: 'Button enabled',
+          actual: 'Button disabled',
+          signalType: 'ASSERTION_FAILURE',
+          capturedAt: '2026-01-01T00:00:00Z',
+        }],
+      }),
+      config: makeConfig(),
+      repository: 'owner/repo',
+      pullNumber: 1,
+    });
+
+    expect(md).toContain('BUG-002');
+    expect(md).toContain('CRITICAL');
+    expect(md).toContain('ASSERTION_FAULT');
+    expect(md).toContain('Button not clickable');
+    expect(md).toContain('URL: `/checkout`');
+    expect(md).toContain('Expected: Button enabled');
+    expect(md).toContain('Actual: Button disabled');
+    expect(md).toContain('Signal: ASSERTION_FAILURE');
+    expect(md).toContain('Scenario: `SCN-01`');
+    expect(md).toContain('Task: `TSK-01`');
+    expect(md).toContain('Step: `STP-01`');
+  });
+
+  it('uses UNCLASSIFIED fallback when category is missing', () => {
+    const md = renderer.render({
+      result: makeResult({
+        bugs: [{
+          bugId: 'BUG-003',
+          stepId: 'S1',
+          classification: { isBug: true, severity: 'MEDIUM', category: undefined as unknown as 'APP_FAULT', reason: 'Slow response' },
+          path: 'bugs/BUG-003',
+          capturedAt: '2026-01-01T00:00:00Z',
+        }],
+      }),
+      config: makeConfig(),
+      repository: 'owner/repo',
+      pullNumber: 1,
+    });
+
+    expect(md).toContain('UNCLASSIFIED');
+    expect(md).toContain('MEDIUM');
+    expect(md).toContain('Slow response');
+  });
+
+  it('uses UNKNOWN fallback when severity is missing', () => {
+    const md = renderer.render({
+      result: makeResult({
+        bugs: [{
+          bugId: 'BUG-004',
+          stepId: 'S1',
+          classification: { isBug: true, severity: undefined as unknown as 'HIGH', category: 'APP_FAULT', reason: 'Timeout' },
+          path: 'bugs/BUG-004',
+          capturedAt: '2026-01-01T00:00:00Z',
+        }],
+      }),
+      config: makeConfig(),
+      repository: 'owner/repo',
+      pullNumber: 1,
+    });
+
+    expect(md).toContain('UNKNOWN');
+    expect(md).toContain('APP_FAULT');
+  });
+
+  it('omits optional sublines when fields are absent', () => {
+    const md = renderer.render({
+      result: makeResult({
+        bugs: [{
+          bugId: 'BUG-005',
+          stepId: 'S1',
+          classification: { isBug: true, severity: 'LOW', category: 'NAVIGATION_FAULT', reason: '404' },
+          path: 'bugs/BUG-005',
+          capturedAt: '2026-01-01T00:00:00Z',
+        }],
+      }),
+      config: makeConfig(),
+      repository: 'owner/repo',
+      pullNumber: 1,
+    });
+
+    const bugSection = md.split('## Bugs')[1]?.split('## Warnings')[0] ?? '';
+    expect(bugSection).not.toContain('URL:');
+    expect(bugSection).not.toContain('Expected:');
+    expect(bugSection).not.toContain('Actual:');
+    expect(bugSection).not.toContain('Signal:');
+    expect(bugSection).not.toContain('Scenario:');
+    expect(bugSection).not.toContain('Task:');
+  });
+
+  it('renders no bugs message when bugs array is empty', () => {
+    const md = renderer.render({
+      result: makeResult({ bugs: [] }),
+      config: makeConfig(),
+      repository: 'owner/repo',
+      pullNumber: 1,
+    });
+
+    expect(md).toContain('## Bugs');
+    expect(md).toContain('_No bugs were reported._');
   });
 });
