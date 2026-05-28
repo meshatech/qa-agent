@@ -12,6 +12,7 @@ export interface PRReportInput {
   headRef?: string;
   baseRef?: string;
   coverageMap?: AcceptanceCriterionCoverage[];
+  uncoveredCriteria?: string[];
 }
 
 function extractWarnings(result: QaRunResult): Array<{ stepId?: string; message?: string }> {
@@ -53,6 +54,7 @@ export class PRReportRenderer {
       ...this.renderSummary(input),
       ...this.renderAcceptanceCriteria(input),
       ...this.renderCoveredCriteria(input),
+      ...this.renderUncoveredCriteria(input),
       ...this.renderScenarios(input),
       ...this.renderBugs(input),
       ...this.renderWarnings(input),
@@ -103,9 +105,12 @@ export class PRReportRenderer {
     return lines;
   }
 
+  private hasAcceptanceCriteria(input: PRReportInput): boolean {
+    return (input.config.demand.acceptanceCriteria ?? []).length > 0;
+  }
+
   private renderCoveredCriteria(input: PRReportInput): string[] {
-    const hasCriteria = (input.config.demand.acceptanceCriteria ?? []).length > 0;
-    if (!hasCriteria) return [];
+    if (!this.hasAcceptanceCriteria(input)) return [];
     const coverageMap = input.coverageMap ?? [];
     const lines: string[] = ['', '## Covered Acceptance Criteria'];
     if (!coverageMap.length) {
@@ -117,6 +122,18 @@ export class PRReportRenderer {
       const criterion = sanitizeTableCell(c.criterion);
       const scenarioTitle = sanitizeTableCell(c.scenarioTitle);
       lines.push(`| ${criterion} | ${scenarioTitle} | ${c.source} | ${c.score.toFixed(2)} |`);
+    }
+    return lines;
+  }
+
+  private renderUncoveredCriteria(input: PRReportInput): string[] {
+    if (!this.hasAcceptanceCriteria(input)) return [];
+    const uncovered = input.uncoveredCriteria ?? [];
+    if (!uncovered.length) return [];
+    const lines: string[] = ['', '## Uncovered Acceptance Criteria'];
+    lines.push('', '⚠️ The following acceptance criteria were not covered by any executed scenario:');
+    for (const c of uncovered) {
+      lines.push(`- ${sanitizeTableCell(c)}`);
     }
     return lines;
   }

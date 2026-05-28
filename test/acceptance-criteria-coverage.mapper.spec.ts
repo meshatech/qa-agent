@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildAcceptanceCriteriaCoverageMap } from '../src/application/services/acceptance-criteria-coverage.mapper.js';
+import { buildAcceptanceCriteriaCoverageMap, buildUncoveredCriteria } from '../src/application/services/acceptance-criteria-coverage.mapper.js';
 import type { QaScenario } from '../src/domain/models/run.model.js';
 
 describe('buildAcceptanceCriteriaCoverageMap', () => {
@@ -128,5 +128,78 @@ describe('buildAcceptanceCriteriaCoverageMap', () => {
     });
 
     expect(result.length).toBe(0);
+  });
+});
+
+describe('buildUncoveredCriteria', () => {
+  it('returns criteria not present in coverageMap', () => {
+    const result = buildUncoveredCriteria({
+      acceptanceCriteria: ['Login funciona', 'Logout funciona'],
+      coverageMap: [
+        { criterion: 'Login funciona', scenarioId: 's1', scenarioTitle: 'Login', score: 0.72, source: 'lexical' },
+      ],
+    });
+
+    expect(result).toEqual(['Logout funciona']);
+  });
+
+  it('returns empty when all criteria are covered', () => {
+    const result = buildUncoveredCriteria({
+      acceptanceCriteria: ['Login funciona'],
+      coverageMap: [
+        { criterion: 'Login funciona', scenarioId: 's1', scenarioTitle: 'Login', score: 0.72, source: 'lexical' },
+      ],
+    });
+
+    expect(result).toEqual([]);
+  });
+
+  it('preserves original order of uncovered criteria', () => {
+    const result = buildUncoveredCriteria({
+      acceptanceCriteria: ['A', 'B', 'C'],
+      coverageMap: [
+        { criterion: 'B', scenarioId: 's1', scenarioTitle: 'B', score: 0.72, source: 'lexical' },
+      ],
+    });
+
+    expect(result).toEqual(['A', 'C']);
+  });
+
+  it('normalizes whitespace and case when matching', () => {
+    const result = buildUncoveredCriteria({
+      acceptanceCriteria: ['  LOGIN funciona  '],
+      coverageMap: [
+        { criterion: 'login funciona', scenarioId: 's1', scenarioTitle: 'Login', score: 0.72, source: 'lexical' },
+      ],
+    });
+
+    expect(result).toEqual([]);
+  });
+
+  it('returns all criteria when coverageMap is empty', () => {
+    const result = buildUncoveredCriteria({
+      acceptanceCriteria: ['Login funciona', 'Logout funciona'],
+      coverageMap: [],
+    });
+
+    expect(result).toEqual(['Login funciona', 'Logout funciona']);
+  });
+
+  it('returns empty when acceptanceCriteria is empty', () => {
+    const result = buildUncoveredCriteria({
+      acceptanceCriteria: [],
+      coverageMap: [],
+    });
+
+    expect(result).toEqual([]);
+  });
+
+  it('ignores empty or whitespace-only criteria', () => {
+    const result = buildUncoveredCriteria({
+      acceptanceCriteria: ['Login funciona', '', '   '],
+      coverageMap: [],
+    });
+
+    expect(result).toEqual(['Login funciona']);
   });
 });

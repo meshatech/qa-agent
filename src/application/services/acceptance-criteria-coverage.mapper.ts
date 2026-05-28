@@ -12,6 +12,10 @@ export interface AcceptanceCriterionCoverage {
 
 const MIN_COVERED_CRITERION_SCORE = 0.30;
 
+function normalizeCriterionKey(value: string): string {
+  return value.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
 export function buildAcceptanceCriteriaCoverageMap(input: {
   acceptanceCriteria: string[];
   scenarios: QaScenario[];
@@ -62,4 +66,15 @@ export function buildAcceptanceCriteriaCoverageMap(input: {
   }
 
   return coverageMap;
+}
+
+export function buildUncoveredCriteria(input: {
+  acceptanceCriteria: string[];
+  coverageMap: AcceptanceCriterionCoverage[];
+}): string[] {
+  const { acceptanceCriteria, coverageMap } = input;
+  if (!acceptanceCriteria.length) return [];
+
+  const covered = new Set(coverageMap.map((c) => normalizeCriterionKey(c.criterion)));
+  return acceptanceCriteria.filter((c) => c.trim().length > 0 && !covered.has(normalizeCriterionKey(c)));
 }

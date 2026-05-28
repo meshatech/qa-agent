@@ -357,4 +357,45 @@ describe('PRReporterService', () => {
     expect(report).toContain('Login do usuário');
     expect(report).toContain('lexical');
   });
+
+  it('renders uncovered acceptance criteria for gaps not covered by scenarios', async () => {
+    const written: Array<{ runDir: string; name: string; data: string }> = [];
+    const repo: RunRepositoryPort = {
+      createRunDir: vi.fn(),
+      ensureDir: vi.fn(),
+      writeJson: vi.fn(),
+      writeFile: vi.fn((runDir, name, data) => {
+        written.push({ runDir, name, data: String(data) });
+        return Promise.resolve();
+      }),
+      writeReport: vi.fn(),
+      findRunDir: vi.fn(),
+      readJson: vi.fn(),
+    };
+    const github: GitHubCommentPort = { postComment: vi.fn() };
+    const service = new PRReporterService(github, repo, new PRReportRenderer());
+
+    await service.report({
+      result: makeResult({
+        scenarios: [
+          { id: 's1', title: 'Login do usuário', status: 'PASSED', tasks: [] },
+        ],
+      }),
+      config: makeConfig({
+        demand: { id: 'DEM-001', title: 'Test', description: 'Test', acceptanceCriteria: ['Usuário consegue fazer login', 'Admin pode exportar relatório'] },
+      }),
+      runDir: '/tmp/run-001',
+      repository: 'owner/repo',
+      pullNumber: 42,
+    });
+
+    const report = written.find((w) => w.name === 'pr-report.md')!.data;
+    expect(report).toContain('## Uncovered Acceptance Criteria');
+    expect(report).toContain('Admin pode exportar relatório');
+    expect(report).toContain('⚠️');
+
+    // Verify covered criterion does not appear in uncovered section
+    const uncoveredSection = report.split('## Uncovered Acceptance Criteria')[1]?.split('## Scenarios')[0] ?? '';
+    expect(uncoveredSection).not.toContain('Usuário consegue fazer login');
+  });
 });

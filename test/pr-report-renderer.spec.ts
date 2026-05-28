@@ -325,6 +325,57 @@ describe('PRReportRenderer', () => {
     expect(md).toContain('Login \\| Auth');
   });
 
+  it('renders uncovered acceptance criteria when present', () => {
+    const md = renderer.render({
+      result: makeResult(),
+      config: makeConfig({
+        demand: { id: 'DEM-001', title: 'Test', description: 'Test', acceptanceCriteria: ['User can login', 'Admin can export'] },
+      }),
+      repository: 'owner/repo',
+      pullNumber: 1,
+      coverageMap: [
+        { criterion: 'User can login', scenarioId: 's1', scenarioTitle: 'Login', score: 0.72, source: 'lexical' },
+      ],
+      uncoveredCriteria: ['Admin can export'],
+    });
+
+    expect(md).toContain('## Uncovered Acceptance Criteria');
+    expect(md).toContain('Admin can export');
+    expect(md).toContain('⚠️');
+
+    const uncoveredSection = md.split('## Uncovered Acceptance Criteria')[1]?.split('## Scenarios')[0] ?? '';
+    expect(uncoveredSection).not.toContain('User can login');
+  });
+
+  it('omits uncovered acceptance criteria section when empty', () => {
+    const md = renderer.render({
+      result: makeResult(),
+      config: makeConfig({
+        demand: { id: 'DEM-001', title: 'Test', description: 'Test', acceptanceCriteria: ['User can login'] },
+      }),
+      repository: 'owner/repo',
+      pullNumber: 1,
+      coverageMap: [
+        { criterion: 'User can login', scenarioId: 's1', scenarioTitle: 'Login', score: 0.72, source: 'lexical' },
+      ],
+      uncoveredCriteria: [],
+    });
+
+    expect(md).not.toContain('## Uncovered Acceptance Criteria');
+  });
+
+  it('omits uncovered acceptance criteria section when demand has no acceptance criteria', () => {
+    const md = renderer.render({
+      result: makeResult(),
+      config: makeConfig(),
+      repository: 'owner/repo',
+      pullNumber: 1,
+      uncoveredCriteria: [],
+    });
+
+    expect(md).not.toContain('## Uncovered Acceptance Criteria');
+  });
+
   it('preserves original order of scenarios and tasks', () => {
     const md = renderer.render({
       result: makeResult({
