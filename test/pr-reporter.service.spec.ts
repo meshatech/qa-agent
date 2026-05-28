@@ -52,6 +52,8 @@ describe('PRReporterService', () => {
       writeReport: vi.fn(),
       findRunDir: vi.fn(),
       readJson: vi.fn(),
+      exists: vi.fn(),
+      listFiles: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
     const service = new PRReporterService(github, repo, new PRReportRenderer());
@@ -86,6 +88,8 @@ describe('PRReporterService', () => {
       writeReport: vi.fn(),
       findRunDir: vi.fn(),
       readJson: vi.fn(),
+      exists: vi.fn(),
+      listFiles: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn(() => Promise.resolve()) };
     const service = new PRReporterService(github, repo, new PRReportRenderer());
@@ -119,6 +123,8 @@ describe('PRReporterService', () => {
       writeReport: vi.fn(),
       findRunDir: vi.fn(),
       readJson: vi.fn(),
+      exists: vi.fn(),
+      listFiles: vi.fn(),
     };
     const github: GitHubCommentPort = {
       postComment: vi.fn(() => Promise.reject(new GitHubCommentError('Forbidden', 403))),
@@ -152,6 +158,8 @@ describe('PRReporterService', () => {
       writeReport: vi.fn(),
       findRunDir: vi.fn(),
       readJson: vi.fn(),
+      exists: vi.fn(),
+      listFiles: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
     const service = new PRReporterService(github, repo, new PRReportRenderer());
@@ -227,6 +235,8 @@ describe('PRReporterService', () => {
       writeReport: vi.fn(),
       findRunDir: vi.fn(),
       readJson: vi.fn(),
+      exists: vi.fn(),
+      listFiles: vi.fn(),
     };
     const github: GitHubCommentPort = {
       postComment: vi.fn(() => Promise.reject(new Error('ghp_secret_123 failed'))),
@@ -264,6 +274,8 @@ describe('PRReporterService', () => {
       writeReport: vi.fn(),
       findRunDir: vi.fn(),
       readJson: vi.fn(),
+      exists: vi.fn(),
+      listFiles: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
     const service = new PRReporterService(github, repo, new PRReportRenderer());
@@ -301,6 +313,8 @@ describe('PRReporterService', () => {
       writeReport: vi.fn(),
       findRunDir: vi.fn(),
       readJson: vi.fn(),
+      exists: vi.fn(),
+      listFiles: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
     const service = new PRReporterService(github, repo, new PRReportRenderer());
@@ -333,6 +347,8 @@ describe('PRReporterService', () => {
       writeReport: vi.fn(),
       findRunDir: vi.fn(),
       readJson: vi.fn(),
+      exists: vi.fn(),
+      listFiles: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
     const service = new PRReporterService(github, repo, new PRReportRenderer());
@@ -371,6 +387,8 @@ describe('PRReporterService', () => {
       writeReport: vi.fn(),
       findRunDir: vi.fn(),
       readJson: vi.fn(),
+      exists: vi.fn(),
+      listFiles: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
     const service = new PRReporterService(github, repo, new PRReportRenderer());
@@ -397,5 +415,81 @@ describe('PRReporterService', () => {
     // Verify covered criterion does not appear in uncovered section
     const uncoveredSection = report.split('## Uncovered Acceptance Criteria')[1]?.split('## Scenarios')[0] ?? '';
     expect(uncoveredSection).not.toContain('Usuário consegue fazer login');
+  });
+
+  it('discovers and renders evidence links for bugs with existing files', async () => {
+    const written: Array<{ runDir: string; name: string; data: string }> = [];
+    const repo: RunRepositoryPort = {
+      createRunDir: vi.fn(),
+      ensureDir: vi.fn(),
+      writeJson: vi.fn(),
+      writeFile: vi.fn((runDir, name, data) => {
+        written.push({ runDir, name, data: String(data) });
+        return Promise.resolve();
+      }),
+      writeReport: vi.fn(),
+      findRunDir: vi.fn(),
+      readJson: vi.fn(),
+      exists: vi.fn(),
+      listFiles: vi.fn().mockImplementation((_runDir, path) => {
+        if (path === 'bugs/BUG-001') return Promise.resolve(['screenshot.png', 'console.log', 'unknown.txt']);
+        return Promise.resolve([]);
+      }),
+    };
+    const github: GitHubCommentPort = { postComment: vi.fn() };
+    const service = new PRReporterService(github, repo, new PRReportRenderer());
+
+    await service.report({
+      result: makeResult({
+        bugs: [{
+          bugId: 'BUG-001',
+          stepId: 'S1',
+          classification: { isBug: true, severity: 'HIGH', category: 'APP_FAULT', reason: 'Crash' },
+          path: 'bugs/BUG-001',
+          capturedAt: '2026-01-01T00:00:00Z',
+        }],
+      }),
+      config: makeConfig(),
+      runDir: '/tmp/run-001',
+      repository: 'owner/repo',
+      pullNumber: 42,
+    });
+
+    const report = written.find((w) => w.name === 'pr-report.md')!.data;
+    expect(report).toContain('Screenshot: `bugs/BUG-001/screenshot.png`');
+    expect(report).toContain('Console log: `bugs/BUG-001/console.log`');
+    expect(report).not.toContain('unknown.txt');
+  });
+
+  it('does not break report when evidence discovery fails', async () => {
+    const written: Array<{ runDir: string; name: string; data: string }> = [];
+    const repo: RunRepositoryPort = {
+      createRunDir: vi.fn(),
+      ensureDir: vi.fn(),
+      writeJson: vi.fn(),
+      writeFile: vi.fn((runDir, name, data) => {
+        written.push({ runDir, name, data: String(data) });
+        return Promise.resolve();
+      }),
+      writeReport: vi.fn(),
+      findRunDir: vi.fn(),
+      readJson: vi.fn(),
+      exists: vi.fn(),
+      listFiles: vi.fn().mockRejectedValue(new Error('Disk read error')),
+    };
+    const github: GitHubCommentPort = { postComment: vi.fn() };
+    const service = new PRReporterService(github, repo, new PRReportRenderer());
+
+    await service.report({
+      result: makeResult(),
+      config: makeConfig(),
+      runDir: '/tmp/run-001',
+      repository: 'owner/repo',
+      pullNumber: 42,
+    });
+
+    const report = written.find((w) => w.name === 'pr-report.md');
+    expect(report).toBeDefined();
+    expect(report!.data).toContain('# QA Agent');
   });
 });

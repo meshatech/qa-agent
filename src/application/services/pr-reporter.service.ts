@@ -5,6 +5,8 @@ import type { RunRepositoryPort } from '../ports/run-repository.port.js';
 import type { GitHubCommentPort } from '../ports/github-comment.port.js';
 import { PRReportRenderer } from './pr-report-renderer.service.js';
 import { buildAcceptanceCriteriaCoverageMap, buildUncoveredCriteria } from './acceptance-criteria-coverage.mapper.js';
+import { mapFileToEvidenceLink } from './evidence-link.mapper.js';
+import type { EvidenceLink } from './evidence-link.mapper.js';
 
 export interface PRReportResult {
   reportPath: string;
@@ -40,6 +42,13 @@ export class PRReporterService {
       coverageMap,
     });
 
+    let evidenceMap: { byBugId?: Record<string, EvidenceLink[]> } = {};
+    try {
+      evidenceMap = await this.discoverEvidence(input.runDir, input.result);
+    } catch {
+      // Evidence discovery failure should not invalidate QA; render without evidence links
+    }
+
     const markdown = this.renderer.render({
       result: input.result,
       config: input.config,
@@ -50,6 +59,7 @@ export class PRReporterService {
       baseRef: input.baseRef,
       coverageMap,
       uncoveredCriteria,
+      evidenceMap,
     });
     await this.runRepository.writeFile(input.runDir, 'pr-report.md', markdown);
 
@@ -69,6 +79,24 @@ export class PRReporterService {
       const warning = sanitizeWarning(error);
       return { reportPath: 'pr-report.md', published: false, publicationWarning: warning };
     }
+  }
+
+  private async discoverEvidence(
+    runDir: string,
+    result: QaRunResult,
+  ): Promise<{ byBugId?: Record<string, EvidenceLink[]> }> {
+    const byBugId: Record<string, EvidenceLink[]> = {};
+    for (const bug of result.bugs ?? []) {
+      if (!bug.path) continue;
+      const files = await this.runRepository.listFiles(runDir, bug.path);
+      const links = files
+        .map((file) => mapFileToEvidenceLink(`${bug.path}/${file}`))
+        .filter((link): link is EvidenceLink => link !== undefined);
+      if (links.length > 0) {
+        byBugId[bug.bugId] = links;
+      }
+    }
+    return { byBugId };
   }
 }
 

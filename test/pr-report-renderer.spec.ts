@@ -433,7 +433,6 @@ describe('PRReportRenderer', () => {
     expect(md).toContain('BUG-001');
     expect(md).toContain('HIGH');
     expect(md).toContain('Crash');
-    expect(md).toContain('bugs/BUG-001/bug-report.md');
   });
 
   it('renders warnings from planRuntime', () => {
@@ -511,5 +510,57 @@ describe('PRReportRenderer', () => {
     });
 
     expect(md).not.toContain('## Acceptance Criteria');
+  });
+
+  it('renders evidence links for bugs when evidenceMap provided', () => {
+    const md = renderer.render({
+      result: makeResult({
+        bugs: [{
+          bugId: 'BUG-001',
+          stepId: 'S1',
+          classification: { isBug: true, severity: 'HIGH', category: 'APP_FAULT', reason: 'Crash' },
+          path: 'bugs/BUG-001',
+          capturedAt: '2026-01-01T00:00:00Z',
+        }],
+      }),
+      config: makeConfig(),
+      repository: 'owner/repo',
+      pullNumber: 1,
+      evidenceMap: {
+        byBugId: {
+          'BUG-001': [
+            { type: 'bugReport', label: 'Bug report', path: 'bugs/BUG-001/bug-report.md' },
+            { type: 'screenshot', label: 'Screenshot', path: 'bugs/BUG-001/screenshot.png' },
+            { type: 'video', label: 'Video', path: 'bugs/BUG-001/video.webm' },
+          ],
+        },
+      },
+    });
+
+    expect(md).toContain('Bug report: `bugs/BUG-001/bug-report.md`');
+    expect(md).toContain('Screenshot: `bugs/BUG-001/screenshot.png`');
+    expect(md).toContain('Video: `bugs/BUG-001/video.webm`');
+  });
+
+  it('omits evidence links for bugs without evidenceMap', () => {
+    const md = renderer.render({
+      result: makeResult({
+        bugs: [{
+          bugId: 'BUG-001',
+          stepId: 'S1',
+          classification: { isBug: true, severity: 'HIGH', category: 'APP_FAULT', reason: 'Crash' },
+          path: 'bugs/BUG-001',
+          capturedAt: '2026-01-01T00:00:00Z',
+        }],
+      }),
+      config: makeConfig(),
+      repository: 'owner/repo',
+      pullNumber: 1,
+    });
+
+    expect(md).toContain('## Bugs');
+    expect(md).toContain('BUG-001');
+    expect(md).not.toContain('Screenshot');
+    expect(md).not.toContain('Video');
   });
 });

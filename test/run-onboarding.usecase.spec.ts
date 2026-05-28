@@ -26,6 +26,8 @@ describe('RunOnboardingUseCase', () => {
       writeReport: vi.fn(),
       findRunDir: vi.fn(),
       readJson: vi.fn(),
+      exists: vi.fn(),
+      listFiles: vi.fn(),
     };
     const onboardingExecute = vi.fn().mockResolvedValue(
       overrides.onboardingResult ?? {

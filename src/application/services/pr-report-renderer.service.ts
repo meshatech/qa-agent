@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import type { QaRunResult } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
 import type { AcceptanceCriterionCoverage } from './acceptance-criteria-coverage.mapper.js';
+import type { EvidenceLink } from './evidence-link.mapper.js';
+import { sortEvidenceLinks } from './evidence-link.mapper.js';
 
 export interface PRReportInput {
   result: QaRunResult;
@@ -13,6 +15,10 @@ export interface PRReportInput {
   baseRef?: string;
   coverageMap?: AcceptanceCriterionCoverage[];
   uncoveredCriteria?: string[];
+  evidenceMap?: {
+    byBugId?: Record<string, EvidenceLink[]>;
+    byScenarioId?: Record<string, EvidenceLink[]>;
+  };
 }
 
 function extractWarnings(result: QaRunResult): Array<{ stepId?: string; message?: string }> {
@@ -177,8 +183,13 @@ export class PRReportRenderer {
     if (!bugs.length) return [];
     const lines: string[] = ['', '## Bugs'];
     for (const b of bugs) {
-      const evidencePath = b.path ? `Evidence: \`${b.path}/bug-report.md\`` : '';
-      lines.push('', `- **${b.bugId}** — ${b.classification.severity} — ${b.classification.reason}`, evidencePath);
+      lines.push('', `- **${b.bugId}** — ${b.classification.severity} — ${b.classification.reason}`);
+      const evidenceLinks = input.evidenceMap?.byBugId?.[b.bugId] ?? [];
+      if (evidenceLinks.length) {
+        for (const link of sortEvidenceLinks(evidenceLinks)) {
+          lines.push(`  - ${link.label}: \`${link.path}\``);
+        }
+      }
     }
     return lines;
   }
