@@ -7,7 +7,7 @@ import type { QaRunResult } from '../src/domain/models/run.model.js';
 import type { RunConfig } from '../src/domain/schemas/config.schema.js';
 import { GitHubCommentError } from '../src/domain/errors.js';
 
-function makeConfig(): RunConfig {
+function makeConfig(overrides?: Partial<RunConfig>): RunConfig {
   return {
     baseUrl: 'http://localhost:3000',
     appDomains: ['localhost'],
@@ -23,6 +23,7 @@ function makeConfig(): RunConfig {
     output: { runsDir: './qa-agent-runs', keepVideoOnPass: false, keepScreenshotOnPass: false, keepTraceOnPass: false },
     scenarioSelection: { maxScenarios: 5 },
     agentVersion: '0.1.0',
+    ...overrides,
   };
 }
 
@@ -285,5 +286,37 @@ describe('PRReporterService', () => {
     expect(report).toContain('- Scenarios: 2');
     expect(report).toContain('- Passed: 1');
     expect(report).toContain('- Failed: 1');
+  });
+
+  it('renders acceptance criteria when config.demand has criteria', async () => {
+    const written: Array<{ runDir: string; name: string; data: string }> = [];
+    const repo: RunRepositoryPort = {
+      createRunDir: vi.fn(),
+      ensureDir: vi.fn(),
+      writeJson: vi.fn(),
+      writeFile: vi.fn((runDir, name, data) => {
+        written.push({ runDir, name, data: String(data) });
+        return Promise.resolve();
+      }),
+      writeReport: vi.fn(),
+      findRunDir: vi.fn(),
+      readJson: vi.fn(),
+    };
+    const github: GitHubCommentPort = { postComment: vi.fn() };
+    const service = new PRReporterService(github, repo, new PRReportRenderer());
+
+    await service.report({
+      result: makeResult(),
+      config: makeConfig({
+        demand: { id: 'DEM-001', title: 'Test', description: 'Test', acceptanceCriteria: ['User can login'] },
+      }),
+      runDir: '/tmp/run-001',
+      repository: 'owner/repo',
+      pullNumber: 42,
+    });
+
+    const report = written.find((w) => w.name === 'pr-report.md')!.data;
+    expect(report).toContain('## Acceptance Criteria');
+    expect(report).toContain('- User can login');
   });
 });

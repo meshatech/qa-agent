@@ -32,6 +32,7 @@ export class PRReporterService {
   }): Promise<PRReportResult> {
     const markdown = this.renderer.render({
       result: input.result,
+      config: input.config,
       repository: input.repository,
       pullNumber: input.pullNumber,
       commitSha: input.commitSha,

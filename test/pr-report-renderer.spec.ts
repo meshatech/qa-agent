@@ -1,6 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import { PRReportRenderer } from '../src/application/services/pr-report-renderer.service.js';
 import type { QaRunResult } from '../src/domain/models/run.model.js';
+import type { RunConfig } from '../src/domain/schemas/config.schema.js';
+
+function makeConfig(overrides?: Partial<RunConfig>): RunConfig {
+  return {
+    baseUrl: 'http://localhost:3000',
+    appDomains: ['localhost'],
+    demand: { id: 'DEM-001', title: 'Test', description: 'Test', acceptanceCriteria: [] },
+    auth: { kind: 'none' },
+    llm: { provider: 'fake', model: 'test', apiKeyEnv: 'TEST_KEY', maxSchemaRetries: 1, rateLimitRetries: 1, rateLimitMaxWaitMs: 1000, promptVersion: 'v1', temperature: 0, maxTokens: 100 },
+    browser: { engine: 'chromium', headed: false, viewport: { width: 1280, height: 720 }, locale: 'pt-BR', timezone: 'America/Sao_Paulo' },
+    timeouts: { quiescenceMs: 1000, actionMs: 5000, navigationMs: 10000, scenarioMs: 60000, runMs: 300000 },
+    runtime: { maxActionsPerTask: 5, mode: 'HYBRID_GUARDED', maxAttemptsPerStep: 2, maxReplansPerScenario: 2, destructiveActionPolicy: 'BLOCK', semanticKeys: {}, elementAvailability: { enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false }, tools: { enabled: false } },
+    recovery: { maxAttemptsPerTask: 2, maxFallbacksPerStep: 1, maxEmergencyActionsPerScenario: 1 },
+    classifier: { knownNoiseRegexes: [], knownTrackingDomains: [], treatThirdPartyNetwork5xxAsBug: false },
+    privacy: { maskEmails: true, maskJwt: true, maskCookies: true },
+    output: { runsDir: './qa-agent-runs', keepVideoOnPass: false, keepScreenshotOnPass: false, keepTraceOnPass: false },
+    scenarioSelection: { maxScenarios: 5 },
+    agentVersion: '0.1.0',
+    ...overrides,
+  };
+}
 
 function makeResult(overrides?: Partial<QaRunResult>): QaRunResult {
   return {
@@ -19,6 +40,7 @@ describe('PRReportRenderer', () => {
   it('renders minimal report with no scenarios, bugs, or metrics', () => {
     const md = renderer.render({
       result: makeResult(),
+      config: makeConfig(),
       repository: 'owner/repo',
       pullNumber: 42,
     });
@@ -40,6 +62,7 @@ describe('PRReportRenderer', () => {
   it('renders PR metadata when provided', () => {
     const md = renderer.render({
       result: makeResult(),
+      config: makeConfig(),
       repository: 'owner/repo',
       pullNumber: 42,
       commitSha: 'abc123',
@@ -60,6 +83,7 @@ describe('PRReportRenderer', () => {
           { id: 's2', title: 'Logout', status: 'FAILED', tasks: [] },
         ],
       }),
+      config: makeConfig(),
       repository: 'owner/repo',
       pullNumber: 1,
     });
@@ -80,6 +104,7 @@ describe('PRReportRenderer', () => {
           capturedAt: '2026-01-01T00:00:00Z',
         }],
       }),
+      config: makeConfig(),
       repository: 'owner/repo',
       pullNumber: 1,
     });
@@ -99,6 +124,7 @@ describe('PRReportRenderer', () => {
 
     const md = renderer.render({
       result,
+      config: makeConfig(),
       repository: 'owner/repo',
       pullNumber: 1,
     });
@@ -130,6 +156,7 @@ describe('PRReportRenderer', () => {
           totalDurationMs: 1000,
         },
       }),
+      config: makeConfig(),
       repository: 'owner/repo',
       pullNumber: 1,
     });
@@ -138,5 +165,31 @@ describe('PRReportRenderer', () => {
     expect(md).toContain('- Passed: 5');
     expect(md).toContain('- Failed: 3');
     expect(md).toContain('- Blocked: 2');
+  });
+
+  it('renders acceptance criteria when present', () => {
+    const md = renderer.render({
+      result: makeResult(),
+      config: makeConfig({
+        demand: { id: 'DEM-001', title: 'Test', description: 'Test', acceptanceCriteria: ['User can login', 'User can logout'] },
+      }),
+      repository: 'owner/repo',
+      pullNumber: 1,
+    });
+
+    expect(md).toContain('## Acceptance Criteria');
+    expect(md).toContain('- User can login');
+    expect(md).toContain('- User can logout');
+  });
+
+  it('omits acceptance criteria section when empty', () => {
+    const md = renderer.render({
+      result: makeResult(),
+      config: makeConfig(),
+      repository: 'owner/repo',
+      pullNumber: 1,
+    });
+
+    expect(md).not.toContain('## Acceptance Criteria');
   });
 });
