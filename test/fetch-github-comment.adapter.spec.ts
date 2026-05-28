@@ -345,4 +345,24 @@ describe('FetchGitHubCommentAdapter', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
+
+  it('does not leak pk_ or CLICKUP_TOKEN in error messages', async () => {
+    const fetchMock = createFetchMock([
+      () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) } as Response),
+      () => Promise.reject(new Error('pk_test_abc123 network failure')),
+    ]);
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      adapter.postComment({
+        repository: 'owner/repo',
+        pullNumber: 1,
+        body: 'body',
+        token: 'ghp_test',
+      }),
+    ).rejects.toSatisfy((error: unknown) => {
+      if (!(error instanceof GitHubCommentError)) return false;
+      return !error.message.includes('pk_test_abc123');
+    });
+  });
 });

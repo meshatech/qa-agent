@@ -20,13 +20,17 @@ function isRetryableError(status: number | undefined): boolean {
 
 function sanitizeErrorMessage(message: string): string {
   return message
+    .replace(/Authorization:\s+Bearer\s+\S+/g, 'Authorization: Bearer [REDACTED]')
     .replace(/Bearer\s+\S+/g, 'Bearer [REDACTED]')
+    .replace(/GITHUB_TOKEN=\S+/g, 'GITHUB_TOKEN=[REDACTED]')
+    .replace(/CLICKUP_TOKEN=\S+/g, 'CLICKUP_TOKEN=[REDACTED]')
     .replace(/ghp_[a-zA-Z0-9_]+/g, '[REDACTED]')
     .replace(/github_pat_[a-zA-Z0-9_]+/g, '[REDACTED]')
     .replace(/ghs_[a-zA-Z0-9_]+/g, '[REDACTED]')
     .replace(/gho_[a-zA-Z0-9_]+/g, '[REDACTED]')
     .replace(/ghu_[a-zA-Z0-9_]+/g, '[REDACTED]')
-    .replace(/ghr_[a-zA-Z0-9_]+/g, '[REDACTED]');
+    .replace(/ghr_[a-zA-Z0-9_]+/g, '[REDACTED]')
+    .replace(/pk_[a-zA-Z0-9_]+/g, '[REDACTED]');
 }
 
 @Injectable()

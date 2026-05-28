@@ -391,6 +391,50 @@ describe('PRReporterService', () => {
     const writeCalls = (repo.writeFile as ReturnType<typeof vi.fn>).mock.calls as Array<[string, string, string]>;
     const markdown = writeCalls.find((c) => c[1] === 'pr-report.md')?.[2] ?? '';
     expect(markdown).not.toContain('ghp_secret_123');
+
+    const writeJsonCalls = (repo.writeJson as ReturnType<typeof vi.fn>).mock.calls as Array<[string, string, unknown]>;
+    const artifact = writeJsonCalls.find((c) => c[1] === 'pr-publication-status.json');
+    const artifactJson = JSON.stringify(artifact?.[2]);
+    expect(artifactJson).not.toContain('ghp_secret_123');
+  });
+
+  it('never leaks CLICKUP_TOKEN or pk_ token into outputs', async () => {
+    const repo: RunRepositoryPort = {
+      createRunDir: vi.fn(),
+      ensureDir: vi.fn(),
+      writeJson: vi.fn(),
+      writeFile: vi.fn(() => Promise.resolve()),
+      writeReport: vi.fn(),
+      findRunDir: vi.fn(),
+      readJson: vi.fn(),
+      exists: vi.fn(),
+      listFiles: vi.fn(),
+    };
+    const github: GitHubCommentPort = {
+      postComment: vi.fn(() => Promise.reject(new GitHubCommentError('pk_test_abc123 failed', 418))),
+    };
+    const service = new PRReporterService(github, repo, new PRReportRenderer());
+
+    const result = await service.report({
+      result: makeResult(),
+      config: makeConfig(),
+      runDir: '/tmp/run-001',
+      repository: 'owner/repo',
+      pullNumber: 42,
+      token: 'ghp_test',
+    });
+
+    expect(result.publicationWarning).toBeDefined();
+    expect(result.publicationWarning).not.toContain('pk_test_abc123');
+
+    const writeCalls = (repo.writeFile as ReturnType<typeof vi.fn>).mock.calls as Array<[string, string, string]>;
+    const markdown = writeCalls.find((c) => c[1] === 'pr-report.md')?.[2] ?? '';
+    expect(markdown).not.toContain('pk_test_abc123');
+
+    const writeJsonCalls = (repo.writeJson as ReturnType<typeof vi.fn>).mock.calls as Array<[string, string, unknown]>;
+    const artifact = writeJsonCalls.find((c) => c[1] === 'pr-publication-status.json');
+    const artifactJson = JSON.stringify(artifact?.[2]);
+    expect(artifactJson).not.toContain('pk_test_abc123');
   });
 
   it('renders report without metrics using inline calculations', async () => {

@@ -37,6 +37,21 @@ describe('sanitizePublicationWarning', () => {
     const result = sanitizePublicationWarning('Bearer ghp_123 and github_pat_456');
     expect(result).toBe('Bearer [REDACTED] and [REDACTED]');
   });
+
+  it('masks pk_ token (ClickUp)', () => {
+    const result = sanitizePublicationWarning('pk_test_abc123_xyz failed');
+    expect(result).toBe('[REDACTED] failed');
+  });
+
+  it('masks CLICKUP_TOKEN= value', () => {
+    const result = sanitizePublicationWarning('Env CLICKUP_TOKEN=pk_test_123 set');
+    expect(result).toBe('Env CLICKUP_TOKEN=[REDACTED] set');
+  });
+
+  it('masks Authorization: Bearer header', () => {
+    const result = sanitizePublicationWarning('Request failed: Authorization: Bearer ghp_secret_123');
+    expect(result).toBe('Request failed: Authorization: Bearer [REDACTED]');
+  });
 });
 
 describe('buildPublicationWarning', () => {

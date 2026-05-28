@@ -12,12 +12,20 @@ import { buildPublicationWarning } from './pr-publication-warning-sanitizer.js';
 import type { PRPublicationStatus } from './pr-report-renderer.service.js';
 import { buildPublicationStatusArtifact } from './pr-publication-status-artifact.js';
 import { GitHubCommentError } from '../../domain/errors.js';
+import { redactSecretsInMessage } from '../helpers/sanitize-token.js';
+import { collectKnownSecretsFromEnv } from './known-secrets.collector.js';
 
 export interface PRReportResult {
   reportPath: string;
   published: boolean;
   publicationWarning?: string;
   publicationStatus?: PRPublicationStatus;
+}
+
+const REPORTER_SECRETS = collectKnownSecretsFromEnv();
+
+function finalSanitize(message: string): string {
+  return redactSecretsInMessage(message, REPORTER_SECRETS);
 }
 
 @Injectable()
@@ -98,6 +106,12 @@ export class PRReporterService {
         publicationStatus = { published: false, fallback: true, reason: warning };
         publicationWarning = warning;
       }
+    }
+
+    if (publicationStatus.reason) {
+      const safeReason = finalSanitize(publicationStatus.reason);
+      publicationStatus = { ...publicationStatus, reason: safeReason };
+      publicationWarning = safeReason;
     }
 
     const artifact = buildPublicationStatusArtifact({
