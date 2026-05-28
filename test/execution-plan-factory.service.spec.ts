@@ -99,6 +99,61 @@ describe('ExecutionPlanFactoryService', () => {
     expect(ExecutionPlanSchema.safeParse(plan).success).toBe(true);
   });
 
+  it('generates waitForStable step for authenticated area task', () => {
+    const scenario = makeScenario('SCN-007', 'Verificar área autenticada', [
+      { id: 'T007', title: 'Verificar área autenticada', expected: 'Área visível', status: 'PENDING' },
+    ]);
+    const plan = factory.fromScenarios(config, [scenario]);
+
+    const step = plan!.steps[0];
+    expect(step.action.type).toBe('waitForStable');
+    expect((step.action as { timeoutMs: number }).timeoutMs).toBe(1000);
+    expect(step.postconditions).toEqual([
+      { type: 'text_any_visible', texts: ['Caixa de entrada', 'Inbox', 'Configurações', 'Settings'] },
+    ]);
+  });
+
+  it('generates click step for account menu task', () => {
+    const scenario = makeScenario('SCN-008', 'Abrir opções da conta', [
+      { id: 'T008', title: 'Abrir opções da conta', expected: 'Menu visível', status: 'PENDING' },
+    ]);
+    const plan = factory.fromScenarios(config, [scenario]);
+
+    const step = plan!.steps[0];
+    expect(step.action.type).toBe('click');
+    expect((step.action as { target: { strategy: string; role: string; name: string } }).target).toEqual({
+      strategy: 'role',
+      role: 'button',
+      name: 'Conta e opções',
+    });
+    expect(step.postconditions).toEqual([
+      { type: 'text_any_visible', texts: ['Sair', 'Logout', 'Tema', 'Theme', 'Configurações'] },
+    ]);
+  });
+
+  it('generates two steps for logout task', () => {
+    const scenario = makeScenario('SCN-009', 'Sair da conta', [
+      { id: 'T009', title: 'Sair da conta', expected: 'Logout concluído', status: 'PENDING' },
+    ]);
+    const plan = factory.fromScenarios(config, [scenario]);
+
+    expect(plan!.steps).toHaveLength(2);
+
+    const menuStep = plan!.steps[0];
+    expect(menuStep.id).toBe('T009-logout-menu');
+    expect(menuStep.action.type).toBe('click');
+
+    const logoutStep = plan!.steps[1];
+    expect(logoutStep.id).toBe('T009-logout-click');
+    expect(logoutStep.action.type).toBe('click');
+    expect(logoutStep.preconditions).toEqual([
+      { type: 'text_any_visible', texts: ['Sair', 'Logout', 'Sign out'] },
+    ]);
+    expect(logoutStep.postconditions).toEqual([
+      { type: 'auth_state', expected: 'anonymous' },
+    ]);
+  });
+
   it('returns undefined when no steps can be generated', () => {
     const scenario = makeScenario('SCN-006', 'Empty', []);
     const plan = factory.fromScenarios(config, [scenario]);
