@@ -115,6 +115,14 @@ export const RunConfigSchema = z.object({
   scenarioSelection: z.object({
     maxScenarios: z.number().int().min(1).max(100).optional().default(5),
   }).optional().default({ maxScenarios: 5 }),
+  pr: z.object({
+    repository: z.string().min(1),
+    pullNumber: z.number().int().positive(),
+    token: z.string().optional(),
+    commitSha: z.string().optional(),
+    headRef: z.string().optional(),
+    baseRef: z.string().optional(),
+  }).optional(),
   agentVersion: z.string().default('0.1.0'),
 });
 

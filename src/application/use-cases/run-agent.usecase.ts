@@ -31,6 +31,9 @@ import { QaToolRegistry } from '../tools/qa-tool-registry.js';
 import type { QaToolContext } from '../tools/qa-tool-context.js';
 import { MemorySearchService } from '../services/memory-search.service.js';
 import { DemandContextPersistenceService } from '../services/demand-context-persistence.service.js';
+import { PRReporterService } from '../services/pr-reporter.service.js';
+import { collectKnownSecretsFromEnv } from '../services/known-secrets.collector.js';
+import { redactSecretsInMessage } from '../helpers/sanitize-token.js';
 
 const logger = new Logger('RunAgentUseCase');
 
@@ -59,6 +62,7 @@ export class RunAgentUseCase {
     @Inject(QaToolRegistry) private readonly toolRegistry: QaToolRegistry,
     @Inject(DemandContextPersistenceService)
     private readonly demandContextPersistence: DemandContextPersistenceService,
+    @Inject(PRReporterService) private readonly prReporter: PRReporterService,
   ) { }
 
   async execute(rawDto: RunAgentDto): Promise<QaRunResult> {
@@ -980,8 +984,43 @@ export class RunAgentUseCase {
     if (llmStats?.breakdown) {
       console.log(`[LLM Stats] total=${llmStats.calls}, breakdown=${JSON.stringify(llmStats.breakdown)}`);
     }
-    const compactPlanRuntime = this.compactPlanRuntime((result as QaRunResult & { planRuntime?: Record<string, unknown> }).planRuntime);
+    let compactPlanRuntime = this.compactPlanRuntime((result as QaRunResult & { planRuntime?: Record<string, unknown> }).planRuntime);
     (result as QaRunResult & { planRuntime?: Record<string, unknown> }).planRuntime = compactPlanRuntime;
+
+    if (config.pr) {
+      try {
+        const prReportResult = await this.prReporter.report({
+          result,
+          config,
+          runDir: result.runDir,
+          repository: config.pr.repository,
+          pullNumber: config.pr.pullNumber,
+          token: config.pr.token,
+          commitSha: config.pr.commitSha,
+          headRef: config.pr.headRef,
+          baseRef: config.pr.baseRef,
+        });
+        if (prReportResult.publicationWarning) {
+          const planRuntime = (result as QaRunResult & { planRuntime?: Record<string, unknown> }).planRuntime ?? {};
+          const existingWarnings = Array.isArray(planRuntime.warnings) ? planRuntime.warnings : [];
+          // planRuntime is already compacted here; append the warning in place to avoid
+          // re-compacting (which would drop evaluation counts/phases already summarized).
+          compactPlanRuntime = {
+            ...planRuntime,
+            warnings: [
+              ...existingWarnings,
+              { stepId: 'pr-reporter', message: prReportResult.publicationWarning },
+            ],
+          };
+          (result as QaRunResult & { planRuntime?: Record<string, unknown> }).planRuntime = compactPlanRuntime;
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const secrets = collectKnownSecretsFromEnv(process.env, config.pr.token ? [config.pr.token] : []);
+        logger.warn(`PR report generation skipped: ${redactSecretsInMessage(message, secrets)}`);
+      }
+    }
+
     if (capturePassArtifacts && result.status === 'PASSED') {
       if (config.output.keepTraceOnPass) await this.browser.saveTrace(`${result.runDir}/artifacts/traces/run-trace.zip`).catch(() => undefined);
       if (config.output.keepVideoOnPass) await this.browser.saveVideo(`${result.runDir}/artifacts/videos/run-video.webm`).catch(() => undefined);
@@ -1003,6 +1042,7 @@ export class RunAgentUseCase {
     await this.repo.writeFile(result.runDir, 'generated-test.spec.ts', this.specExporter.export(result));
     await this.repo.writeJson(result.runDir, 'run.json', this.sanitizer.sanitize({ schemaVersion: 'run.v1', runId, ...result }));
     await this.repo.writeReport(result.runDir, result, config, runId);
+
     return result;
   }
 

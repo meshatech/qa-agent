@@ -9,4 +9,6 @@ export interface RunRepositoryPort {
   writeReport(runDir: string, result: QaRunResult, config: RunConfig, runId: string): Promise<void>;
   findRunDir(runsDir: string, runId?: string): Promise<string>;
   readJson<T>(runDir: string, name: string): Promise<T>;
+  exists(runDir: string, relativePath: string): Promise<boolean>;
+  listFiles(runDir: string, relativePath: string): Promise<string[]>;
 }

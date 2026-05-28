@@ -8,6 +8,7 @@ import { FetchClickUpApiAdapter } from './clickup/fetch-clickup-api.adapter.js';
 import { ClickUpHttpReaderAdapter } from './clickup/clickup-http-reader.adapter.js';
 import { FakeClickUpReaderAdapter } from './clickup/fake-clickup-reader.adapter.js';
 import { FetchGitHubApiAdapter } from './github/fetch-github-api.adapter.js';
+import { FetchGitHubCommentAdapter } from './github/fetch-github-comment.adapter.js';
 import { FileGitHubEventContextAdapter } from './github/file-github-event-context.adapter.js';
 import { GitHubActionsPrContextReaderAdapter } from './github/github-actions-pr-context-reader.adapter.js';
 import { ExecGitRepositoryAdapter } from './git/exec-git-repository.adapter.js';
@@ -58,6 +59,7 @@ export const INFRA_PROVIDERS = [
   ClickUpHttpReaderAdapter,
   FakeClickUpReaderAdapter,
   FetchGitHubApiAdapter,
+  FetchGitHubCommentAdapter,
   FileGitHubEventContextAdapter,
   GitHubActionsPrContextReaderAdapter,
   { provide: 'BrowserHarnessPort', useExisting: PlaywrightHarness },
@@ -72,6 +74,7 @@ export const INFRA_PROVIDERS = [
   { provide: 'ClickUpApiPort', useExisting: FetchClickUpApiAdapter },
   { provide: 'ClickUpReaderPort', useExisting: ClickUpHttpReaderAdapter },
   { provide: 'GitHubApiPort', useExisting: FetchGitHubApiAdapter },
+  { provide: 'GitHubCommentPort', useExisting: FetchGitHubCommentAdapter },
   { provide: 'GitHubEventContextPort', useExisting: FileGitHubEventContextAdapter },
   { provide: 'GitHubActionsPrContextReaderPort', useExisting: GitHubActionsPrContextReaderAdapter },
 ];
