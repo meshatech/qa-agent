@@ -53,7 +53,8 @@ describe('PRReportRenderer', () => {
     expect(md).toContain('- Scenarios: 0');
     expect(md).toContain('- Bugs: 0');
     expect(md).toContain('- Warnings: 0');
-    expect(md).not.toContain('## Scenarios');
+    expect(md).toContain('## Scenarios');
+    expect(md).toContain('_No scenarios were reported._');
     expect(md).not.toContain('## Bugs');
     expect(md).not.toContain('## Warnings');
     expect(md).toContain('## Artifacts');
@@ -75,7 +76,7 @@ describe('PRReportRenderer', () => {
     expect(md).toContain('**Head:** feature/foo');
   });
 
-  it('renders scenarios table when scenarios exist', () => {
+  it('renders scenarios table with task count when scenarios exist', () => {
     const md = renderer.render({
       result: makeResult({
         scenarios: [
@@ -89,8 +90,212 @@ describe('PRReportRenderer', () => {
     });
 
     expect(md).toContain('## Scenarios');
-    expect(md).toContain('| Login | PASSED |');
-    expect(md).toContain('| Logout | FAILED |');
+    expect(md).toContain('| Scenario | Status | Tasks |');
+    expect(md).toContain('| Login | PASSED | 0 |');
+    expect(md).toContain('| Logout | FAILED | 0 |');
+    expect(md).toContain('### Login');
+    expect(md).toContain('### Logout');
+    expect(md).toContain('_No tasks reported for this scenario._');
+  });
+
+  it('renders tasks with id, status and title under each scenario', () => {
+    const md = renderer.render({
+      result: makeResult({
+        scenarios: [
+          {
+            id: 's1',
+            title: 'Login',
+            status: 'PASSED',
+            tasks: [
+              { id: 'T001', title: 'Enter username', expected: 'username visible', status: 'PASSED' },
+              { id: 'T002', title: 'Enter password', expected: 'password masked', status: 'PASSED' },
+            ],
+          },
+        ],
+      }),
+      config: makeConfig(),
+      repository: 'owner/repo',
+      pullNumber: 1,
+    });
+
+    expect(md).toContain('### Login');
+    expect(md).toContain('- T001 — PASSED — Enter username');
+    expect(md).toContain('- T002 — PASSED — Enter password');
+    expect(md).toContain('| Login | PASSED | 2 |');
+  });
+
+  it('does not hide failed scenarios', () => {
+    const md = renderer.render({
+      result: makeResult({
+        scenarios: [
+          { id: 's1', title: 'Login', status: 'PASSED', tasks: [] },
+          { id: 's2', title: 'Checkout', status: 'FAILED', tasks: [] },
+        ],
+      }),
+      config: makeConfig(),
+      repository: 'owner/repo',
+      pullNumber: 1,
+    });
+
+    expect(md).toContain('## Scenarios');
+    expect(md).toContain('| Checkout | FAILED |');
+    expect(md).toContain('### Checkout');
+  });
+
+  it('renders tasks with multiple statuses including FAILED, BLOCKED, SKIPPED', () => {
+    const md = renderer.render({
+      result: makeResult({
+        scenarios: [
+          {
+            id: 's1',
+            title: 'Checkout',
+            status: 'FAILED',
+            tasks: [
+              { id: 'T003', title: 'Add item', expected: 'item added', status: 'PASSED' },
+              { id: 'T004', title: 'Apply coupon', expected: 'coupon applied', status: 'FAILED' },
+              { id: 'T005', title: 'Confirm payment', expected: 'payment confirmed', status: 'BLOCKED' },
+              { id: 'T006', title: 'Send receipt', expected: 'receipt sent', status: 'SKIPPED' },
+            ],
+          },
+        ],
+      }),
+      config: makeConfig(),
+      repository: 'owner/repo',
+      pullNumber: 1,
+    });
+
+    expect(md).toContain('- T003 — PASSED — Add item');
+    expect(md).toContain('- T004 — FAILED — Apply coupon');
+    expect(md).toContain('- T005 — BLOCKED — Confirm payment');
+    expect(md).toContain('- T006 — SKIPPED — Send receipt');
+  });
+
+  it('renders UNKNOWN for missing status', () => {
+    const md = renderer.render({
+      result: makeResult({
+        scenarios: [
+          {
+            id: 's1',
+            title: 'Ambiguous',
+            status: undefined as unknown as 'PASSED',
+            tasks: [
+              { id: 'T001', title: 'Step', expected: 'done', status: undefined as unknown as 'PASSED' },
+            ],
+          },
+        ],
+      }),
+      config: makeConfig(),
+      repository: 'owner/repo',
+      pullNumber: 1,
+    });
+
+    expect(md).toContain('| Ambiguous | UNKNOWN |');
+    expect(md).toContain('- T001 — UNKNOWN — Step');
+  });
+
+  it('normalizes passed_with_warnings status', () => {
+    const md = renderer.render({
+      result: makeResult({
+        scenarios: [
+          { id: 's1', title: 'Login', status: 'PASSED_WITH_WARNINGS', tasks: [] },
+        ],
+      }),
+      config: makeConfig(),
+      repository: 'owner/repo',
+      pullNumber: 1,
+    });
+
+    expect(md).toContain('| Login | PASSED_WITH_WARNINGS |');
+  });
+
+  it('sanitizes pipe characters in scenario title for markdown table', () => {
+    const md = renderer.render({
+      result: makeResult({
+        scenarios: [
+          { id: 's1', title: 'Login | Auth', status: 'PASSED', tasks: [] },
+        ],
+      }),
+      config: makeConfig(),
+      repository: 'owner/repo',
+      pullNumber: 1,
+    });
+
+    expect(md).toContain('Login \\| Auth');
+    expect(md).not.toContain('Login | Auth |');
+  });
+
+  it('falls back to Untitled scenario when title and id are missing', () => {
+    const md = renderer.render({
+      result: makeResult({
+        scenarios: [
+          { id: '', title: '', status: 'PASSED', tasks: [] },
+        ],
+      }),
+      config: makeConfig(),
+      repository: 'owner/repo',
+      pullNumber: 1,
+    });
+
+    expect(md).toContain('Untitled scenario');
+  });
+
+  it('falls back to Untitled task when title and expected are missing', () => {
+    const md = renderer.render({
+      result: makeResult({
+        scenarios: [
+          {
+            id: 's1',
+            title: 'Login',
+            status: 'PASSED',
+            tasks: [
+              { id: 'T001', title: '', expected: '', status: 'PASSED' },
+            ],
+          },
+        ],
+      }),
+      config: makeConfig(),
+      repository: 'owner/repo',
+      pullNumber: 1,
+    });
+
+    expect(md).toContain('- T001 — PASSED — Untitled task');
+  });
+
+  it('preserves original order of scenarios and tasks', () => {
+    const md = renderer.render({
+      result: makeResult({
+        scenarios: [
+          {
+            id: 's1',
+            title: 'First',
+            status: 'PASSED',
+            tasks: [
+              { id: 'T001', title: 'A', expected: 'a', status: 'PASSED' },
+              { id: 'T002', title: 'B', expected: 'b', status: 'PASSED' },
+            ],
+          },
+          {
+            id: 's2',
+            title: 'Second',
+            status: 'FAILED',
+            tasks: [
+              { id: 'T003', title: 'C', expected: 'c', status: 'FAILED' },
+            ],
+          },
+        ],
+      }),
+      config: makeConfig(),
+      repository: 'owner/repo',
+      pullNumber: 1,
+    });
+
+    const firstScenarioIndex = md.indexOf('### First');
+    const secondScenarioIndex = md.indexOf('### Second');
+    const taskAIndex = md.indexOf('T001');
+    const taskBIndex = md.indexOf('T002');
+
+    expect(firstScenarioIndex).toBeLessThan(secondScenarioIndex);
+    expect(taskAIndex).toBeLessThan(taskBIndex);
   });
 
   it('renders bugs section when bugs exist', () => {

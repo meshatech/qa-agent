@@ -19,6 +19,30 @@ function extractWarnings(result: QaRunResult): Array<{ stepId?: string; message?
     : [];
 }
 
+function formatStatus(status?: string): string {
+  if (!status) return 'UNKNOWN';
+  const normalized = status.toLowerCase().trim().replace(/_/g, '');
+  switch (normalized) {
+    case 'pass':
+    case 'passed': return 'PASSED';
+    case 'passedwithwarnings': return 'PASSED_WITH_WARNINGS';
+    case 'fail':
+    case 'failed': return 'FAILED';
+    case 'block':
+    case 'blocked': return 'BLOCKED';
+    case 'skip':
+    case 'skipped': return 'SKIPPED';
+    case 'partial': return 'PARTIAL';
+    case 'running': return 'RUNNING';
+    case 'planned': return 'PLANNED';
+    default: return status.toUpperCase();
+  }
+}
+
+function sanitizeTableCell(text: string): string {
+  return text.replace(/\|/g, '\\|').replace(/\n/g, ' ');
+}
+
 @Injectable()
 export class PRReportRenderer {
   render(input: PRReportInput): string {
@@ -78,9 +102,35 @@ export class PRReportRenderer {
 
   private renderScenarios(input: PRReportInput): string[] {
     const scenarios = input.result.scenarios ?? [];
-    if (!scenarios.length) return [];
-    const lines: string[] = ['', '## Scenarios', '', '| Scenario | Status |', '|----------|--------|'];
-    for (const s of scenarios) lines.push(`| ${s.title} | ${s.status} |`);
+    const lines: string[] = ['', '## Scenarios'];
+    if (!scenarios.length) {
+      lines.push('', '_No scenarios were reported._');
+      return lines;
+    }
+
+    lines.push('', '| Scenario | Status | Tasks |', '|----------|--------|-------|');
+    for (const s of scenarios) {
+      const taskCount = s.tasks?.length ?? 0;
+      const scenarioTitle = sanitizeTableCell(s.title || s.id || 'Untitled scenario');
+      lines.push(`| ${scenarioTitle} | ${formatStatus(s.status)} | ${taskCount} |`);
+    }
+
+    for (const s of scenarios) {
+      const scenarioTitle = s.title || s.id || 'Untitled scenario';
+      lines.push('', `### ${scenarioTitle}`);
+      const tasks = s.tasks ?? [];
+      if (!tasks.length) {
+        lines.push('_No tasks reported for this scenario._');
+        continue;
+      }
+      for (const t of tasks) {
+        const taskId = t.id || '—';
+        const taskStatus = formatStatus(t.status);
+        const taskTitle = t.title || t.expected || 'Untitled task';
+        lines.push(`- ${taskId} — ${taskStatus} — ${taskTitle}`);
+      }
+    }
+
     return lines;
   }
 
