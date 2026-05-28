@@ -297,4 +297,142 @@ describe('ScenarioSelectorService', () => {
       );
     });
   });
+
+  describe('selectByRoute', () => {
+    function makeCatalogItem(id: string, title: string, route?: string): import('../src/domain/models/scenario-catalog-item.model.js').ScenarioCatalogItem {
+      return { id, title, source: 'memory', route };
+    }
+
+    it('selects item with exact route match', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [makeCatalogItem('SCN-001', 'Login', '/login')];
+
+      const result = service.selectByRoute({ affectedRoutes: ['/login'], catalogItems: items });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('SCN-001');
+    });
+
+    it('selects item with child route', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [makeCatalogItem('SCN-001', 'Profile', '/login/profile')];
+
+      const result = service.selectByRoute({ affectedRoutes: ['/login'], catalogItems: items });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('SCN-001');
+    });
+
+    it('does not select parent route when only child is affected', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [makeCatalogItem('SCN-001', 'Login', '/login')];
+
+      const result = service.selectByRoute({ affectedRoutes: ['/login/profile'], catalogItems: items });
+
+      expect(result).toHaveLength(0);
+    });
+
+    it('does not select substring that is not a prefix', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [
+        makeCatalogItem('SCN-001', 'Admin Login', '/admin/login'),
+        makeCatalogItem('SCN-002', 'Login History', '/login-history'),
+      ];
+
+      const result = service.selectByRoute({ affectedRoutes: ['/login'], catalogItems: items });
+
+      expect(result).toHaveLength(0);
+    });
+
+    it('does not select unrelated routes', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [makeCatalogItem('SCN-001', 'Logout', '/logout')];
+
+      const result = service.selectByRoute({ affectedRoutes: ['/login'], catalogItems: items });
+
+      expect(result).toHaveLength(0);
+    });
+
+    it('normalizes trailing slashes', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [makeCatalogItem('SCN-001', 'Login', '/login/')];
+
+      const result = service.selectByRoute({ affectedRoutes: ['/login'], catalogItems: items });
+
+      expect(result).toHaveLength(1);
+    });
+
+    it('normalizes query strings', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [makeCatalogItem('SCN-001', 'Login', '/login?foo=bar')];
+
+      const result = service.selectByRoute({ affectedRoutes: ['/login'], catalogItems: items });
+
+      expect(result).toHaveLength(1);
+    });
+
+    it('normalizes hashes', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [makeCatalogItem('SCN-001', 'Login', '/login#form')];
+
+      const result = service.selectByRoute({ affectedRoutes: ['/login'], catalogItems: items });
+
+      expect(result).toHaveLength(1);
+    });
+
+    it('handles multiple affected routes', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [
+        makeCatalogItem('SCN-001', 'Login', '/login'),
+        makeCatalogItem('SCN-002', 'Dashboard', '/dashboard'),
+        makeCatalogItem('SCN-003', 'Settings', '/settings'),
+      ];
+
+      const result = service.selectByRoute({ affectedRoutes: ['/login', '/dashboard'], catalogItems: items });
+
+      expect(result).toHaveLength(2);
+      const ids = result.map((i) => i.id).sort();
+      expect(ids).toEqual(['SCN-001', 'SCN-002']);
+    });
+
+    it('deduplicates items matching multiple routes', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [makeCatalogItem('SCN-001', 'Login Profile', '/login/profile')];
+
+      const result = service.selectByRoute({ affectedRoutes: ['/login', '/login/profile'], catalogItems: items });
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('SCN-001');
+    });
+
+    it('returns empty array when affectedRoutes is empty', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [makeCatalogItem('SCN-001', 'Login', '/login')];
+
+      const result = service.selectByRoute({ affectedRoutes: [], catalogItems: items });
+
+      expect(result).toHaveLength(0);
+    });
+
+    it('ignores items without route', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [makeCatalogItem('SCN-001', 'Generic', undefined)];
+
+      const result = service.selectByRoute({ affectedRoutes: ['/login'], catalogItems: items });
+
+      expect(result).toHaveLength(0);
+    });
+
+    it('preserves original catalog order', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [
+        makeCatalogItem('SCN-002', 'Dashboard', '/dashboard'),
+        makeCatalogItem('SCN-001', 'Login', '/login'),
+      ];
+
+      const result = service.selectByRoute({ affectedRoutes: ['/login', '/dashboard'], catalogItems: items });
+
+      expect(result.map((i) => i.id)).toEqual(['SCN-002', 'SCN-001']);
+    });
+  });
 });
