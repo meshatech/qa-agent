@@ -528,4 +528,159 @@ describe('ScenarioSelectorService', () => {
       expect(result.map((i) => i.id)).toEqual(['SCN-002', 'SCN-001']);
     });
   });
+
+  describe('selectByCriteria', () => {
+    function makeCatalogItem(id: string, title: string, criteria?: string[]): import('../src/domain/models/scenario-catalog-item.model.js').ScenarioCatalogItem {
+      return { id, title, source: 'memory', criteria };
+    }
+
+    it('selects item with strong token overlap', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [makeCatalogItem('SCN-001', 'Login', ['O usuario preenche email e senha para fazer login'])];
+
+      const result = service.selectByCriteria({
+        acceptanceCriteria: ['O usuario deve conseguir fazer login informando email e senha'],
+        catalogItems: items,
+      });
+
+      expect(result.selectedItems).toHaveLength(1);
+      expect(result.selectedItems[0].id).toBe('SCN-001');
+      expect(result.uncoveredCriteria).toHaveLength(0);
+    });
+
+    it('does not select item with irrelevant text', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [makeCatalogItem('SCN-001', 'Logout', ['O usuario clica no botao sair para encerrar sessao'])];
+
+      const result = service.selectByCriteria({
+        acceptanceCriteria: ['O usuario deve conseguir fazer login informando email e senha'],
+        catalogItems: items,
+      });
+
+      expect(result.selectedItems).toHaveLength(0);
+      expect(result.uncoveredCriteria).toHaveLength(1);
+    });
+
+    it('returns uncoveredCriteria when no match', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [makeCatalogItem('SCN-001', 'Login', ['Login simples'])];
+      const criterion = 'O sistema deve enviar email de confirmacao apos cadastro';
+
+      const result = service.selectByCriteria({
+        acceptanceCriteria: [criterion],
+        catalogItems: items,
+      });
+
+      expect(result.uncoveredCriteria).toEqual([criterion]);
+      expect(result.warnings).toHaveLength(0);
+    });
+
+    it('maps multiple criteria to different scenarios', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [
+        makeCatalogItem('SCN-001', 'Login', ['usuario preenche email senha login sistema']),
+        makeCatalogItem('SCN-002', 'Logout', ['usuario autenticado clica botao sair sessao encerrada redirecionado login']),
+      ];
+
+      const result = service.selectByCriteria({
+        acceptanceCriteria: [
+          'usuario preenche email senha login sistema',
+          'usuario autenticado clica botao sair sessao encerrada redirecionado login',
+        ],
+        catalogItems: items,
+      });
+
+      expect(result.selectedItems).toHaveLength(2);
+      expect(result.uncoveredCriteria).toHaveLength(0);
+    });
+
+    it('deduplicates when one scenario covers multiple criteria', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [
+        makeCatalogItem('SCN-001', 'Login', [
+          'usuario preenche email senha login sistema',
+          'sistema valida credenciais usuario login',
+        ]),
+      ];
+
+      const result = service.selectByCriteria({
+        acceptanceCriteria: [
+          'usuario preenche email senha login sistema',
+          'sistema valida credenciais usuario login',
+        ],
+        catalogItems: items,
+      });
+
+      expect(result.selectedItems).toHaveLength(1);
+      expect(result.coverageMetadata).toHaveLength(2);
+      expect(result.selectedItems[0].id).toBe('SCN-001');
+    });
+
+    it('returns warning when acceptanceCriteria is empty', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [makeCatalogItem('SCN-001', 'Login', ['Login simples'])];
+
+      const result = service.selectByCriteria({ acceptanceCriteria: [], catalogItems: items });
+
+      expect(result.selectedItems).toHaveLength(0);
+      expect(result.warnings.some((w) => w.includes('No acceptance criteria'))).toBe(true);
+    });
+
+    it('ignores items without criteria', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [makeCatalogItem('SCN-001', 'Generic', undefined)];
+
+      const result = service.selectByCriteria({
+        acceptanceCriteria: ['Qualquer criterio'],
+        catalogItems: items,
+      });
+
+      expect(result.selectedItems).toHaveLength(0);
+      expect(result.uncoveredCriteria).toHaveLength(1);
+    });
+
+    it('preserves original catalog order', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [
+        makeCatalogItem('SCN-002', 'Dashboard', ['usuario visualiza dashboard metricas graficos']),
+        makeCatalogItem('SCN-001', 'Login', ['usuario preenche email senha login sistema']),
+      ];
+
+      const result = service.selectByCriteria({
+        acceptanceCriteria: [
+          'usuario preenche email senha login sistema',
+          'usuario visualiza dashboard metricas graficos',
+        ],
+        catalogItems: items,
+      });
+
+      expect(result.selectedItems.map((i) => i.id)).toEqual(['SCN-002', 'SCN-001']);
+    });
+
+    it('is case and accent insensitive', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [makeCatalogItem('SCN-001', 'Login', ['Usuário autentica email senha login'])];
+
+      const result = service.selectByCriteria({
+        acceptanceCriteria: ['usuario autentica email senha login'],
+        catalogItems: items,
+      });
+
+      expect(result.selectedItems).toHaveLength(1);
+    });
+
+    it('returns low score below threshold when overlap is weak', () => {
+      const service = new ScenarioSelectorService(createMockMemorySearch({ chunks: [], warnings: [] }));
+      const items = [makeCatalogItem('SCN-001', 'Login', ['Usuario faz login com email'])];
+      const criterion = 'O sistema deve enviar notificacao push quando pedido for concluido';
+
+      const result = service.selectByCriteria({
+        acceptanceCriteria: [criterion],
+        catalogItems: items,
+      });
+
+      expect(result.selectedItems).toHaveLength(0);
+      expect(result.uncoveredCriteria).toEqual([criterion]);
+    });
+  });
 });
