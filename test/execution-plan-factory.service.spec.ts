@@ -55,6 +55,17 @@ describe('ExecutionPlanFactoryService', () => {
     expect((step.action as { to: string }).to).toContain('/profile');
   });
 
+  it('generates navigate action for hyphenated routes', () => {
+    const scenario = makeScenario('SCN-002B', 'Acessar /user-profile', [
+      { id: 'T002B', title: 'Navegar para /user-profile', expected: 'Perfil carregado', status: 'PENDING' },
+    ]);
+    const plan = factory.fromScenarios(config, [scenario]);
+
+    const step = plan!.steps[0];
+    expect(step.action.type).toBe('navigate');
+    expect((step.action as { to: string }).to).toContain('/user-profile');
+  });
+
   it('generates click action with semantic locator for click task', () => {
     const scenario = makeScenario('SCN-003', 'Clicar botao salvar', [
       { id: 'T003', title: 'clicar no botao salvar', expected: 'Dados salvos', status: 'PENDING' },

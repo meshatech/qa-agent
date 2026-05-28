@@ -7,7 +7,7 @@ import type { QaScenario, QaTask, ScenarioIntent } from '../../../domain/models/
 import { MemorySearchService } from '../memory-search.service.js';
 import { mapScenarioChunkToCatalogItem } from '../../mappers/chunk-to-scenario-catalog-item.mapper.js';
 import { truncate } from '../../../domain/helpers/text-utils.js';
-import { tokenize, intersectionSize } from '../../../domain/helpers/lexical-overlap.js';
+import { scoreMatchesByTokenOverlap } from './token-overlap-scorer.helper.js';
 
 const DEFAULT_SEARCH_LIMIT = 5;
 const MIN_MATCH_SCORE = 0.25;
@@ -82,7 +82,7 @@ export class MemoryScenarioSelector {
       return { selectedScenarios: [], warnings, metadata };
     }
 
-    const scoredMatches = this.scoreMatches(input.requiredScenarios, input.scenarioChunks);
+    const scoredMatches = scoreMatchesByTokenOverlap(input.requiredScenarios, input.scenarioChunks);
     const filtered = scoredMatches.filter((m) => m.score >= MIN_MATCH_SCORE);
 
     for (const required of input.requiredScenarios) {
@@ -99,31 +99,6 @@ export class MemoryScenarioSelector {
     metadata.push(...limited.map((m) => ({ requiredId: m.requiredId, matchedChunkId: m.chunk.id, score: m.score })));
 
     return { selectedScenarios, warnings, metadata };
-  }
-
-  private scoreMatches(
-    requiredScenarios: RequiredScenario[],
-    chunks: MemoryChunk[],
-  ): Array<{ requiredId: string; chunk: MemoryChunk; score: number }> {
-    const results: Array<{ requiredId: string; chunk: MemoryChunk; score: number }> = [];
-
-    for (const required of requiredScenarios) {
-      const queryTokens = tokenize(`${required.title} ${required.rationale}`);
-      if (queryTokens.size === 0) continue;
-
-      for (const chunk of chunks) {
-        const docTokens = tokenize(`${chunk.title}\n${chunk.content}`);
-        if (docTokens.size === 0) continue;
-
-        const overlap = intersectionSize(queryTokens, docTokens);
-        const unionSize = new Set([...queryTokens, ...docTokens]).size;
-        const score = unionSize > 0 ? overlap / unionSize : 0;
-
-        results.push({ requiredId: required.id, chunk, score });
-      }
-    }
-
-    return results.sort((a, b) => b.score - a.score || a.chunk.id.localeCompare(b.chunk.id));
   }
 
   private deduplicateByChunkId(

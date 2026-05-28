@@ -45,7 +45,7 @@ export class ScenarioOrchestratorService {
     }
 
     const { selected, warnings, uncoveredRequiredScenarios, selectorMetadata } =
-      await this.handleSelectorPhase(input);
+      this.handleSelectorPhase(input);
 
     const generated = await this.handleGenerationPhase(input, uncoveredRequiredScenarios, warnings);
 
@@ -93,12 +93,12 @@ export class ScenarioOrchestratorService {
     return this.buildResult(limited, [], generatorResult.generated, [], warnings);
   }
 
-  private async handleSelectorPhase(input: ScenarioOrchestratorInput): Promise<{
+  private handleSelectorPhase(input: ScenarioOrchestratorInput): {
     selected: QaScenario[];
     warnings: string[];
     uncoveredRequiredScenarios: string[];
     selectorMetadata: ScenarioMatch[];
-  }> {
+  } {
     const selectorResult = this.selector.select({
       requiredScenarios: input.requiredScenarios!,
       scenarioChunks: input.scenarioChunks!,

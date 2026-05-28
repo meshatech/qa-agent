@@ -123,7 +123,7 @@ export class ExecutionPlanFactoryService {
   private genericStep(scenarioId: string, task: QaTask, config: RunConfig): ExecutionStep {
     const text = `${task.title} ${task.expected}`;
 
-    const routeMatch = text.match(/(\/\w+(?:\/\w+)*)/);
+    const routeMatch = text.match(/(\/[\w-]+(?:\/[\w-]+)*)/);
     if (routeMatch) {
       const route = routeMatch[1]!;
       const url = `${config.baseUrl}${route}`;
