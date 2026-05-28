@@ -68,7 +68,8 @@ describe('PRReporterService', () => {
 
     expect(result.published).toBe(false);
     expect(result.reportPath).toBe('pr-report.md');
-    expect(result.publicationWarning).toBeUndefined();
+    expect(result.publicationWarning).toBe('Not published: token not provided');
+    expect(result.publicationStatus).toEqual({ published: false, fallback: true, reason: 'Not published: token not provided' });
     expect(github.postComment).not.toHaveBeenCalled();
 
     const report = written.find((w) => w.name === 'pr-report.md');
@@ -77,6 +78,10 @@ describe('PRReporterService', () => {
     expect(report!.data).toContain('**Status:** PASSED');
     expect(report!.data).toContain('**Repository:** owner/repo');
     expect(report!.data).toContain('**Pull Request:** #42');
+    expect(report!.data).toContain('## PR Publication Status');
+    expect(report!.data).toContain('Published to PR:** no');
+    expect(report!.data).toContain('Fallback local:** yes');
+    expect(report!.data).toContain('Not published: token not provided');
   });
 
   it('publishes comment when token is provided and API succeeds', async () => {
@@ -105,6 +110,7 @@ describe('PRReporterService', () => {
 
     expect(result.published).toBe(true);
     expect(result.publicationWarning).toBeUndefined();
+    expect(result.publicationStatus).toEqual({ published: true, fallback: false });
     expect(github.postComment).toHaveBeenCalledOnce();
     expect(github.postComment).toHaveBeenCalledWith({
       repository: 'owner/repo',
@@ -141,8 +147,92 @@ describe('PRReporterService', () => {
     });
 
     expect(result.published).toBe(false);
-    expect(result.publicationWarning).toBeDefined();
+    expect(result.publicationWarning).toBe('Not published: token lacks permission');
+    expect(result.publicationStatus).toEqual({ published: false, fallback: true, reason: 'Not published: token lacks permission' });
     expect(result.reportPath).toBe('pr-report.md');
+
+    const writeCalls = (repo.writeFile as ReturnType<typeof vi.fn>).mock.calls as Array<[string, string, string]>;
+    const markdown = writeCalls.find((c) => c[1] === 'pr-report.md')?.[2] ?? '';
+    expect(markdown).toContain('## PR Publication Status');
+    expect(markdown).toContain('Published to PR:** no');
+    expect(markdown).toContain('Fallback local:** yes');
+    expect(markdown).toContain('Not published: token lacks permission');
+  });
+
+  it('maps 401 to specific fallback message', async () => {
+    const repo: RunRepositoryPort = {
+      createRunDir: vi.fn(), ensureDir: vi.fn(), writeJson: vi.fn(), writeFile: vi.fn(() => Promise.resolve()),
+      writeReport: vi.fn(), findRunDir: vi.fn(), readJson: vi.fn(), exists: vi.fn(), listFiles: vi.fn(),
+    };
+    const github: GitHubCommentPort = {
+      postComment: vi.fn(() => Promise.reject(new GitHubCommentError('Unauthorized', 401))),
+    };
+    const service = new PRReporterService(github, repo, new PRReportRenderer());
+
+    const result = await service.report({
+      result: makeResult(), config: makeConfig(), runDir: '/tmp/run-001',
+      repository: 'owner/repo', pullNumber: 42, token: 'ghp_test',
+    });
+
+    expect(result.publicationWarning).toBe('Not published: invalid or unauthorized token');
+    expect(result.publicationStatus?.reason).toBe('Not published: invalid or unauthorized token');
+  });
+
+  it('maps 404 to specific fallback message', async () => {
+    const repo: RunRepositoryPort = {
+      createRunDir: vi.fn(), ensureDir: vi.fn(), writeJson: vi.fn(), writeFile: vi.fn(() => Promise.resolve()),
+      writeReport: vi.fn(), findRunDir: vi.fn(), readJson: vi.fn(), exists: vi.fn(), listFiles: vi.fn(),
+    };
+    const github: GitHubCommentPort = {
+      postComment: vi.fn(() => Promise.reject(new GitHubCommentError('Not Found', 404))),
+    };
+    const service = new PRReporterService(github, repo, new PRReportRenderer());
+
+    const result = await service.report({
+      result: makeResult(), config: makeConfig(), runDir: '/tmp/run-001',
+      repository: 'owner/repo', pullNumber: 42, token: 'ghp_test',
+    });
+
+    expect(result.publicationWarning).toBe('Not published: repository or pull request not found');
+  });
+
+  it('maps network failure to generic message', async () => {
+    const repo: RunRepositoryPort = {
+      createRunDir: vi.fn(), ensureDir: vi.fn(), writeJson: vi.fn(), writeFile: vi.fn(() => Promise.resolve()),
+      writeReport: vi.fn(), findRunDir: vi.fn(), readJson: vi.fn(), exists: vi.fn(), listFiles: vi.fn(),
+    };
+    const github: GitHubCommentPort = {
+      postComment: vi.fn(() => Promise.reject(new Error('Network timeout'))),
+    };
+    const service = new PRReporterService(github, repo, new PRReportRenderer());
+
+    const result = await service.report({
+      result: makeResult(), config: makeConfig(), runDir: '/tmp/run-001',
+      repository: 'owner/repo', pullNumber: 42, token: 'ghp_test',
+    });
+
+    expect(result.publicationWarning).toBe('Not published: GitHub API request failed');
+  });
+
+  it('includes publication status in final markdown on success', async () => {
+    const written: Array<{ runDir: string; name: string; data: string }> = [];
+    const repo: RunRepositoryPort = {
+      createRunDir: vi.fn(), ensureDir: vi.fn(), writeJson: vi.fn(),
+      writeFile: vi.fn((runDir, name, data) => { written.push({ runDir, name, data: String(data) }); return Promise.resolve(); }),
+      writeReport: vi.fn(), findRunDir: vi.fn(), readJson: vi.fn(), exists: vi.fn(), listFiles: vi.fn(),
+    };
+    const github: GitHubCommentPort = { postComment: vi.fn(() => Promise.resolve()) };
+    const service = new PRReporterService(github, repo, new PRReportRenderer());
+
+    await service.report({
+      result: makeResult(), config: makeConfig(), runDir: '/tmp/run-001',
+      repository: 'owner/repo', pullNumber: 42, token: 'ghp_test',
+    });
+
+    const report = written.find((w) => w.name === 'pr-report.md');
+    expect(report!.data).toContain('## PR Publication Status');
+    expect(report!.data).toContain('Published to PR:** yes');
+    expect(report!.data).toContain('Fallback local:** no');
   });
 
   it('renders scenarios, bugs and warnings in pr-report.md', async () => {
@@ -239,7 +329,7 @@ describe('PRReporterService', () => {
       listFiles: vi.fn(),
     };
     const github: GitHubCommentPort = {
-      postComment: vi.fn(() => Promise.reject(new Error('ghp_secret_123 failed'))),
+      postComment: vi.fn(() => Promise.reject(new GitHubCommentError('ghp_secret_123 failed', 418))),
     };
     const service = new PRReporterService(github, repo, new PRReportRenderer());
 

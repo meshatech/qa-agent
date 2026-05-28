@@ -6,6 +6,12 @@ import type { EvidenceLink } from './evidence-link.mapper.js';
 import { sortEvidenceLinks } from './evidence-link.mapper.js';
 import type { BlockItem } from './block-extractor.helper.js';
 
+export interface PRPublicationStatus {
+  published: boolean;
+  fallback: boolean;
+  reason?: string;
+}
+
 export interface PRReportInput {
   result: QaRunResult;
   config: RunConfig;
@@ -21,6 +27,7 @@ export interface PRReportInput {
     byScenarioId?: Record<string, EvidenceLink[]>;
   };
   blocks?: BlockItem[];
+  publicationStatus?: PRPublicationStatus;
 }
 
 function extractWarnings(result: QaRunResult): Array<{ stepId?: string; message?: string }> {
@@ -67,6 +74,7 @@ export class PRReportRenderer {
       ...this.renderBlocks(input),
       ...this.renderBugs(input),
       ...this.renderWarnings(input),
+      ...this.renderPublicationStatus(input),
       ...this.renderArtifacts(input),
     ];
     return lines.join('\n');
@@ -230,6 +238,18 @@ export class PRReportRenderer {
     if (!warnings.length) return [];
     const lines: string[] = ['', '## Warnings'];
     for (const w of warnings) lines.push(`- ${w.stepId ?? 'runtime'}: ${w.message ?? 'warning'}`);
+    return lines;
+  }
+
+  private renderPublicationStatus(input: PRReportInput): string[] {
+    const status = input.publicationStatus;
+    if (!status) return [];
+    const lines: string[] = ['', '## PR Publication Status', ''];
+    lines.push(`- **Published to PR:** ${status.published ? 'yes' : 'no'}`);
+    lines.push(`- **Fallback local:** ${status.fallback ? 'yes' : 'no'}`);
+    if (status.reason) {
+      lines.push(`- **Reason:** ${sanitizeTableCell(status.reason)}`);
+    }
     return lines;
   }
 

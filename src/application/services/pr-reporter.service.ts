@@ -8,11 +8,14 @@ import { buildAcceptanceCriteriaCoverageMap, buildUncoveredCriteria } from './ac
 import { mapFileToEvidenceLink } from './evidence-link.mapper.js';
 import type { EvidenceLink } from './evidence-link.mapper.js';
 import { extractBlocksFromResult } from './block-extractor.helper.js';
+import { buildPublicationWarning } from './pr-publication-warning-sanitizer.js';
+import type { PRPublicationStatus } from './pr-report-renderer.service.js';
 
 export interface PRReportResult {
   reportPath: string;
   published: boolean;
   publicationWarning?: string;
+  publicationStatus?: PRPublicationStatus;
 }
 
 @Injectable()
@@ -52,7 +55,7 @@ export class PRReporterService {
 
     const blocks = extractBlocksFromResult(input.result);
 
-    const markdown = this.renderer.render({
+    const renderInput = {
       result: input.result,
       config: input.config,
       repository: input.repository,
@@ -64,25 +67,35 @@ export class PRReporterService {
       uncoveredCriteria,
       evidenceMap,
       blocks,
-    });
-    await this.runRepository.writeFile(input.runDir, 'pr-report.md', markdown);
+    };
+
+    let publicationStatus: PRPublicationStatus;
+    let publicationWarning: string | undefined;
 
     if (!input.token) {
-      return { reportPath: 'pr-report.md', published: false };
+      publicationStatus = { published: false, fallback: true, reason: 'Not published: token not provided' };
+      publicationWarning = publicationStatus.reason;
+    } else {
+      const commentBody = this.renderer.render(renderInput);
+      try {
+        await this.githubComment.postComment({
+          repository: input.repository,
+          pullNumber: input.pullNumber,
+          body: commentBody,
+          token: input.token,
+        });
+        publicationStatus = { published: true, fallback: false };
+      } catch (error) {
+        const warning = buildPublicationWarning(error);
+        publicationStatus = { published: false, fallback: true, reason: warning };
+        publicationWarning = warning;
+      }
     }
 
-    try {
-      await this.githubComment.postComment({
-        repository: input.repository,
-        pullNumber: input.pullNumber,
-        body: markdown,
-        token: input.token,
-      });
-      return { reportPath: 'pr-report.md', published: true };
-    } catch (error) {
-      const warning = sanitizeWarning(error);
-      return { reportPath: 'pr-report.md', published: false, publicationWarning: warning };
-    }
+    const finalMarkdown = this.renderer.render({ ...renderInput, publicationStatus });
+    await this.runRepository.writeFile(input.runDir, 'pr-report.md', finalMarkdown);
+
+    return { reportPath: 'pr-report.md', published: publicationStatus.published, publicationWarning, publicationStatus };
   }
 
   private async discoverEvidence(
@@ -102,15 +115,4 @@ export class PRReporterService {
     }
     return { byBugId };
   }
-}
-
-function sanitizeWarning(error: unknown): string {
-  const text = error instanceof Error ? error.message : String(error);
-  return text
-    .replace(/ghp_[a-zA-Z0-9_]+/g, '[REDACTED]')
-    .replace(/ghs_[a-zA-Z0-9_]+/g, '[REDACTED]')
-    .replace(/github_pat_[a-zA-Z0-9_]+/g, '[REDACTED]')
-    .replace(/gho_[a-zA-Z0-9_]+/g, '[REDACTED]')
-    .replace(/ghu_[a-zA-Z0-9_]+/g, '[REDACTED]')
-    .replace(/ghr_[a-zA-Z0-9_]+/g, '[REDACTED]');
 }

@@ -751,4 +751,57 @@ describe('PRReportRenderer', () => {
     expect(md).toContain('Error: A \\| B \\| C');
     expect(md).toContain('## Blocks');
   });
+
+  it('renders publication status when published', () => {
+    const md = renderer.render({
+      result: makeResult(),
+      config: makeConfig(),
+      repository: 'owner/repo',
+      pullNumber: 1,
+      publicationStatus: { published: true, fallback: false },
+    });
+
+    expect(md).toContain('## PR Publication Status');
+    expect(md).toContain('Published to PR:** yes');
+    expect(md).toContain('Fallback local:** no');
+    expect(md).not.toContain('Reason:');
+  });
+
+  it('renders publication status with fallback and reason', () => {
+    const md = renderer.render({
+      result: makeResult(),
+      config: makeConfig(),
+      repository: 'owner/repo',
+      pullNumber: 1,
+      publicationStatus: { published: false, fallback: true, reason: 'Not published: token lacks permission' },
+    });
+
+    expect(md).toContain('## PR Publication Status');
+    expect(md).toContain('Published to PR:** no');
+    expect(md).toContain('Fallback local:** yes');
+    expect(md).toContain('Not published: token lacks permission');
+  });
+
+  it('omits publication status section when not provided', () => {
+    const md = renderer.render({
+      result: makeResult(),
+      config: makeConfig(),
+      repository: 'owner/repo',
+      pullNumber: 1,
+    });
+
+    expect(md).not.toContain('## PR Publication Status');
+  });
+
+  it('sanitizes reason in publication status', () => {
+    const md = renderer.render({
+      result: makeResult(),
+      config: makeConfig(),
+      repository: 'owner/repo',
+      pullNumber: 1,
+      publicationStatus: { published: false, fallback: true, reason: 'Error: A | B' },
+    });
+
+    expect(md).toContain('Error: A \\| B');
+  });
 });
