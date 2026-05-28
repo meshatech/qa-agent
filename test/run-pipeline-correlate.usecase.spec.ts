@@ -8,6 +8,7 @@ import * as readPipelineArtifactModule from '../src/application/helpers/read-pip
 import { DemandContextPersistenceService } from '../src/application/services/demand-context-persistence.service.js';
 import { DemandDiffMemoryCorrelatorService } from '../src/application/services/demand-diff-memory-correlator.service.js';
 import { MemorySearchService } from '../src/application/services/memory-search.service.js';
+import { ScenarioSelectorService } from '../src/application/services/scenario-selector.service.js';
 import { BM25MemoryIndex } from '../src/application/services/bm25-memory-index.service.js';
 import { MemoryChunker } from '../src/application/services/memory-chunker.service.js';
 import { MemoryMarkdownLoader } from '../src/application/services/memory-markdown-loader.service.js';
@@ -462,6 +463,7 @@ function buildUseCase(clickUpReader: ClickUpReaderPort): RunPipelineCorrelateUse
     demandPersistence,
     new DemandDiffMemoryCorrelatorService(),
     memorySearch,
+    new ScenarioSelectorService(memorySearch),
     new FileCorrelationArtifactsWriterAdapter(),
   );
 }

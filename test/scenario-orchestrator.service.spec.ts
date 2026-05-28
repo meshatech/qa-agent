@@ -34,8 +34,14 @@ function makeRequired(id: string, title: string, rationale: string): RequiredSce
   return { id, title, intent: 'POSITIVE', rationale, relatedFiles: [], riskScore: 0.5 };
 }
 
+function createMockMemorySearch(): import('../src/application/services/memory-search.service.js').MemorySearchService {
+  return {
+    search: vi.fn().mockResolvedValue({ chunks: [], warnings: [] }),
+  } as unknown as import('../src/application/services/memory-search.service.js').MemorySearchService;
+}
+
 describe('ScenarioOrchestratorService', () => {
-  const selector = new ScenarioSelectorService();
+  const selector = new ScenarioSelectorService(createMockMemorySearch());
   const planner = { plan: vi.fn() } as unknown as ScenarioPlannerService;
   const orchestrator = new ScenarioOrchestratorService(selector, planner);
 

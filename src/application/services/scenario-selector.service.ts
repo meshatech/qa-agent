@@ -1,11 +1,16 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 
 import type { QaScenario, QaTask, ScenarioIntent } from '../../domain/models/run.model.js';
-import type { MemoryChunk } from '../../domain/schemas/memory.schema.js';
+import type { ScenarioCatalogItem } from '../../domain/models/scenario-catalog-item.model.js';
+import type { MemoryChunk, MemorySearchResult } from '../../domain/schemas/memory.schema.js';
 import type { RequiredScenario } from '../../domain/schemas/correlation.schema.js';
+import { MemorySearchService } from './memory-search.service.js';
+import { mapScenarioChunkToCatalogItem } from '../mappers/chunk-to-scenario-catalog-item.mapper.js';
+import { truncate } from '../../domain/helpers/text-utils.js';
 
 const MIN_MATCH_SCORE = 0.25;
 const MAX_SELECTED_SCENARIOS = 10;
+const DEFAULT_SEARCH_LIMIT = 5;
 
 export interface ScenarioSelectorInput {
   requiredScenarios: RequiredScenario[];
@@ -26,6 +31,42 @@ export interface ScenarioSelectorResult {
 
 @Injectable()
 export class ScenarioSelectorService {
+  constructor(
+    @Inject(MemorySearchService)
+    private readonly memorySearch: MemorySearchService,
+  ) {}
+
+  async findCatalogItems(input: {
+    requiredScenarios: RequiredScenario[];
+    limitPerRequiredScenario?: number;
+  }): Promise<ScenarioCatalogItem[]> {
+    const limit = input.limitPerRequiredScenario ?? DEFAULT_SEARCH_LIMIT;
+
+    const queries = input.requiredScenarios.map((required) => ({
+      required,
+      query: this.buildQuery(required),
+    }));
+
+    const searches = queries
+      .filter((q) => q.query.trim().length > 0)
+      .map(async (q) =>
+        this.memorySearch.search({
+          query: q.query,
+          limit,
+          types: ['scenario'],
+        }),
+      );
+
+    const responses = await Promise.all(searches);
+    const allResults = responses.flatMap((r) => r.chunks);
+
+    const bestByChunkId = this.deduplicateByBestScore(allResults);
+
+    const sorted = Array.from(bestByChunkId.values()).sort((a, b) => b.score - a.score);
+
+    return sorted.map((item) => mapScenarioChunkToCatalogItem(item.chunk));
+  }
+
   select(input: ScenarioSelectorInput): ScenarioSelectorResult {
     const warnings: string[] = [];
     const metadata: ScenarioMatch[] = [];
@@ -101,7 +142,7 @@ export class ScenarioSelectorService {
     const task: QaTask = {
       id: 'T001',
       title: chunk.title,
-      expected: this.truncate(chunk.content, 200),
+      expected: truncate(chunk.content, 200),
       status: 'PENDING',
       intent,
     };
@@ -144,8 +185,35 @@ export class ScenarioSelectorService {
     return 'POSITIVE';
   }
 
-  private truncate(text: string, maxLength: number): string {
-    if (text.length <= maxLength) return text;
-    return text.slice(0, maxLength - 3) + '...';
+  private buildQuery(required: RequiredScenario): string {
+    const parts: string[] = [required.title, required.rationale];
+    if (required.relatedFiles?.length) {
+      parts.push(...required.relatedFiles);
+    }
+    return parts.filter(Boolean).join(' ');
+  }
+
+  private deduplicateByBestScore(
+    results: MemorySearchResult[],
+  ): Map<string, { chunk: MemoryChunk; score: number }> {
+    const map = new Map<string, { chunk: MemoryChunk; score: number }>();
+
+    for (const result of results) {
+      if (!this.isScenarioChunk(result.chunk)) continue;
+
+      const existing = map.get(result.chunk.id);
+      if (!existing || result.relevanceScore > existing.score) {
+        map.set(result.chunk.id, { chunk: result.chunk, score: result.relevanceScore });
+      }
+    }
+
+    return map;
+  }
+
+  private isScenarioChunk(chunk: MemoryChunk): boolean {
+    if (chunk.type === 'scenario') return true;
+    const metaType = chunk.metadata?.type;
+    if (typeof metaType === 'string' && metaType === 'scenario') return true;
+    return false;
   }
 }
