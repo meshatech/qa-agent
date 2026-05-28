@@ -8,3 +8,4 @@ qa-agent-runs
 doc/
 docs/
 tasks-clickup/
+node_modules
