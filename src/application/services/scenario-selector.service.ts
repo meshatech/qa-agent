@@ -1,0 +1,151 @@
+import { Injectable } from '@nestjs/common';
+
+import type { QaScenario, QaTask, ScenarioIntent } from '../../domain/models/run.model.js';
+import type { MemoryChunk } from '../../domain/schemas/memory.schema.js';
+import type { RequiredScenario } from '../../domain/schemas/correlation.schema.js';
+
+const MIN_MATCH_SCORE = 0.25;
+const MAX_SELECTED_SCENARIOS = 10;
+
+export interface ScenarioSelectorInput {
+  requiredScenarios: RequiredScenario[];
+  scenarioChunks: MemoryChunk[];
+}
+
+export interface ScenarioMatch {
+  requiredId: string;
+  matchedChunkId: string;
+  score: number;
+}
+
+export interface ScenarioSelectorResult {
+  selectedScenarios: QaScenario[];
+  warnings: string[];
+  metadata: ScenarioMatch[];
+}
+
+@Injectable()
+export class ScenarioSelectorService {
+  select(input: ScenarioSelectorInput): ScenarioSelectorResult {
+    const warnings: string[] = [];
+    const metadata: ScenarioMatch[] = [];
+
+    if (!input.requiredScenarios.length) {
+      warnings.push('No RequiredScenario provided; selection skipped.');
+      return { selectedScenarios: [], warnings, metadata };
+    }
+
+    if (!input.scenarioChunks.length) {
+      warnings.push('No scenario chunks available in memory catalog; selection skipped.');
+      return { selectedScenarios: [], warnings, metadata };
+    }
+
+    const scoredMatches = this.scoreMatches(input.requiredScenarios, input.scenarioChunks);
+    const filtered = scoredMatches.filter((m) => m.score >= MIN_MATCH_SCORE);
+
+    for (const required of input.requiredScenarios) {
+      const hasMatch = filtered.some((m) => m.requiredId === required.id);
+      if (!hasMatch) {
+        warnings.push(`No scenario matched RequiredScenario "${required.id}". Using fallback generation.`);
+      }
+    }
+
+    const deduped = this.deduplicateByChunkId(filtered);
+    const limited = deduped.slice(0, MAX_SELECTED_SCENARIOS);
+
+    const selectedScenarios = limited.map((match) => this.chunkToScenario(match.chunk));
+    metadata.push(...limited.map((m) => ({ requiredId: m.requiredId, matchedChunkId: m.chunk.id, score: m.score })));
+
+    return { selectedScenarios, warnings, metadata };
+  }
+
+  private scoreMatches(
+    requiredScenarios: RequiredScenario[],
+    chunks: MemoryChunk[],
+  ): Array<{ requiredId: string; chunk: MemoryChunk; score: number }> {
+    const results: Array<{ requiredId: string; chunk: MemoryChunk; score: number }> = [];
+
+    for (const required of requiredScenarios) {
+      const queryTokens = this.tokenize(`${required.title} ${required.rationale}`);
+      if (queryTokens.size === 0) continue;
+
+      for (const chunk of chunks) {
+        const docTokens = this.tokenize(`${chunk.title}\n${chunk.content}`);
+        if (docTokens.size === 0) continue;
+
+        const overlap = this.intersectionSize(queryTokens, docTokens);
+        const unionSize = new Set([...queryTokens, ...docTokens]).size;
+        const score = unionSize > 0 ? overlap / unionSize : 0;
+
+        results.push({ requiredId: required.id, chunk, score });
+      }
+    }
+
+    return results.sort((a, b) => b.score - a.score || a.chunk.id.localeCompare(b.chunk.id));
+  }
+
+  private deduplicateByChunkId(
+    matches: Array<{ requiredId: string; chunk: MemoryChunk; score: number }>,
+  ): Array<{ requiredId: string; chunk: MemoryChunk; score: number }> {
+    const seen = new Set<string>();
+    return matches.filter((m) => {
+      if (seen.has(m.chunk.id)) return false;
+      seen.add(m.chunk.id);
+      return true;
+    });
+  }
+
+  private chunkToScenario(chunk: MemoryChunk): QaScenario {
+    const intent = this.extractIntent(chunk.metadata?.intent);
+
+    const task: QaTask = {
+      id: 'T001',
+      title: chunk.title,
+      expected: this.truncate(chunk.content, 200),
+      status: 'PENDING',
+      intent,
+    };
+
+    return {
+      id: chunk.id,
+      title: chunk.title,
+      status: 'PLANNED',
+      intent,
+      tasks: [task],
+    };
+  }
+
+  private tokenize(text: string): Set<string> {
+    const normalized = text
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+
+    const tokens = normalized
+      .split(/[^a-z0-9]+/)
+      .filter((t) => t.length >= 3);
+
+    return new Set(tokens);
+  }
+
+  private intersectionSize(a: Set<string>, b: Set<string>): number {
+    let count = 0;
+    for (const item of a) {
+      if (b.has(item)) count++;
+    }
+    return count;
+  }
+
+  private extractIntent(raw: unknown): ScenarioIntent {
+    const valid: ScenarioIntent[] = ['POSITIVE', 'NEGATIVE', 'EDGE', 'EXPLORATORY'];
+    if (typeof raw === 'string' && valid.includes(raw as ScenarioIntent)) {
+      return raw as ScenarioIntent;
+    }
+    return 'POSITIVE';
+  }
+
+  private truncate(text: string, maxLength: number): string {
+    if (text.length <= maxLength) return text;
+    return text.slice(0, maxLength - 3) + '...';
+  }
+}
