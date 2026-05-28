@@ -12,6 +12,7 @@ import type { CorrelationArtifactsWriterPort } from '../ports/correlation-artifa
 import { DemandContextPersistenceService } from '../services/demand-context-persistence.service.js';
 import { DemandDiffMemoryCorrelatorService } from '../services/demand-diff-memory-correlator.service.js';
 import { MemorySearchService } from '../services/memory-search.service.js';
+import { ScenarioSelectorService } from '../services/scenario-selector.service.js';
 import {
   ClickUpReaderError,
   ConfigError,
@@ -33,6 +34,7 @@ export class RunPipelineCorrelateUseCase {
     @Inject(DemandDiffMemoryCorrelatorService)
     private readonly correlator: DemandDiffMemoryCorrelatorService,
     @Inject(MemorySearchService) private readonly memorySearch: MemorySearchService,
+    @Inject(ScenarioSelectorService) private readonly scenarioSelector: ScenarioSelectorService,
     @Inject('CorrelationArtifactsWriterPort')
     private readonly artifactsWriter: CorrelationArtifactsWriterPort,
   ) {}
@@ -171,6 +173,12 @@ export class RunPipelineCorrelateUseCase {
         },
         safeUserMessage,
       );
+    }
+
+    const scenarioChunks = memoryResponse.chunks.filter((m) => m.chunk.type === 'scenario').map((m) => m.chunk);
+    const selected = this.scenarioSelector.select({ requiredScenarios: result.scenarios, scenarioChunks });
+    if (selected.warnings.length) {
+      result.warnings.push(...selected.warnings);
     }
 
     if (result.status === 'BLOCKED') {
