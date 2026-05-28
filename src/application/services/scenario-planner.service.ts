@@ -8,15 +8,50 @@ export class ScenarioPlannerService {
   constructor(@Inject('DecisionProviderPort') private readonly decision: DecisionProviderPort) {}
 
   async plan(config: RunConfig): Promise<QaScenario[]> {
+    const scenarios = await this.buildScenarios(config);
+    const normalized = this.normalizeScenarioTasks(scenarios, config);
+    const withAuth = this.applyAuthPolicy(normalized, config);
+    return this.enforcePlanPolicy(withAuth, config);
+  }
+
+  /**
+   * Resolves scenarios from the decision provider or falls back to generated ones.
+   */
+  private async buildScenarios(config: RunConfig): Promise<QaScenario[]> {
     let scenarios: QaScenario[] | undefined;
     try {
       scenarios = await this.decision.plan?.(config);
     } catch {
       scenarios = undefined;
     }
-    if (!scenarios?.length) scenarios = this.fallback(config);
-    const normalized = scenarios.map((s) => ({ ...s, tasks: this.authAwareTasks(this.topoSort(s.tasks).map((task) => this.canonicalTask(task)), config) }));
-    return this.enforcePlanPolicy(config.auth.kind === 'none' ? normalized : this.authenticatedPlan(normalized, config), config);
+    if (!scenarios?.length) {
+      scenarios = this.fallback(config);
+    }
+    return scenarios;
+  }
+
+  /**
+   * Canonicalizes each task, topologically sorts dependencies, then applies auth awareness.
+   */
+  private normalizeScenarioTasks(scenarios: QaScenario[], config: RunConfig): QaScenario[] {
+    return scenarios.map((scenario) => ({
+      ...scenario,
+      tasks: this.authAwareTasks(
+        this.topoSort(scenario.tasks.map((task) => this.canonicalTask(task))),
+        config,
+      ),
+    }));
+  }
+
+  /**
+   * Wraps scenarios in an authenticated plan when auth is required,
+   * otherwise passes them through unchanged.
+   */
+  private applyAuthPolicy(scenarios: QaScenario[], config: RunConfig): QaScenario[] {
+    if (config.auth.kind === 'none') {
+      return scenarios;
+    }
+    return this.authenticatedPlan(scenarios, config);
   }
 
   topoSort(tasks: QaTask[]): QaTask[] {

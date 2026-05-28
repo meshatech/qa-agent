@@ -81,3 +81,10 @@ export class PrContextReaderError extends Error {
     super(message);
   }
 }
+
+export class ExecutionPlanBuildError extends Error {
+  readonly name = 'ExecutionPlanBuildError';
+  constructor(message: string) {
+    super(message);
+  }
+}
