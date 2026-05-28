@@ -88,3 +88,14 @@ export class ExecutionPlanBuildError extends Error {
     super(message);
   }
 }
+
+export class GitHubCommentError extends Error {
+  readonly name = 'GitHubCommentError';
+  constructor(
+    message: string,
+    public readonly statusCode?: number,
+    public readonly cause?: unknown,
+  ) {
+    super(message);
+  }
+}
