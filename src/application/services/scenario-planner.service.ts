@@ -54,7 +54,7 @@ export class ScenarioPlannerService {
     return this.authenticatedPlan(scenarios, config);
   }
 
-  topoSort(tasks: QaTask[]): QaTask[] {
+  private topoSort(tasks: QaTask[]): QaTask[] {
     const ids = new Set(tasks.map((t) => t.id));
     const sanitized = tasks.map((t) => ({ ...t, dependsOn: t.dependsOn?.filter((d) => ids.has(d)) }));
     const visited = new Set<string>();
