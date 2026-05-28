@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { ScenarioOrchestratorService } from '../src/application/services/scenario-orchestrator.service.js';
-import { ScenarioPlannerService } from '../src/application/services/scenario-planner.service.js';
+import { ScenarioGeneratorService } from '../src/application/services/scenario-generator.service.js';
 import { ScenarioSelectorService } from '../src/application/services/scenario-selector.service.js';
 import type { QaScenario } from '../src/domain/models/run.model.js';
 import type { MemoryChunk } from '../src/domain/schemas/memory.schema.js';
@@ -42,8 +42,8 @@ function createMockMemorySearch(): import('../src/application/services/memory-se
 
 describe('ScenarioOrchestratorService', () => {
   const selector = new ScenarioSelectorService(createMockMemorySearch());
-  const planner = { plan: vi.fn() } as unknown as ScenarioPlannerService;
-  const orchestrator = new ScenarioOrchestratorService(selector, planner);
+  const generator = { generate: vi.fn() } as unknown as ScenarioGeneratorService;
+  const orchestrator = new ScenarioOrchestratorService(selector, generator);
 
   beforeEach(() => {
     vi.resetAllMocks();
@@ -66,24 +66,24 @@ describe('ScenarioOrchestratorService', () => {
     expect(result.generated).toHaveLength(0);
     expect(result.uncoveredRequiredScenarios).toHaveLength(0);
     expect(result.scenarios.length).toBe(2);
-    expect(planner.plan).not.toHaveBeenCalled();
+    expect(generator.generate).not.toHaveBeenCalled();
   });
 
   it('2. nothing covered — planner called for all, selected empty', async () => {
     const chunks = [makeChunk('SCN-001', 'Cadastro produto', 'Preencher nome e preco e salvar.')];
     const required = [makeRequired('REQ-001', 'Logout do usuario', 'Usuario realiza logout e volta para login')];
     const config = makeConfig();
-    const planned: QaScenario[] = [{ id: 'scenario-001', title: 'Logout', status: 'PLANNED', tasks: [{ id: 'T001', title: 'Logout', expected: 'Logout ok', status: 'PENDING' }] }];
-    vi.mocked(planner.plan).mockResolvedValue(planned);
+    const generated: QaScenario[] = [{ id: 'scenario-001', title: 'Logout', status: 'PLANNED', tasks: [{ id: 'T001', title: 'Logout', expected: 'Logout ok', status: 'PENDING' }] }];
+    vi.mocked(generator.generate).mockResolvedValue({ generated, warnings: [] });
 
     const result = await orchestrator.orchestrate({ config, requiredScenarios: required, scenarioChunks: chunks });
 
     expect(result.selected).toHaveLength(0);
-    expect(result.generated).toEqual(planned);
+    expect(result.generated).toEqual(generated);
     expect(result.uncoveredRequiredScenarios).toEqual(['REQ-001']);
-    expect(result.scenarios).toEqual(planned);
+    expect(result.scenarios).toEqual(generated);
     expect(result.warnings.some((w) => w.includes('Uncovered'))).toBe(true);
-    expect(planner.plan).toHaveBeenCalledTimes(1);
+    expect(generator.generate).toHaveBeenCalledTimes(1);
   });
 
   it('3. partial coverage — merges selected + generated', async () => {
@@ -95,29 +95,29 @@ describe('ScenarioOrchestratorService', () => {
       makeRequired('REQ-002', 'Encerrar sessao', 'Usuario autenticado deve conseguir sair e ser redirecionado para login'),
     ];
     const config = makeConfig();
-    const planned: QaScenario[] = [{ id: 'scenario-logout', title: 'Logout', status: 'PLANNED', tasks: [{ id: 'T001', title: 'Logout', expected: 'Logout ok', status: 'PENDING' }] }];
-    vi.mocked(planner.plan).mockResolvedValue(planned);
+    const generated: QaScenario[] = [{ id: 'scenario-logout', title: 'Logout', status: 'PLANNED', tasks: [{ id: 'T001', title: 'Logout', expected: 'Logout ok', status: 'PENDING' }] }];
+    vi.mocked(generator.generate).mockResolvedValue({ generated, warnings: [] });
 
     const result = await orchestrator.orchestrate({ config, requiredScenarios: required, scenarioChunks: chunks });
 
     expect(result.selected.length).toBe(1);
     expect(result.selected[0].id).toBe('SCN-LOGIN-001');
-    expect(result.generated).toEqual(planned);
+    expect(result.generated).toEqual(generated);
     expect(result.uncoveredRequiredScenarios).toEqual(['REQ-002']);
     expect(result.scenarios.length).toBe(2);
-    expect(planner.plan).toHaveBeenCalledTimes(1);
+    expect(generator.generate).toHaveBeenCalledTimes(1);
   });
 
   it('4. no RequiredScenario — returns empty controlled', async () => {
     const config = makeConfig();
-    const planned: QaScenario[] = [{ id: 'scenario-001', title: 'Default', status: 'PLANNED', tasks: [{ id: 'T001', title: 'Task', expected: 'Ok', status: 'PENDING' }] }];
-    vi.mocked(planner.plan).mockResolvedValue(planned);
+    const generated: QaScenario[] = [{ id: 'scenario-001', title: 'Default', status: 'PLANNED', tasks: [{ id: 'T001', title: 'Task', expected: 'Ok', status: 'PENDING' }] }];
+    vi.mocked(generator.generate).mockResolvedValue({ generated, warnings: [] });
 
     const result = await orchestrator.orchestrate({ config });
 
-    expect(result.scenarios).toEqual(planned);
+    expect(result.scenarios).toEqual(generated);
     expect(result.selected).toHaveLength(0);
-    expect(result.generated).toEqual(planned);
+    expect(result.generated).toEqual(generated);
     expect(result.uncoveredRequiredScenarios).toHaveLength(0);
     expect(result.warnings.some((w) => w.includes('No required scenarios'))).toBe(true);
   });

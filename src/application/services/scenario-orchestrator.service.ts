@@ -4,7 +4,7 @@ import type { QaScenario } from '../../domain/models/run.model.js';
 import type { MemoryChunk } from '../../domain/schemas/memory.schema.js';
 import type { RequiredScenario } from '../../domain/schemas/correlation.schema.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
-import { ScenarioPlannerService } from './scenario-planner.service.js';
+import { ScenarioGeneratorService } from './scenario-generator.service.js';
 import { ScenarioSelectorService } from './scenario-selector.service.js';
 
 export interface ScenarioOrchestratorInput {
@@ -27,7 +27,7 @@ const MAX_TOTAL_SCENARIOS = 10;
 export class ScenarioOrchestratorService {
   constructor(
     @Inject(ScenarioSelectorService) private readonly selector: ScenarioSelectorService,
-    @Inject(ScenarioPlannerService) private readonly planner: ScenarioPlannerService,
+    @Inject(ScenarioGeneratorService) private readonly generator: ScenarioGeneratorService,
   ) {}
 
   async orchestrate(input: ScenarioOrchestratorInput): Promise<ScenarioOrchestratorResult> {
@@ -39,12 +39,16 @@ export class ScenarioOrchestratorService {
     const hasCatalog = input.requiredScenarios?.length && input.scenarioChunks?.length;
 
     if (!hasCatalog) {
-      warnings.push('No required scenarios or catalog provided; falling back to full planner.');
-      const planned = await this.planner.plan(input.config);
+      warnings.push('No required scenarios or catalog provided; falling back to full generator.');
+      const generatorResult = await this.generator.generate({
+        uncoveredRequiredScenarios: input.requiredScenarios ?? [],
+        config: input.config,
+      });
+      warnings.push(...generatorResult.warnings);
       return {
-        scenarios: this.limitScenarios(planned),
+        scenarios: this.limitScenarios(generatorResult.generated),
         selected: [],
-        generated: planned,
+        generated: generatorResult.generated,
         uncoveredRequiredScenarios: [],
         warnings,
       };
@@ -68,11 +72,15 @@ export class ScenarioOrchestratorService {
 
     if (uncoveredRequiredScenarios.length > 0) {
       warnings.push(
-        `Uncovered required scenarios: ${uncoveredRequiredScenarios.join(', ')}. Generating via planner.`,
+        `Uncovered required scenarios: ${uncoveredRequiredScenarios.join(', ')}. Generating via generator.`,
       );
-      const tempConfig = this.buildConfigForUncovered(input.config, input.requiredScenarios!, uncoveredRequiredScenarios);
-      const planned = await this.planner.plan(tempConfig);
-      generated.push(...planned);
+      const uncovered = input.requiredScenarios!.filter((r) => uncoveredRequiredScenarios.includes(r.id));
+      const generatorResult = await this.generator.generate({
+        uncoveredRequiredScenarios: uncovered,
+        config: input.config,
+      });
+      warnings.push(...generatorResult.warnings);
+      generated.push(...generatorResult.generated);
     }
 
     const merged = this.deduplicateScenarios([...selected, ...generated]);
@@ -83,25 +91,6 @@ export class ScenarioOrchestratorService {
       generated,
       uncoveredRequiredScenarios,
       warnings,
-    };
-  }
-
-  private buildConfigForUncovered(
-    baseConfig: RunConfig,
-    allRequired: RequiredScenario[],
-    uncoveredIds: string[],
-  ): RunConfig {
-    const uncovered = allRequired.filter((r) => uncoveredIds.includes(r.id));
-    const criteria = uncovered.map((r) => `${r.title}: ${r.rationale}`);
-
-    return {
-      ...baseConfig,
-      demand: {
-        ...baseConfig.demand,
-        title: `${baseConfig.demand.title} (uncovered)`,
-        description: `Generated for uncovered requirements: ${uncoveredIds.join(', ')}`,
-        acceptanceCriteria: criteria,
-      },
     };
   }
 
