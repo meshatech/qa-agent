@@ -22,6 +22,7 @@ function makeConfig(): RunConfig {
     classifier: { knownNoiseRegexes: [], knownTrackingDomains: [], treatThirdPartyNetwork5xxAsBug: false },
     privacy: { maskEmails: true, maskJwt: true, maskCookies: true },
     output: { runsDir: './qa-agent-runs', keepVideoOnPass: false, keepScreenshotOnPass: false, keepTraceOnPass: false },
+    scenarioSelection: { maxScenarios: 5 },
     agentVersion: '0.1.0',
   };
 }
@@ -122,7 +123,7 @@ describe('ScenarioOrchestratorService', () => {
     expect(result.warnings.some((w) => w.includes('No required scenarios'))).toBe(true);
   });
 
-  it('5. respects max scenario limit', async () => {
+  it('5. respects max scenario limit with default 5', async () => {
     const chunks = Array.from({ length: 15 }, (_, i) =>
       makeChunk(`SCN-${String(i).padStart(3, '0')}`, `Login alternativa ${i}`, 'Usuario digita email e senha corretos para fazer login e acessar area autenticada do sistema.'),
     );
@@ -131,7 +132,78 @@ describe('ScenarioOrchestratorService', () => {
 
     const result = await orchestrator.orchestrate({ config, requiredScenarios: required, scenarioChunks: chunks });
 
-    expect(result.scenarios.length).toBeLessThanOrEqual(10);
-    expect(result.selected.length).toBeLessThanOrEqual(10);
+    expect(result.scenarios.length).toBeLessThanOrEqual(5);
+    expect(result.selected.length).toBeGreaterThan(0);
+  });
+
+  it('6. truncates and emits warning when total exceeds maxScenarios', async () => {
+    const chunks = [
+      makeChunk('SCN-001', 'Login A', 'Usuario preenche email senha login validar'),
+      makeChunk('SCN-002', 'Login B', 'Usuario preenche email senha login validar alternativa'),
+    ];
+    const required = [
+      makeRequired('REQ-001', 'Login A', 'Validar login A'),
+      makeRequired('REQ-002', 'Login B', 'Validar login B'),
+      makeRequired('REQ-003', 'Login C', 'Validar login C'),
+    ];
+    const config = { ...makeConfig(), scenarioSelection: { maxScenarios: 2 } };
+    const generated: QaScenario[] = [{ id: 'scenario-003', title: 'Login C', status: 'PLANNED', tasks: [{ id: 'T001', title: 'Login C', expected: 'Ok', status: 'PENDING' }] }];
+    vi.mocked(generator.generate).mockResolvedValue({ generated, warnings: [] });
+
+    const result = await orchestrator.orchestrate({ config, requiredScenarios: required, scenarioChunks: chunks });
+
+    expect(result.scenarios.length).toBe(2);
+    expect(result.warnings.some((w) => w.includes('Scenario limit applied'))).toBe(true);
+    expect(result.warnings.some((w) => w.includes('maxScenarios=2'))).toBe(true);
+  });
+
+  it('7. selected is prioritized over generated when limit is reached', async () => {
+    const chunks = [
+      makeChunk('SCN-001', 'Login A', 'Usuario preenche email senha login validar'),
+    ];
+    const required = [
+      makeRequired('REQ-001', 'Login A', 'Validar login A'),
+      makeRequired('REQ-002', 'Login B', 'Validar login B'),
+    ];
+    const config = { ...makeConfig(), scenarioSelection: { maxScenarios: 1 } };
+    const generated: QaScenario[] = [{ id: 'scenario-002', title: 'Login B', status: 'PLANNED', tasks: [{ id: 'T001', title: 'Login B', expected: 'Ok', status: 'PENDING' }] }];
+    vi.mocked(generator.generate).mockResolvedValue({ generated, warnings: [] });
+
+    const result = await orchestrator.orchestrate({ config, requiredScenarios: required, scenarioChunks: chunks });
+
+    expect(result.scenarios.length).toBe(1);
+    expect(result.scenarios[0].id).toBe('SCN-001');
+  });
+
+  it('8. deduplicates before applying limit', async () => {
+    const chunks = [
+      makeChunk('SCN-001', 'Login A', 'Usuario preenche email senha login validar'),
+    ];
+    const required = [
+      makeRequired('REQ-001', 'Login A', 'Validar login A'),
+      makeRequired('REQ-002', 'Login B', 'Validar login B'),
+    ];
+    const config = { ...makeConfig(), scenarioSelection: { maxScenarios: 1 } };
+    const generated: QaScenario[] = [{ id: 'SCN-001', title: 'Login A duplicate', status: 'PLANNED', tasks: [{ id: 'T001', title: 'Login A', expected: 'Ok', status: 'PENDING' }] }];
+    vi.mocked(generator.generate).mockResolvedValue({ generated, warnings: [] });
+
+    const result = await orchestrator.orchestrate({ config, requiredScenarios: required, scenarioChunks: chunks });
+
+    expect(result.scenarios.length).toBe(1);
+    expect(result.scenarios[0].id).toBe('SCN-001');
+  });
+
+  it('9. no truncation warning when total <= maxScenarios', async () => {
+    const chunks = [
+      makeChunk('SCN-001', 'Login A', 'Usuario preenche email senha login validar'),
+    ];
+    const required = [makeRequired('REQ-001', 'Login A', 'Validar login A')];
+    const config = makeConfig();
+    vi.mocked(generator.generate).mockResolvedValue({ generated: [], warnings: [] });
+
+    const result = await orchestrator.orchestrate({ config, requiredScenarios: required, scenarioChunks: chunks });
+
+    expect(result.scenarios.length).toBe(1);
+    expect(result.warnings.some((w) => w.includes('Scenario limit applied'))).toBe(false);
   });
 });

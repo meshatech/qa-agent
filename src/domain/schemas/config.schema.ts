@@ -112,6 +112,9 @@ export const RunConfigSchema = z.object({
     keepScreenshotOnPass: z.boolean().default(false),
     keepTraceOnPass: z.boolean().default(false),
   }).default({ runsDir: './qa-agent-runs', keepVideoOnPass: false, keepScreenshotOnPass: false, keepTraceOnPass: false }),
+  scenarioSelection: z.object({
+    maxScenarios: z.number().int().min(1).max(100).optional().default(5),
+  }).optional().default({ maxScenarios: 5 }),
   agentVersion: z.string().default('0.1.0'),
 });
 

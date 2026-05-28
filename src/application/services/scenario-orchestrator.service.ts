@@ -5,7 +5,7 @@ import type { MemoryChunk } from '../../domain/schemas/memory.schema.js';
 import type { RequiredScenario } from '../../domain/schemas/correlation.schema.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
 import { ScenarioGeneratorService } from './scenario-generator.service.js';
-import { ScenarioSelectorService } from './scenario-selector.service.js';
+import { ScenarioSelectorService, type ScenarioMatch } from './scenario-selector.service.js';
 
 export interface ScenarioOrchestratorInput {
   config: RunConfig;
@@ -21,8 +21,6 @@ export interface ScenarioOrchestratorResult {
   warnings: string[];
 }
 
-const MAX_TOTAL_SCENARIOS = 10;
-
 @Injectable()
 export class ScenarioOrchestratorService {
   constructor(
@@ -35,6 +33,7 @@ export class ScenarioOrchestratorService {
     const selected: QaScenario[] = [];
     const generated: QaScenario[] = [];
     const uncoveredRequiredScenarios: string[] = [];
+    const maxScenarios = input.config.scenarioSelection.maxScenarios;
 
     const hasCatalog = input.requiredScenarios?.length && input.scenarioChunks?.length;
 
@@ -45,8 +44,19 @@ export class ScenarioOrchestratorService {
         config: input.config,
       });
       warnings.push(...generatorResult.warnings);
+      const { limited, removedCount } = this.applyScenarioLimit(
+        [],
+        generatorResult.generated,
+        [],
+        maxScenarios,
+      );
+      if (removedCount > 0) {
+        warnings.push(
+          `Scenario limit applied: kept ${limited.length} scenarios using maxScenarios=${maxScenarios}; removed ${removedCount}.`,
+        );
+      }
       return {
-        scenarios: this.limitScenarios(generatorResult.generated),
+        scenarios: limited,
         selected: [],
         generated: generatorResult.generated,
         uncoveredRequiredScenarios: [],
@@ -83,10 +93,21 @@ export class ScenarioOrchestratorService {
       generated.push(...generatorResult.generated);
     }
 
-    const merged = this.deduplicateScenarios([...selected, ...generated]);
+    const { limited, removedCount } = this.applyScenarioLimit(
+      selected,
+      generated,
+      selectorResult.metadata,
+      maxScenarios,
+    );
+
+    if (removedCount > 0) {
+      warnings.push(
+        `Scenario limit applied: kept ${limited.length} scenarios using maxScenarios=${maxScenarios}; removed ${removedCount}.`,
+      );
+    }
 
     return {
-      scenarios: this.limitScenarios(merged),
+      scenarios: limited,
       selected,
       generated,
       uncoveredRequiredScenarios,
@@ -94,16 +115,45 @@ export class ScenarioOrchestratorService {
     };
   }
 
-  private deduplicateScenarios(scenarios: QaScenario[]): QaScenario[] {
+  private applyScenarioLimit(
+    selected: QaScenario[],
+    generated: QaScenario[],
+    selectedMatches: ScenarioMatch[],
+    maxScenarios: number,
+  ): { limited: QaScenario[]; removedCount: number } {
     const seen = new Set<string>();
-    return scenarios.filter((s) => {
-      if (seen.has(s.id)) return false;
-      seen.add(s.id);
-      return true;
-    });
-  }
+    const uniqueSelected: QaScenario[] = [];
 
-  private limitScenarios(scenarios: QaScenario[]): QaScenario[] {
-    return scenarios.slice(0, MAX_TOTAL_SCENARIOS);
+    for (const s of selected) {
+      if (!seen.has(s.id)) {
+        seen.add(s.id);
+        uniqueSelected.push(s);
+      }
+    }
+
+    const uniqueGenerated: QaScenario[] = [];
+    for (const g of generated) {
+      if (!seen.has(g.id)) {
+        uniqueGenerated.push(g);
+      }
+    }
+
+    const scoreMap = new Map<string, number>();
+    for (const match of selectedMatches) {
+      const existing = scoreMap.get(match.matchedChunkId) ?? 0;
+      scoreMap.set(match.matchedChunkId, Math.max(existing, match.score));
+    }
+
+    const sortedSelected = [...uniqueSelected].sort((a, b) => {
+      const scoreA = scoreMap.get(a.id) ?? 0;
+      const scoreB = scoreMap.get(b.id) ?? 0;
+      return scoreB - scoreA;
+    });
+
+    const combined = [...sortedSelected, ...uniqueGenerated];
+    const limited = combined.slice(0, maxScenarios);
+    const removedCount = combined.length - limited.length;
+
+    return { limited, removedCount };
   }
 }

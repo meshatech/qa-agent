@@ -21,6 +21,7 @@ function makeConfig(): RunConfig {
     classifier: { knownNoiseRegexes: [], knownTrackingDomains: [], treatThirdPartyNetwork5xxAsBug: false },
     privacy: { maskEmails: true, maskJwt: true, maskCookies: true },
     output: { runsDir: './qa-agent-runs', keepVideoOnPass: false, keepScreenshotOnPass: false, keepTraceOnPass: false },
+    scenarioSelection: { maxScenarios: 5 },
     agentVersion: '0.1.0',
   };
 }
