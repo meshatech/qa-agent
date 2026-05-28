@@ -266,4 +266,48 @@ describe('ScenarioPlannerService', () => {
     expect(scenarios[0]?.tasks[0]?.expected).toContain('opção/estado visual');
     expect(scenarios[0]?.tasks[1]?.expected).toContain('tela de login');
   });
+
+  it('topologically sorts tasks when provider returns inverted dependency order', async () => {
+    const provider: DecisionProviderPort = {
+      async plan() {
+        return [{
+          id: 's',
+          title: 'S',
+          status: 'PLANNED',
+          tasks: [
+            { id: 'T002', title: 'Verificar resultado', expected: 'Resultado visível', status: 'PENDING', dependsOn: ['T001'] },
+            { id: 'T001', title: 'Executar ação', expected: 'Ação concluída', status: 'PENDING' },
+          ],
+        }];
+      },
+      async decide() {
+        throw new Error('unused');
+      },
+    };
+
+    const scenarios = await new ScenarioPlannerService(provider).plan(config);
+
+    expect(scenarios[0]?.tasks.map((t) => t.id)).toEqual(['T001', 'T002']);
+    expect(scenarios[0]?.tasks[1]?.dependsOn).toEqual(['T001']);
+  });
+
+  it('preserves multiple scenarios and original ids when auth.kind is none', async () => {
+    const provider: DecisionProviderPort = {
+      async plan() {
+        return [
+          { id: 's1', title: 'First', status: 'PLANNED', tasks: [{ id: 'T001', title: 'Task 1', expected: 'Ok', status: 'PENDING' }] },
+          { id: 's2', title: 'Second', status: 'PLANNED', tasks: [{ id: 'T002', title: 'Task 2', expected: 'Ok', status: 'PENDING' }] },
+        ];
+      },
+      async decide() {
+        throw new Error('unused');
+      },
+    };
+
+    const scenarios = await new ScenarioPlannerService(provider).plan(config);
+
+    expect(scenarios).toHaveLength(2);
+    expect(scenarios[0]?.id).toBe('s1');
+    expect(scenarios[1]?.id).toBe('s2');
+  });
 });
