@@ -261,6 +261,70 @@ describe('PRReportRenderer', () => {
     expect(md).toContain('- T001 — PASSED — Untitled task');
   });
 
+  it('renders covered acceptance criteria when coverageMap provided', () => {
+    const md = renderer.render({
+      result: makeResult(),
+      config: makeConfig({
+        demand: { id: 'DEM-001', title: 'Test', description: 'Test', acceptanceCriteria: ['User can login'] },
+      }),
+      repository: 'owner/repo',
+      pullNumber: 1,
+      coverageMap: [
+        { criterion: 'User can login', scenarioId: 's1', scenarioTitle: 'Login', score: 0.72, source: 'lexical', evidence: 'task.title' },
+      ],
+    });
+
+    expect(md).toContain('## Covered Acceptance Criteria');
+    expect(md).toContain('User can login');
+    expect(md).toContain('Login');
+    expect(md).toContain('lexical');
+    expect(md).toContain('0.72');
+  });
+
+  it('renders empty covered criteria message when coverageMap is empty', () => {
+    const md = renderer.render({
+      result: makeResult(),
+      config: makeConfig({
+        demand: { id: 'DEM-001', title: 'Test', description: 'Test', acceptanceCriteria: ['User can login'] },
+      }),
+      repository: 'owner/repo',
+      pullNumber: 1,
+      coverageMap: [],
+    });
+
+    expect(md).toContain('## Covered Acceptance Criteria');
+    expect(md).toContain('_No acceptance criteria were mapped to executed scenarios._');
+  });
+
+  it('omits covered criteria section when demand has no acceptance criteria', () => {
+    const md = renderer.render({
+      result: makeResult(),
+      config: makeConfig(),
+      repository: 'owner/repo',
+      pullNumber: 1,
+      coverageMap: [],
+    });
+
+    expect(md).not.toContain('## Covered Acceptance Criteria');
+  });
+
+  it('sanitizes pipe characters in covered criteria table', () => {
+    const md = renderer.render({
+      result: makeResult(),
+      config: makeConfig({
+        demand: { id: 'DEM-001', title: 'Test', description: 'Test', acceptanceCriteria: ['User | Admin'] },
+      }),
+      repository: 'owner/repo',
+      pullNumber: 1,
+      coverageMap: [
+        { criterion: 'User | Admin', scenarioId: 's1', scenarioTitle: 'Login | Auth', score: 0.50, source: 'lexical' },
+      ],
+    });
+
+    expect(md).toContain('User \\| Admin');
+    expect(md).toContain('Login \\| Auth');
+  });
+
   it('preserves original order of scenarios and tasks', () => {
     const md = renderer.render({
       result: makeResult({

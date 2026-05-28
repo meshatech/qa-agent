@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { QaRunResult } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
+import type { AcceptanceCriterionCoverage } from './acceptance-criteria-coverage.mapper.js';
 
 export interface PRReportInput {
   result: QaRunResult;
@@ -10,6 +11,7 @@ export interface PRReportInput {
   commitSha?: string;
   headRef?: string;
   baseRef?: string;
+  coverageMap?: AcceptanceCriterionCoverage[];
 }
 
 function extractWarnings(result: QaRunResult): Array<{ stepId?: string; message?: string }> {
@@ -50,6 +52,7 @@ export class PRReportRenderer {
       ...this.renderHeader(input),
       ...this.renderSummary(input),
       ...this.renderAcceptanceCriteria(input),
+      ...this.renderCoveredCriteria(input),
       ...this.renderScenarios(input),
       ...this.renderBugs(input),
       ...this.renderWarnings(input),
@@ -97,6 +100,24 @@ export class PRReportRenderer {
     if (!criteria.length) return [];
     const lines: string[] = ['', '## Acceptance Criteria'];
     for (const c of criteria) lines.push(`- ${c}`);
+    return lines;
+  }
+
+  private renderCoveredCriteria(input: PRReportInput): string[] {
+    const hasCriteria = (input.config.demand.acceptanceCriteria ?? []).length > 0;
+    if (!hasCriteria) return [];
+    const coverageMap = input.coverageMap ?? [];
+    const lines: string[] = ['', '## Covered Acceptance Criteria'];
+    if (!coverageMap.length) {
+      lines.push('_No acceptance criteria were mapped to executed scenarios._');
+      return lines;
+    }
+    lines.push('', '| Acceptance Criterion | Covered By Scenario | Source | Score |', '|---|---|---|---|');
+    for (const c of coverageMap) {
+      const criterion = sanitizeTableCell(c.criterion);
+      const scenarioTitle = sanitizeTableCell(c.scenarioTitle);
+      lines.push(`| ${criterion} | ${scenarioTitle} | ${c.source} | ${c.score.toFixed(2)} |`);
+    }
     return lines;
   }
 

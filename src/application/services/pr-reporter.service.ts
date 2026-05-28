@@ -4,6 +4,7 @@ import type { RunConfig } from '../../domain/schemas/config.schema.js';
 import type { RunRepositoryPort } from '../ports/run-repository.port.js';
 import type { GitHubCommentPort } from '../ports/github-comment.port.js';
 import { PRReportRenderer } from './pr-report-renderer.service.js';
+import { buildAcceptanceCriteriaCoverageMap } from './acceptance-criteria-coverage.mapper.js';
 
 export interface PRReportResult {
   reportPath: string;
@@ -30,6 +31,11 @@ export class PRReporterService {
     headRef?: string;
     baseRef?: string;
   }): Promise<PRReportResult> {
+    const coverageMap = buildAcceptanceCriteriaCoverageMap({
+      acceptanceCriteria: input.config.demand?.acceptanceCriteria ?? [],
+      scenarios: input.result.scenarios ?? [],
+    });
+
     const markdown = this.renderer.render({
       result: input.result,
       config: input.config,
@@ -38,6 +44,7 @@ export class PRReporterService {
       commitSha: input.commitSha,
       headRef: input.headRef,
       baseRef: input.baseRef,
+      coverageMap,
     });
     await this.runRepository.writeFile(input.runDir, 'pr-report.md', markdown);
 

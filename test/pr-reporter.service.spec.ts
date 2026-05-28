@@ -319,4 +319,42 @@ describe('PRReporterService', () => {
     expect(report).toContain('## Acceptance Criteria');
     expect(report).toContain('- User can login');
   });
+
+  it('renders covered acceptance criteria with coverage map when criteria match scenarios', async () => {
+    const written: Array<{ runDir: string; name: string; data: string }> = [];
+    const repo: RunRepositoryPort = {
+      createRunDir: vi.fn(),
+      ensureDir: vi.fn(),
+      writeJson: vi.fn(),
+      writeFile: vi.fn((runDir, name, data) => {
+        written.push({ runDir, name, data: String(data) });
+        return Promise.resolve();
+      }),
+      writeReport: vi.fn(),
+      findRunDir: vi.fn(),
+      readJson: vi.fn(),
+    };
+    const github: GitHubCommentPort = { postComment: vi.fn() };
+    const service = new PRReporterService(github, repo, new PRReportRenderer());
+
+    await service.report({
+      result: makeResult({
+        scenarios: [
+          { id: 's1', title: 'Login do usuário', status: 'PASSED', tasks: [] },
+        ],
+      }),
+      config: makeConfig({
+        demand: { id: 'DEM-001', title: 'Test', description: 'Test', acceptanceCriteria: ['Usuário consegue fazer login'] },
+      }),
+      runDir: '/tmp/run-001',
+      repository: 'owner/repo',
+      pullNumber: 42,
+    });
+
+    const report = written.find((w) => w.name === 'pr-report.md')!.data;
+    expect(report).toContain('## Covered Acceptance Criteria');
+    expect(report).toContain('Usuário consegue fazer login');
+    expect(report).toContain('Login do usuário');
+    expect(report).toContain('lexical');
+  });
 });
