@@ -4,6 +4,7 @@ import type { RunConfig } from '../../domain/schemas/config.schema.js';
 import type { AcceptanceCriterionCoverage } from './acceptance-criteria-coverage.mapper.js';
 import type { EvidenceLink } from './evidence-link.mapper.js';
 import { sortEvidenceLinks } from './evidence-link.mapper.js';
+import type { BlockItem } from './block-extractor.helper.js';
 
 export interface PRReportInput {
   result: QaRunResult;
@@ -19,6 +20,7 @@ export interface PRReportInput {
     byBugId?: Record<string, EvidenceLink[]>;
     byScenarioId?: Record<string, EvidenceLink[]>;
   };
+  blocks?: BlockItem[];
 }
 
 function extractWarnings(result: QaRunResult): Array<{ stepId?: string; message?: string }> {
@@ -62,6 +64,7 @@ export class PRReportRenderer {
       ...this.renderCoveredCriteria(input),
       ...this.renderUncoveredCriteria(input),
       ...this.renderScenarios(input),
+      ...this.renderBlocks(input),
       ...this.renderBugs(input),
       ...this.renderWarnings(input),
       ...this.renderArtifacts(input),
@@ -175,6 +178,19 @@ export class PRReportRenderer {
       }
     }
 
+    return lines;
+  }
+
+  private renderBlocks(input: PRReportInput): string[] {
+    const blocks = input.blocks ?? [];
+    if (!blocks.length) return [];
+    const lines: string[] = ['', '## Blocks'];
+    lines.push('', '| Source | Scenario | Task | Step | Code | Reason |', '|---|---|---|---|---|---|');
+    for (const b of blocks) {
+      lines.push(
+        `| ${sanitizeTableCell(b.source)} | ${sanitizeTableCell(b.scenarioId ?? '—')} | ${sanitizeTableCell(b.taskId ?? '—')} | ${sanitizeTableCell(b.stepId ?? '—')} | ${sanitizeTableCell(b.code ?? '—')} | ${sanitizeTableCell(b.reason)} |`,
+      );
+    }
     return lines;
   }
 

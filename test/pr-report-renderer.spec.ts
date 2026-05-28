@@ -678,4 +678,77 @@ describe('PRReportRenderer', () => {
     expect(md).toContain('## Bugs');
     expect(md).toContain('_No bugs were reported._');
   });
+
+  it('renders blocks section when blocks provided', () => {
+    const md = renderer.render({
+      result: makeResult(),
+      config: makeConfig(),
+      repository: 'owner/repo',
+      pullNumber: 1,
+      blocks: [
+        {
+          scenarioId: 'SCN-01',
+          scenarioTitle: 'Checkout',
+          source: 'scenario',
+          reason: 'Scenario blocked: Checkout',
+        },
+        {
+          scenarioId: 'SCN-01',
+          taskId: 'TSK-01',
+          taskTitle: 'Confirm payment',
+          source: 'task',
+          reason: 'Task blocked: Confirm payment',
+        },
+        {
+          scenarioId: 'SCN-01',
+          taskId: 'TSK-01',
+          stepId: 'STP-01',
+          code: 'TASK_DEPENDENCY_BLOCKED',
+          source: 'step',
+          reason: 'TASK_DEPENDENCY_BLOCKED: Previous task not completed',
+        },
+      ],
+    });
+
+    expect(md).toContain('## Blocks');
+    expect(md).toContain('| scenario |');
+    expect(md).toContain('| task |');
+    expect(md).toContain('| step |');
+    expect(md).toContain('SCN-01');
+    expect(md).toContain('TSK-01');
+    expect(md).toContain('STP-01');
+    expect(md).toContain('TASK_DEPENDENCY_BLOCKED');
+    expect(md).toContain('Scenario blocked: Checkout');
+  });
+
+  it('omits blocks section when blocks array is empty', () => {
+    const md = renderer.render({
+      result: makeResult(),
+      config: makeConfig(),
+      repository: 'owner/repo',
+      pullNumber: 1,
+      blocks: [],
+    });
+
+    expect(md).not.toContain('## Blocks');
+  });
+
+  it('escapes pipe in block reason for markdown table', () => {
+    const md = renderer.render({
+      result: makeResult(),
+      config: makeConfig(),
+      repository: 'owner/repo',
+      pullNumber: 1,
+      blocks: [
+        {
+          scenarioId: 'SCN-01',
+          source: 'step',
+          reason: 'Error: A | B | C',
+        },
+      ],
+    });
+
+    expect(md).toContain('Error: A \\| B \\| C');
+    expect(md).toContain('## Blocks');
+  });
 });

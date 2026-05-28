@@ -7,6 +7,7 @@ import { PRReportRenderer } from './pr-report-renderer.service.js';
 import { buildAcceptanceCriteriaCoverageMap, buildUncoveredCriteria } from './acceptance-criteria-coverage.mapper.js';
 import { mapFileToEvidenceLink } from './evidence-link.mapper.js';
 import type { EvidenceLink } from './evidence-link.mapper.js';
+import { extractBlocksFromResult } from './block-extractor.helper.js';
 
 export interface PRReportResult {
   reportPath: string;
@@ -49,6 +50,8 @@ export class PRReporterService {
       // Evidence discovery failure should not invalidate QA; render without evidence links
     }
 
+    const blocks = extractBlocksFromResult(input.result);
+
     const markdown = this.renderer.render({
       result: input.result,
       config: input.config,
@@ -60,6 +63,7 @@ export class PRReporterService {
       coverageMap,
       uncoveredCriteria,
       evidenceMap,
+      blocks,
     });
     await this.runRepository.writeFile(input.runDir, 'pr-report.md', markdown);
 
