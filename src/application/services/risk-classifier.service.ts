@@ -78,8 +78,13 @@ export class RiskClassifierService {
       0,
     );
     const totalLines = totalNegative + totalPositive;
-    const ratio = totalLines > 0 ? totalNegative / totalLines : 0;
-    const contribution = ratio > 0.3 ? RISK_WEIGHTS.negativeDiff : 0;
+    if (totalLines === 0) {
+      return { name: 'negative_diff_ratio', weight: RISK_WEIGHTS.negativeDiff, contribution: 0 };
+    }
+    const ratio = totalNegative / totalLines;
+    const contribution = ratio > 0.2
+      ? Math.min(ratio * RISK_WEIGHTS.negativeDiff * 2, RISK_WEIGHTS.negativeDiff)
+      : 0;
     return { name: 'negative_diff_ratio', weight: RISK_WEIGHTS.negativeDiff, contribution };
   }
 

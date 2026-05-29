@@ -145,15 +145,55 @@ describe('RiskClassifierService', () => {
     expect(otherFactor!.weight).toBe(0.02);
   });
 
-  it('increases risk for high negative diff ratio', () => {
+  it('returns zero contribution when no diff lines', () => {
+    const score = service.classify(makePrContext(), []);
+    const diffFactor = score.factors.find((f) => f.name === 'negative_diff_ratio');
+    expect(diffFactor!.contribution).toBe(0);
+  });
+
+  it('returns zero contribution for low negative diff ratio', () => {
     const prContext = makePrContext({
       changedFiles: [
-        { path: 'src/app.ts', status: 'modified', kind: 'other', positiveLines: [{ type: 'added' as const, lineNumber: 1, content: 'added line' }], negativeLines: [{ type: 'removed' as const, lineNumber: 2, content: 'removed line' }, { type: 'removed' as const, lineNumber: 3, content: 'removed line' }, { type: 'removed' as const, lineNumber: 4, content: 'removed line' }], contextLines: [] },
+        { path: 'src/app.ts', status: 'modified', kind: 'other', positiveLines: [{ type: 'added' as const, lineNumber: 1, content: 'a' }, { type: 'added' as const, lineNumber: 2, content: 'b' }, { type: 'added' as const, lineNumber: 3, content: 'c' }, { type: 'added' as const, lineNumber: 4, content: 'd' }], negativeLines: [{ type: 'removed' as const, lineNumber: 5, content: 'r' }], contextLines: [] },
+      ],
+    });
+    const score = service.classify(prContext, []);
+    const diffFactor = score.factors.find((f) => f.name === 'negative_diff_ratio');
+    expect(diffFactor!.contribution).toBe(0);
+  });
+
+  it('increases risk for medium negative diff ratio', () => {
+    const prContext = makePrContext({
+      changedFiles: [
+        { path: 'src/app.ts', status: 'modified', kind: 'other', positiveLines: [{ type: 'added' as const, lineNumber: 1, content: 'a' }, { type: 'added' as const, lineNumber: 2, content: 'b' }, { type: 'added' as const, lineNumber: 3, content: 'c' }], negativeLines: [{ type: 'removed' as const, lineNumber: 4, content: 'r' }, { type: 'removed' as const, lineNumber: 5, content: 'r' }], contextLines: [] },
       ],
     });
     const score = service.classify(prContext, []);
     const diffFactor = score.factors.find((f) => f.name === 'negative_diff_ratio');
     expect(diffFactor!.contribution).toBeGreaterThan(0);
+    expect(diffFactor!.contribution).toBeLessThan(0.1);
+  });
+
+  it('reaches max weight for 100% negative diff', () => {
+    const prContext = makePrContext({
+      changedFiles: [
+        { path: 'src/app.ts', status: 'modified', kind: 'other', positiveLines: [], negativeLines: [{ type: 'removed' as const, lineNumber: 1, content: 'r' }, { type: 'removed' as const, lineNumber: 2, content: 'r' }, { type: 'removed' as const, lineNumber: 3, content: 'r' }], contextLines: [] },
+      ],
+    });
+    const score = service.classify(prContext, []);
+    const diffFactor = score.factors.find((f) => f.name === 'negative_diff_ratio');
+    expect(diffFactor!.contribution).toBe(0.1);
+  });
+
+  it('caps negative diff contribution at max weight', () => {
+    const prContext = makePrContext({
+      changedFiles: [
+        { path: 'src/app.ts', status: 'modified', kind: 'other', positiveLines: [], negativeLines: Array.from({ length: 100 }, (_, i) => ({ type: 'removed' as const, lineNumber: i + 1, content: 'r' })), contextLines: [] },
+      ],
+    });
+    const score = service.classify(prContext, []);
+    const diffFactor = score.factors.find((f) => f.name === 'negative_diff_ratio');
+    expect(diffFactor!.contribution).toBe(0.1);
   });
 
   it('increases risk for failure history', () => {
