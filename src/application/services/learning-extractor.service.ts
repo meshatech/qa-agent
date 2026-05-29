@@ -29,6 +29,7 @@ export class LearningExtractorService {
 
   async persist(result: QaRunResult, candidates: MemoryCandidate[]): Promise<void> {
     const runId = this.runIdFromResult(result);
+    await this.repository.writeJson(result.runDir, 'learning-candidates.json', candidates);
     const entry = {
       runId,
       timestamp: result.finishedAt ?? new Date().toISOString(),

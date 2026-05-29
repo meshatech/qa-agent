@@ -410,7 +410,10 @@ describe('LearningExtractorService', () => {
       const candidates = service.extract(result, makeConfig());
       await service.persist(result, candidates);
 
+      expect(mockRepository.writeJson).toHaveBeenCalledWith('/tmp/run-persist-001', 'learning-candidates.json', candidates);
       expect(mockRepository.appendRunHistory).toHaveBeenCalledOnce();
+      expect((mockRepository.writeJson as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0])
+        .toBeLessThan((mockRepository.appendRunHistory as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]!);
       const callArgs = (mockRepository.appendRunHistory as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(callArgs[0]).toBe('/tmp/run-persist-001');
       expect(callArgs[1].runId).toBe('run-persist-001');
@@ -439,6 +442,20 @@ describe('LearningExtractorService', () => {
       const callArgs = (mockRepository.appendRunHistory as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(callArgs[1].candidateCount).toBe(0);
       expect(callArgs[1].candidates).toEqual([]);
+    });
+
+    it('does not append run history when writing candidates fails', async () => {
+      const result: QaRunResult = {
+        status: 'PASSED',
+        runDir: '/tmp/run-persist-failure',
+        steps: [],
+        finishedAt: '2024-05-29T18:30:00Z',
+      };
+      const candidates = service.extract(result, makeConfig());
+      (mockRepository.writeJson as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('disk full'));
+
+      await expect(service.persist(result, candidates)).rejects.toThrow(/disk full/);
+      expect(mockRepository.appendRunHistory).not.toHaveBeenCalled();
     });
 
     it('appends run history with multiple candidate types', async () => {

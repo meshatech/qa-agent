@@ -194,16 +194,31 @@ describe('ExecutionPlanFactoryService', () => {
     expect(step.postconditions).toEqual([{ type: 'no_console_errors' }]);
   });
 
-  it('uses safe console check for classification failure outcome', async () => {
+  it('fails explicitly for classification failure outcome', async () => {
     const scenario = makeScenario('SCN-008C', 'Classificação falhou', [
       { id: 'T008C', title: 'Classificação falhou', expected: 'Sem erro', status: 'PENDING', expectedOutcome: { kind: 'CLASSIFICATION_FAILED', description: 'classification failed' } },
     ]);
 
-    const plan = await factory.fromScenarios(config, [scenario]);
+    await expect(factory.fromScenarios(config, [scenario])).rejects.toThrow(/classification failed/i);
+  });
 
+  it('uses safe console check for no regression outcome', async () => {
+    const scenario = makeScenario('SCN-008D', 'Checagem segura', [
+      { id: 'T008D', title: 'Checagem segura', expected: 'Sem erro', status: 'PENDING', expectedOutcome: { kind: 'NO_REGRESSION', description: 'safe check' } },
+    ]);
+
+    const plan = await factory.fromScenarios(config, [scenario]);
     const step = plan!.steps[0];
     expect(step.action.type).toBe('waitForStable');
     expect(step.postconditions).toEqual([{ type: 'no_console_errors' }]);
+  });
+
+  it('blocks destructive semantic targets before creating click steps', async () => {
+    const scenario = makeScenario('SCN-008E', 'Abrir alvo inseguro', [
+      { id: 'T008E', title: 'Abrir alvo inseguro', expected: 'Bloqueado', status: 'PENDING', expectedOutcome: { kind: 'DISCLOSURE', target: 'Excluir conta', description: 'unsafe target' } },
+    ]);
+
+    await expect(factory.fromScenarios(config, [scenario])).rejects.toThrow(/destructive action policy/i);
   });
 
   it('generates single step for logout task with multiple text alternatives', async () => {

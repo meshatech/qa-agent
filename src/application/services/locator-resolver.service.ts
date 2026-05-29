@@ -66,8 +66,7 @@ export class LocatorResolverService {
         this.includes(element.text, text) ||
         this.includes(element.ariaLabel, text) ||
         this.includes(element.title, text) ||
-        this.includes(element.alt, text) ||
-        this.includes(element.className, text)
+        this.includes(element.alt, text)
       );
     }
     if (locator.strategy === 'label' || locator.strategy === 'placeholder') {
@@ -92,6 +91,13 @@ export class LocatorResolverService {
       .filter((item) => item.score >= MIN_TOKEN_OVERLAP)
       .sort((a, b) => b.score - a.score || this.actionableScore(b.element) - this.actionableScore(a.element));
     const selected = ranked[0];
+    const runnerUp = ranked[1];
+    if (selected && runnerUp && selected.score - runnerUp.score < 0.2 && this.actionableScore(selected.element) === this.actionableScore(runnerUp.element)) {
+      if (process.env.DEBUG_LOCATOR === 'true') {
+        this.logger.warn(`ambiguous token overlap for expected=${JSON.stringify(expected)}; selected="${selected.element.id}" score=${selected.score}; runnerUp="${runnerUp.element.id}" score=${runnerUp.score}`);
+      }
+      return undefined;
+    }
     if (selected && process.env.DEBUG_LOCATOR === 'true') {
       this.logger.debug(`token overlap selected element "${selected.element.id}" with score ${selected.score}; expected=${JSON.stringify(expected)}`);
     }
@@ -121,7 +127,7 @@ export class LocatorResolverService {
   }
 
   private searchableText(element: ScreenObservation['elements'][number]): string {
-    return [element.name, element.text, element.ariaLabel, element.title, element.alt, element.placeholder, element.className]
+    return [element.name, element.text, element.ariaLabel, element.title, element.alt, element.placeholder]
       .filter((value): value is string => Boolean(value))
       .join(' ');
   }

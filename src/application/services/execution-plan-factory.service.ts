@@ -1,17 +1,26 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import type { ExecutionPlan, ExecutionStep, PlanAction } from '../../domain/schemas/execution-plan.schema.js';
 import type { LocatorDescriptor } from '../../domain/schemas/action.schema.js';
 import type { ExpectedOutcome } from '../../domain/schemas/expected-outcome.schema.js';
 import type { QaScenario, QaTask } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
+import { ActionPolicyService } from './action-policy.service.js';
 import { ExpectedOutcomeResolverService } from './expected-outcome-resolver.service.js';
 
 @Injectable()
 export class ExecutionPlanFactoryService {
+  private readonly logger = new Logger(ExecutionPlanFactoryService.name);
+  private readonly actionPolicy: ActionPolicyService;
+
   constructor(
     @Inject(ExpectedOutcomeResolverService)
     private readonly outcomeResolver: ExpectedOutcomeResolverService,
-  ) {}
+    @Optional()
+    @Inject(ActionPolicyService)
+    actionPolicy?: ActionPolicyService,
+  ) {
+    this.actionPolicy = actionPolicy ?? new ActionPolicyService();
+  }
 
   async fromScenarios(config: RunConfig, scenarios: QaScenario[]): Promise<ExecutionPlan | undefined> {
     const steps: ExecutionStep[] = [];
@@ -40,6 +49,9 @@ export class ExecutionPlanFactoryService {
 
   private async stepsForTask(scenarioId: string, task: QaTask, config: RunConfig): Promise<ExecutionStep[]> {
     const outcome = task.expectedOutcome ?? await this.outcomeResolver.resolve(config, task);
+    if (outcome.kind === 'CLASSIFICATION_FAILED') {
+      this.logger.warn(`Expected outcome classification failed for task "${task.id}"; refusing to generate a passing fallback step`);
+    }
     return this.contractSteps(scenarioId, task, config, outcome);
   }
 
@@ -75,6 +87,7 @@ export class ExecutionPlanFactoryService {
         return [this.makeStep(scenarioId, task, { type: 'fill', target: dataTarget, value: 'safe-test-value', reason: outcome.description }, [{ type: 'no_console_errors' }])];
       }
       case 'CLASSIFICATION_FAILED':
+        throw new Error(`Expected outcome classification failed for task "${task.id}"; cannot generate safe execution step`);
       case 'NO_REGRESSION':
       default:
         return [this.makeSafeCheckStep(scenarioId, task, outcome.description)];
@@ -140,6 +153,12 @@ export class ExecutionPlanFactoryService {
   private async semanticTarget(outcome: ExpectedOutcome, config?: RunConfig): Promise<LocatorDescriptor | null> {
     const texts = config?.runtime.semanticAliases?.[outcome.kind] ?? this.splitCandidates(outcome.target ?? outcome.description ?? '');
     if (texts.length === 1 && texts[0] === 'NO_REGRESSION') return null;
+    if (config) {
+      const blocked = texts.find((text) => !this.actionPolicy.validateDestructiveText(text, config).ok);
+      if (blocked) {
+        throw new Error(`Unsafe semantic target blocked by destructive action policy: ${blocked}`);
+      }
+    }
     return {
       strategy: 'text_any',
       texts,

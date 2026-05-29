@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ExpectedOutcomeResolverService } from '../src/application/services/expected-outcome-resolver.service.js';
 import type { DecisionProviderPort } from '../src/application/ports/decision-provider.port.js';
 import type { QaTask } from '../src/domain/models/run.model.js';
@@ -19,6 +19,10 @@ function makeConfig() {
 }
 
 describe('ExpectedOutcomeResolverService', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('returns existing expectedOutcome when present', async () => {
     const provider: DecisionProviderPort = { async decide() { throw new Error('unused'); } };
     const resolver = new ExpectedOutcomeResolverService(provider);
@@ -111,5 +115,33 @@ describe('ExpectedOutcomeResolverService', () => {
       { kind: 'CLASSIFICATION_FAILED', description: 'bad' },
       { kind: 'AUTHENTICATION', description: 'existing' },
     ]);
+  });
+
+  it('resolveMany falls back to individual classification with delay when batch is unavailable', async () => {
+    vi.useFakeTimers();
+    const classified: string[] = [];
+    const provider: DecisionProviderPort = {
+      async classifyOutcome(_cfg, task) {
+        classified.push(task.title);
+        return { kind: 'CONTENT_PRESENCE', description: task.title };
+      },
+      async decide() { throw new Error('unused'); },
+    };
+    const resolver = new ExpectedOutcomeResolverService(provider);
+    const tasks = [
+      makeTask({ id: 'T1', title: 'first' }),
+      makeTask({ id: 'T2', title: 'second' }),
+    ];
+
+    const pending = resolver.resolveMany(makeConfig(), tasks);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(classified).toEqual(['first']);
+
+    await vi.advanceTimersByTimeAsync(100);
+    await expect(pending).resolves.toEqual([
+      { kind: 'CONTENT_PRESENCE', description: 'first' },
+      { kind: 'CONTENT_PRESENCE', description: 'second' },
+    ]);
+    expect(classified).toEqual(['first', 'second']);
   });
 });

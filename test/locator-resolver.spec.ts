@@ -94,6 +94,25 @@ describe('LocatorResolverService', () => {
     expect(resolver.findByLocator(observation, locator)).toBe('el_002');
   });
 
+  it('does not resolve ambiguous token overlap when matches have close scores and same actionability', () => {
+    const resolver = new LocatorResolverService();
+    const observation = obsWithElements([
+      element({ id: 'el_001', role: 'button', name: 'Settings primary panel', locator: { strategy: 'text', text: 'settings primary panel' } }),
+      element({ id: 'el_002', role: 'button', name: 'Settings secondary panel', locator: { strategy: 'text', text: 'settings secondary panel' } }),
+    ]);
+    const locator: LocatorDescriptor = { strategy: 'text', text: 'settings panel' };
+    expect(() => resolver.findByLocator(observation, locator)).toThrow(/Element not found/);
+  });
+
+  it('does not use className for generic semantic text matching', () => {
+    const resolver = new LocatorResolverService();
+    const observation = obsWithElements([
+      element({ id: 'el_001', name: 'Unrelated', className: 'logout-button', locator: { strategy: 'role', role: 'button', name: 'Unrelated' } }),
+    ]);
+    const locator: LocatorDescriptor = { strategy: 'text_any', texts: ['logout'] };
+    expect(() => resolver.findByLocator(observation, locator)).toThrow(/Element not found/);
+  });
+
   it('ignores empty token overlap targets', () => {
     const resolver = new LocatorResolverService();
     const observation = obsWithElements([
