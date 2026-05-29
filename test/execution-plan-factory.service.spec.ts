@@ -306,6 +306,44 @@ describe('ExecutionPlanFactoryService', () => {
     expect(plan!.steps[0].action.type).toBe('waitForStable');
   });
 
+  it('rejects navigation target with javascript protocol', async () => {
+    const scenario = makeScenario('SCN-015', 'Injeção JS', [
+      { id: 'T015', title: 'Navegar para perfil', expected: 'Bloqueado', status: 'PENDING', expectedOutcome: { kind: 'NAVIGATION', target: 'javascript:alert(1)', description: 'navigate' } },
+    ]);
+
+    await expect(factory.fromScenarios(config, [scenario])).rejects.toThrow(/unsupported protocol/);
+  });
+
+  it('rejects navigation target with file protocol', async () => {
+    const scenario = makeScenario('SCN-016', 'File access', [
+      { id: 'T016', title: 'Acessar arquivo', expected: 'Bloqueado', status: 'PENDING', expectedOutcome: { kind: 'NAVIGATION', target: 'file:///etc/passwd', description: 'navigate' } },
+    ]);
+
+    await expect(factory.fromScenarios(config, [scenario])).rejects.toThrow(/unsupported protocol/);
+  });
+
+  it('generates email test value for data entry task with email keyword', async () => {
+    const scenario = makeScenario('SCN-017', 'Preencher email', [
+      { id: 'T017', title: 'preencher campo email', expected: 'Email preenchido', status: 'PENDING', expectedOutcome: { kind: 'DATA_ENTRY', description: 'fill email' } },
+    ]);
+    const plan = await factory.fromScenarios(config, [scenario]);
+
+    const step = plan!.steps[0];
+    expect(step.action.type).toBe('fill');
+    expect((step.action as { value: string }).value).toBe('test@example.com');
+  });
+
+  it('generates password test value for data entry task with password keyword', async () => {
+    const scenario = makeScenario('SCN-018', 'Preencher senha', [
+      { id: 'T018', title: 'preencher campo senha', expected: 'Senha preenchida', status: 'PENDING', expectedOutcome: { kind: 'DATA_ENTRY', description: 'fill password' } },
+    ]);
+    const plan = await factory.fromScenarios(config, [scenario]);
+
+    const step = plan!.steps[0];
+    expect(step.action.type).toBe('fill');
+    expect((step.action as { value: string }).value).toBe('Test@123456');
+  });
+
   it('returns undefined when no steps can be generated', async () => {
     const scenario = makeScenario('SCN-006', 'Empty', []);
     const plan = await factory.fromScenarios(config, [scenario]);

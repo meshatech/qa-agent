@@ -29,7 +29,9 @@ export class LearningExtractorService {
 
   async persist(result: QaRunResult, candidates: MemoryCandidate[]): Promise<void> {
     const runId = this.runIdFromResult(result);
-    await this.repository.writeJson(result.runDir, 'learning-candidates.json', candidates);
+    const tempName = 'learning-candidates.json.tmp';
+    const finalName = 'learning-candidates.json';
+    await this.repository.writeJson(result.runDir, tempName, candidates);
     const entry = {
       runId,
       timestamp: result.finishedAt ?? new Date().toISOString(),
@@ -41,8 +43,9 @@ export class LearningExtractorService {
     };
     try {
       await this.repository.appendRunHistory(result.runDir, entry);
+      await this.repository.renameFile(result.runDir, tempName, finalName);
     } catch (error) {
-      await this.repository.deleteFile(result.runDir, 'learning-candidates.json');
+      await this.repository.deleteFile(result.runDir, tempName);
       throw error;
     }
   }

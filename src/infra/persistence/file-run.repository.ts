@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { access, appendFile, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { access, appendFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { realpath as realpathCallback } from 'node:fs';
 import { promisify } from 'node:util';
 import { dirname, join, resolve, sep } from 'node:path';
@@ -91,6 +91,12 @@ export class FileRunRepository implements RunRepositoryPort {
     } catch {
       // ignore if file does not exist
     }
+  }
+
+  async renameFile(runDir: string, oldName: string, newName: string): Promise<void> {
+    const oldPath = await this.resolveInsideRunDir(runDir, oldName);
+    const newPath = await this.resolveInsideRunDir(runDir, newName);
+    await rename(oldPath, newPath);
   }
 
   private async resolveInsideRunDir(runDir: string, relativePath: string): Promise<string> {

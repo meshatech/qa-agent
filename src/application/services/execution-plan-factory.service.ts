@@ -6,6 +6,7 @@ import type { QaScenario, QaTask } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
 import { ActionPolicyService } from './action-policy.service.js';
 import { ExpectedOutcomeResolverService } from './expected-outcome-resolver.service.js';
+import { ValueGeneratorService } from './value-generator.service.js';
 
 @Injectable()
 export class ExecutionPlanFactoryService {
@@ -19,6 +20,9 @@ export class ExecutionPlanFactoryService {
     @Optional()
     @Inject(ActionPolicyService)
     actionPolicy?: ActionPolicyService,
+    @Optional()
+    @Inject(ValueGeneratorService)
+    private readonly valueGenerator?: ValueGeneratorService,
   ) {
     this.actionPolicy = actionPolicy ?? new ActionPolicyService();
   }
@@ -84,6 +88,10 @@ export class ExecutionPlanFactoryService {
             throw new Error(`Navigation target contains path traversal: ${outcome.target}`);
           }
           targetUrl = new URL(outcome.target, config.baseUrl).href;
+          const targetProtocol = new URL(targetUrl).protocol;
+          if (!['http:', 'https:'].includes(targetProtocol)) {
+            throw new Error(`Navigation target uses unsupported protocol: ${targetProtocol}`);
+          }
           const baseHost = new URL(config.baseUrl).host;
           const targetHost = new URL(targetUrl).host;
           if (targetHost !== baseHost) {
@@ -99,7 +107,8 @@ export class ExecutionPlanFactoryService {
         if (!dataTarget) {
           return [this.makeSafeCheckStep(scenarioId, task, outcome.description)];
         }
-        return [this.makeStep(scenarioId, task, { type: 'fill', target: dataTarget, value: 'safe-test-value', reason: outcome.description }, [{ type: 'no_console_errors' }])];
+        const testValue = this.valueGenerator?.generate(task.title, outcome) ?? 'safe-test-value';
+        return [this.makeStep(scenarioId, task, { type: 'fill', target: dataTarget, value: testValue, reason: outcome.description }, [{ type: 'no_console_errors' }])];
       }
       case 'CLASSIFICATION_FAILED':
         throw new Error(`Expected outcome classification failed for task "${task.id}"; cannot generate safe execution step`);
