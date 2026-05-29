@@ -28,7 +28,6 @@ describe('LearningExtractorService', () => {
   });
 
   const makeStep = (overrides: Partial<QaStep> & { stepId: string }): QaStep => ({
-    stepId: overrides.stepId,
     scenarioId: overrides.scenarioId ?? 'scenario-001',
     taskId: overrides.taskId ?? 'T001',
     observationId: overrides.observationId ?? 'obs-001',
@@ -38,6 +37,7 @@ describe('LearningExtractorService', () => {
     boundExpected: overrides.boundExpected ?? { type: 'no_console_errors' },
     validation: overrides.validation ?? { ok: true, type: 'no_console_errors', durationMs: 0 },
     ...overrides,
+    stepId: overrides.stepId,
   });
 
   const makeConfig = (): RunConfig =>
@@ -70,7 +70,7 @@ describe('LearningExtractorService', () => {
       expect(candidates[0].type).toBe('locator');
       expect(candidates[0].confidence).toBe(0.9);
       expect(candidates[0].title).toContain('Resolved locator');
-      expect(candidates[0].metadata).toEqual({ elementId: 'el_001', result: 'success' });
+      expect(candidates[0].metadata).toEqual({ elementId: 'el_001', actionType: 'click', result: 'success' });
     });
 
     it('ignores failed click steps', () => {
@@ -85,13 +85,14 @@ describe('LearningExtractorService', () => {
       expect(candidates).toHaveLength(0);
     });
 
-    it('ignores non-click steps', () => {
+    it('extracts locator candidate from successful fill step', () => {
       const step = makeStep({
         stepId: 'step-003',
         resolvedAction: { type: 'fill', targetElementId: 'el_003', value: 'test', reason: 'fill' },
       });
       const candidates = service.extractSuccessfulLocators([step], 'run-001', '2024-05-29T10:00:00Z');
-      expect(candidates).toHaveLength(0);
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0].metadata).toEqual({ elementId: 'el_003', actionType: 'fill', result: 'success' });
     });
 
     it('ignores click steps without targetElementId', () => {
@@ -157,7 +158,7 @@ describe('LearningExtractorService', () => {
       expect(candidates[0].type).toBe('known_issue');
       expect(candidates[0].confidence).toBe(0.5);
       expect(candidates[0].title).toContain('Failed locator');
-      expect(candidates[0].metadata).toEqual({ elementId: 'el_010', result: 'failure' });
+      expect(candidates[0].metadata).toEqual({ elementId: 'el_010', actionType: 'click', result: 'failure' });
     });
 
     it('ignores successful click steps', () => {
@@ -171,13 +172,16 @@ describe('LearningExtractorService', () => {
       expect(candidates).toHaveLength(0);
     });
 
-    it('ignores non-click steps', () => {
+    it('extracts known_issue from failed fill step', () => {
       const step = makeStep({
         stepId: 'step-012',
         resolvedAction: { type: 'fill', targetElementId: 'el_012', value: 'test', reason: 'fill' },
+        validation: { ok: false, type: 'field_value_contains', actual: 'empty', durationMs: 0 },
+        error: { code: 'ASSERTION_FAILED', message: 'Value was not filled' },
       });
       const candidates = service.extractFailedLocators([step], 'run-001', '2024-05-29T10:00:00Z');
-      expect(candidates).toHaveLength(0);
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0].metadata).toEqual({ elementId: 'el_012', actionType: 'fill', result: 'failure' });
     });
 
     it('ignores click steps without targetElementId', () => {
@@ -235,7 +239,7 @@ describe('LearningExtractorService', () => {
 
   describe('extractScenarioResults', () => {
     it('extracts scenario_result from passed scenario', () => {
-      const scenarios = [
+      const scenarios: NonNullable<QaRunResult['scenarios']> = [
         {
           id: 'scenario-006',
           title: 'Login flow passed',
@@ -255,7 +259,7 @@ describe('LearningExtractorService', () => {
     });
 
     it('extracts known_issue from failed scenario', () => {
-      const scenarios = [
+      const scenarios: NonNullable<QaRunResult['scenarios']> = [
         {
           id: 'scenario-007',
           title: 'Checkout flow failed',
@@ -275,7 +279,7 @@ describe('LearningExtractorService', () => {
     });
 
     it('ignores scenarios with non-final status', () => {
-      const scenarios = [
+      const scenarios: NonNullable<QaRunResult['scenarios']> = [
         {
           id: 'scenario-008',
           title: 'Pending scenario',
@@ -288,7 +292,7 @@ describe('LearningExtractorService', () => {
     });
 
     it('extracts blocked scenario as known_issue', () => {
-      const scenarios = [
+      const scenarios: NonNullable<QaRunResult['scenarios']> = [
         {
           id: 'scenario-009',
           title: 'Blocked scenario',
@@ -304,7 +308,7 @@ describe('LearningExtractorService', () => {
     });
 
     it('sets correct source fields on scenario candidate', () => {
-      const scenarios = [
+      const scenarios: NonNullable<QaRunResult['scenarios']> = [
         {
           id: 'scenario-010',
           title: 'Auth flow',
@@ -319,7 +323,7 @@ describe('LearningExtractorService', () => {
     });
 
     it('extracts multiple scenarios with mixed results', () => {
-      const scenarios = [
+      const scenarios: NonNullable<QaRunResult['scenarios']> = [
         {
           id: 'scenario-011',
           title: 'Passing scenario',

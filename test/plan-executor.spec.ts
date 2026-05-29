@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { PlanExecutorService } from '../src/application/services/plan-executor.service.js';
 import { LocatorResolverService } from '../src/application/services/locator-resolver.service.js';
 import { DataHarnessService } from '../src/application/services/data-harness.service.js';
@@ -12,6 +12,7 @@ import type { BrowserHarnessPort } from '../src/application/ports/browser-harnes
 import type { ScreenObservation } from '../src/domain/schemas/observation.schema.js';
 import type { ExecutionPlan } from '../src/domain/schemas/execution-plan.schema.js';
 import type { QaAction } from '../src/domain/schemas/action.schema.js';
+import type { DecisionProviderPort } from '../src/application/ports/decision-provider.port.js';
 
 const obs = (texts: string[], value = ''): ScreenObservation => ({
   observationId: `obs-${texts.join('-')}-${value}`,
@@ -44,6 +45,13 @@ function executorWithReplanner(browser: BrowserHarnessPort, replanner: PlanRepla
   const recovery = new RecoveryPolicyService(browser);
   const locators = new LocatorResolverService();
   return new PlanExecutorService(browser, locators, new DataHarnessService(), new ActionPolicyService(), new ElementAvailabilityResolver(browser, locators), recovery, new TaskMemoryService(), replanner, fakeDecision);
+}
+
+function executorWithDecision(browser: BrowserHarnessPort, decision: DecisionProviderPort): PlanExecutorService {
+  const recovery = new RecoveryPolicyService(browser);
+  const replanner = { replan: async () => { throw new Error('no replanner in unit test'); } } as unknown as PlanReplannerService;
+  const locators = new LocatorResolverService();
+  return new PlanExecutorService(browser, locators, new DataHarnessService(), new ActionPolicyService(), new ElementAvailabilityResolver(browser, locators), recovery, new TaskMemoryService(), replanner, decision);
 }
 
 describe('PlanExecutorService', () => {
@@ -227,5 +235,58 @@ describe('PlanExecutorService', () => {
     expect(result.ok).toBe(true);
     expect(result.finalPlan.version).toBe(2);
     expect(result.patchHistory).toHaveLength(1);
+  });
+
+  it('uses decision provider fallback when a locator cannot be resolved', async () => {
+    let current = obs(['Fallback target']);
+    const actions: QaAction[] = [];
+    const decide = vi.fn(async () => ({
+      schemaVersion: 'action.v1' as const,
+      observationId: current.observationId,
+      thought_summary: 'fallback resolved target',
+      action: { type: 'click' as const, targetElementId: 'el_001', reason: 'fallback click' },
+      expected_after_action: { type: 'no_console_errors' as const },
+      fallback_action: { type: 'press' as const, key: 'Escape' as const, reason: 'close transient UI' },
+      confidence: 0.8,
+    }));
+    const decision = { decide } as unknown as DecisionProviderPort;
+    const browser: Partial<BrowserHarnessPort> = {
+      async observe() { return current; },
+      async execute(action) {
+        actions.push(action);
+        current = obs(['Fallback clicked']);
+        return { ok: true, actionType: action.type, durationMs: 1 };
+      },
+      async waitForQuiescence() {
+        return { stable: true, reason: 'NETWORK_AND_DOM_IDLE', elapsedMs: 1 };
+      },
+      async validate() {
+        return { ok: true, type: 'no_console_errors', durationMs: 1 };
+      },
+    };
+    const plan: ExecutionPlan = {
+      schemaVersion: 'execution-plan.v1',
+      planId: 'manual',
+      version: 1,
+      goal: 'Fallback',
+      mode: 'PLAN_AND_EXECUTE',
+      runtime: { maxAttemptsPerStep: 1, maxReplansPerScenario: 0, destructiveActionPolicy: 'BLOCK' },
+      assertions: [],
+      steps: [{
+        id: 'S001',
+        description: 'Use missing locator',
+        preconditions: [],
+        action: { type: 'click', target: { strategy: 'role', role: 'button', name: 'Missing' }, reason: 'click missing locator' },
+        postconditions: [{ type: 'no_console_errors' }],
+        assertions: [],
+        onFailure: 'BLOCK',
+      }],
+    };
+
+    const result = await executorWithDecision(browser as BrowserHarnessPort, decision).execute(plan, config);
+
+    expect(result.ok).toBe(true);
+    expect(decide).toHaveBeenCalledOnce();
+    expect(actions[0]).toEqual({ type: 'click', targetElementId: 'el_001', reason: 'fallback click' });
   });
 });

@@ -4,7 +4,7 @@ import type { ScreenObservation } from '../../domain/schemas/observation.schema.
 import { DomainError } from '../../domain/shared/result.js';
 
 const ACTIONABLE_ROLES = new Set(['button', 'link', 'menuitem', 'option', 'checkbox', 'radio', 'switch', 'tab', 'textbox', 'combobox']);
-const MIN_TOKEN_OVERLAP = 0.5;
+const MIN_TOKEN_OVERLAP = 0.67;
 
 @Injectable()
 export class LocatorResolverService {
@@ -85,7 +85,7 @@ export class LocatorResolverService {
 
   private bestTokenOverlap(obs: ScreenObservation, locator: LocatorDescriptor): ScreenObservation['elements'][number] | undefined {
     const expected = this.expectedTexts(locator);
-    if (!expected.length) return undefined;
+    if (!expected.some((text) => this.tokens(text).length >= 2)) return undefined;
     const ranked = obs.elements
       .map((element) => ({ element, score: this.matchScore(element, expected) }))
       .filter((item) => item.score >= MIN_TOKEN_OVERLAP)
@@ -111,7 +111,7 @@ export class LocatorResolverService {
 
   private overlapScore(expectedTokens: string[], haystackTokens: Set<string>): number {
     if (expectedTokens.length < 2) return 0;
-    const matched = expectedTokens.filter((token) => haystackTokens.has(token) || [...haystackTokens].some((candidate) => candidate.includes(token) || token.includes(candidate)));
+    const matched = expectedTokens.filter((token) => haystackTokens.has(token));
     return matched.length / expectedTokens.length;
   }
 

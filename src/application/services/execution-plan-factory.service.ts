@@ -119,7 +119,7 @@ export class ExecutionPlanFactoryService {
   }
 
   private async semanticTarget(outcome: ExpectedOutcome, config?: RunConfig): Promise<LocatorDescriptor> {
-    const texts = config?.runtime.semanticAliases[outcome.kind] ?? this.splitCandidates(outcome.target ?? outcome.description);
+    const texts = config?.runtime.semanticAliases?.[outcome.kind] ?? this.splitCandidates(outcome.target ?? outcome.description ?? '');
     return {
       strategy: 'text_any',
       texts,
@@ -127,6 +127,7 @@ export class ExecutionPlanFactoryService {
   }
 
   private splitCandidates(value: string): string[] {
-    return value.includes('|') ? value.split('|').map((candidate) => candidate.trim()).filter(Boolean) : [value];
+    const candidates = value.includes('|') ? value.split('|').map((candidate) => candidate.trim()).filter(Boolean) : [value].filter(Boolean);
+    return candidates.length ? candidates : ['NO_REGRESSION'];
   }
 }

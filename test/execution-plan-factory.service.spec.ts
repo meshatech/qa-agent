@@ -111,6 +111,24 @@ describe('ExecutionPlanFactoryService', () => {
     expect(ExecutionPlanSchema.safeParse(plan).success).toBe(true);
   });
 
+  it('falls back to outcome text when semanticAliases is absent from runtime config', async () => {
+    const configWithoutAliases = {
+      ...config,
+      runtime: {
+        ...config.runtime,
+        semanticAliases: undefined,
+      },
+    } as unknown as RunConfig;
+    const scenario = makeScenario('SCN-005B', 'Alterar aparência', [
+      { id: 'T005B', title: 'Alterar aparência', expected: 'Aparência alterada', status: 'PENDING', expectedOutcome: { kind: 'APPEARANCE_CHANGE', description: 'appearance control' } },
+    ]);
+
+    const plan = await factory.fromScenarios(configWithoutAliases, [scenario]);
+
+    expect(plan).toBeDefined();
+    expect((plan!.steps[0]!.action as { target: { texts: string[] } }).target.texts).toEqual(['appearance control']);
+  });
+
   it('generates waitForStable for authenticated area task with auth_state postcondition', async () => {
     const scenario = makeScenario('SCN-007', 'Verificar área autenticada', [
       { id: 'T007', title: 'Verificar área autenticada', expected: 'Área visível', status: 'PENDING', expectedOutcome: { kind: 'AUTHENTICATION', description: 'auth' } },

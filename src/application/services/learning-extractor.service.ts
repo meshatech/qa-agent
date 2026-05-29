@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { MemoryCandidate } from '../../domain/schemas/memory-candidate.schema.js';
 import type { QaRunResult, QaStep } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
+import type { QaAction } from '../../domain/schemas/action.schema.js';
 import type { RunRepositoryPort } from '../ports/run-repository.port.js';
 
 const LOCATOR_CONFIDENCE_HIGH = 0.9;
@@ -73,7 +74,8 @@ export class LearningExtractorService {
     resultType: 'success' | 'failure',
   ): MemoryCandidate | undefined {
     const action = step.resolvedAction;
-    if (action.type !== 'click' || !action.targetElementId) return undefined;
+    const targetElementId = this.targetElementIdFromAction(action);
+    if (!targetElementId) return undefined;
 
     const succeeded = step.error === undefined && step.validation?.ok === true;
     if (resultType === 'success' && !succeeded) return undefined;
@@ -81,10 +83,11 @@ export class LearningExtractorService {
 
     const baseContent = {
       actionType: action.type,
-      targetElementId: action.targetElementId,
+      targetElementId,
       observationId: step.observationId,
       stepSummary: step.thoughtSummary,
       validation: step.validation,
+      expected: step.boundExpected,
     };
     const content = resultType === 'failure'
       ? JSON.stringify({ ...baseContent, error: step.error })
@@ -97,7 +100,7 @@ export class LearningExtractorService {
     return {
       id: this.candidateId('locator', step.stepId, runId),
       type,
-      title: `${titlePrefix}: ${step.thoughtSummary ?? action.targetElementId}`,
+      title: `${titlePrefix}: ${step.thoughtSummary ?? targetElementId}`,
       content,
       sourceRunId: runId,
       sourceScenarioId: step.scenarioId,
@@ -107,8 +110,15 @@ export class LearningExtractorService {
       isConfirmed: false,
       status: 'pending_review',
       createdAt: timestamp,
-      metadata: { elementId: action.targetElementId, result: resultType },
+      metadata: { elementId: targetElementId, actionType: action.type, result: resultType },
     };
+  }
+
+  private targetElementIdFromAction(action: QaAction): string | undefined {
+    const maybeTargetedAction = action as { targetElementId?: unknown };
+    return typeof maybeTargetedAction.targetElementId === 'string'
+      ? maybeTargetedAction.targetElementId
+      : undefined;
   }
 
   private buildScenarioCandidate(scenario: NonNullable<QaRunResult['scenarios']>[number], runId: string, timestamp: string): MemoryCandidate | undefined {

@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { RiskScore, RiskLevel, RiskFactor } from '../../domain/models/risk-score.model.js';
 import type { PrDiffContext } from '../../domain/schemas/pr-diff-context.schema.js';
 import type { ChangedFileStatus } from '../../domain/schemas/changed-file.schema.js';
-import type { RunHistoryEntry } from './run-history.service.js';
+import type { RunHistoryEntry } from '../ports/run-repository.port.js';
 import type { RunRepositoryPort } from '../ports/run-repository.port.js';
 
 const RISK_WEIGHTS = {
@@ -147,7 +147,7 @@ export class RiskClassifierService {
       return 0;
     }
     const failedRuns = recentRuns.filter(
-      (run) => run.status === 'failed' || run.status === 'FAILED',
+      (run) => run.status === 'FAILED' || run.status === 'BLOCKED',
     );
     return failedRuns.length / recentRuns.length;
   }

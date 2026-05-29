@@ -2,8 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RiskClassifierService } from '../src/application/services/risk-classifier.service.js';
 import type { PrDiffContext } from '../src/domain/schemas/pr-diff-context.schema.js';
-import type { RunHistoryEntry } from '../src/application/services/run-history.service.js';
-import type { RunRepositoryPort } from '../src/application/ports/run-repository.port.js';
+import type { RunHistoryEntry, RunRepositoryPort } from '../src/application/ports/run-repository.port.js';
 
 const createMockRepository = (): RunRepositoryPort =>
   ({
@@ -43,11 +42,15 @@ describe('RiskClassifierService', () => {
       ...overrides,
     } as PrDiffContext);
 
-  const makeRunHistory = (entries: Array<{ status: string }> = []): RunHistoryEntry[] =>
+  const makeRunHistory = (entries: Array<{ status: RunHistoryEntry['status'] }> = []): RunHistoryEntry[] =>
     entries.map((e, i) => ({
       runId: `run-${i}`,
-      ts: '2024-05-29T10:00:00Z',
+      timestamp: '2024-05-29T10:00:00Z',
       status: e.status,
+      totalSteps: 1,
+      totalScenarios: 1,
+      candidateCount: 0,
+      candidates: [],
     }));
 
   it('returns low risk for empty PR and no history', () => {
@@ -218,10 +221,10 @@ describe('RiskClassifierService', () => {
 
   it('increases risk for failure history', () => {
     const history = makeRunHistory([
-      { status: 'failed' }, { status: 'failed' }, { status: 'failed' },
-      { status: 'passed' }, { status: 'passed' }, { status: 'passed' },
-      { status: 'passed' }, { status: 'passed' }, { status: 'passed' },
-      { status: 'passed' },
+      { status: 'FAILED' }, { status: 'FAILED' }, { status: 'FAILED' },
+      { status: 'PASSED' }, { status: 'PASSED' }, { status: 'PASSED' },
+      { status: 'PASSED' }, { status: 'PASSED' }, { status: 'PASSED' },
+      { status: 'PASSED' },
     ]);
     const score = service.classify(makePrContext(), history);
     const historyFactor = score.factors.find((f) => f.name === 'failure_history');
@@ -243,8 +246,8 @@ describe('RiskClassifierService', () => {
       ],
     });
     const history = makeRunHistory([
-      { status: 'failed' }, { status: 'failed' }, { status: 'failed' },
-      { status: 'failed' }, { status: 'failed' }, { status: 'failed' },
+      { status: 'FAILED' }, { status: 'FAILED' }, { status: 'FAILED' },
+      { status: 'FAILED' }, { status: 'FAILED' }, { status: 'FAILED' },
     ]);
     const score = service.classify(prContext, history);
     expect(score.value).toBeGreaterThanOrEqual(0.75);
@@ -263,7 +266,7 @@ describe('RiskClassifierService', () => {
 
   it('returns zero affected_route_failure when no failures', () => {
     const history = makeRunHistory([
-      { status: 'passed' }, { status: 'passed' }, { status: 'passed' },
+      { status: 'PASSED' }, { status: 'PASSED' }, { status: 'PASSED' },
     ]);
     const prContext = makePrContext({
       affectedRoutes: ['/users'],
@@ -275,8 +278,8 @@ describe('RiskClassifierService', () => {
 
   it('returns zero affected_route_failure when no affected routes', () => {
     const history = makeRunHistory([
-      { status: 'failed' }, { status: 'failed' }, { status: 'failed' },
-      { status: 'failed' }, { status: 'failed' }, { status: 'failed' },
+      { status: 'FAILED' }, { status: 'FAILED' }, { status: 'FAILED' },
+      { status: 'FAILED' }, { status: 'FAILED' }, { status: 'FAILED' },
     ]);
     const score = service.classify(makePrContext(), history);
     const factor = score.factors.find((f) => f.name === 'affected_route_failure');
@@ -285,8 +288,8 @@ describe('RiskClassifierService', () => {
 
   it('increases risk for failures with affected routes', () => {
     const history = makeRunHistory([
-      { status: 'failed' }, { status: 'failed' }, { status: 'failed' },
-      { status: 'failed' }, { status: 'failed' }, { status: 'passed' },
+      { status: 'FAILED' }, { status: 'FAILED' }, { status: 'FAILED' },
+      { status: 'FAILED' }, { status: 'FAILED' }, { status: 'PASSED' },
     ]);
     const prContext = makePrContext({
       affectedRoutes: ['/users', '/orders', '/payments'],
@@ -300,8 +303,8 @@ describe('RiskClassifierService', () => {
 
   it('caps affected_route_failure at max weight', () => {
     const history = makeRunHistory([
-      { status: 'failed' }, { status: 'failed' }, { status: 'failed' },
-      { status: 'failed' }, { status: 'failed' }, { status: 'failed' },
+      { status: 'FAILED' }, { status: 'FAILED' }, { status: 'FAILED' },
+      { status: 'FAILED' }, { status: 'FAILED' }, { status: 'FAILED' },
     ]);
     const prContext = makePrContext({
       affectedRoutes: Array.from({ length: 20 }, (_, i) => `/route-${i}`),
