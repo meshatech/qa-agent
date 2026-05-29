@@ -144,6 +144,18 @@ describe('LearningExtractorService', () => {
       expect(candidates[0].confidence).toBe(0.9);
       expect(candidates[1].confidence).toBe(0.9);
     });
+
+    it('treats step without validation but without error as successful locator', () => {
+      const step = makeStep({
+        stepId: 'step-no-validation',
+        thoughtSummary: 'Wait for stable page',
+        resolvedAction: { type: 'click', targetElementId: 'el_stable', reason: 'check' },
+        validation: undefined,
+      });
+      const candidates = service.extractSuccessfulLocators([step], 'run-001', '2024-05-29T10:00:00Z');
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0].type).toBe('locator');
+    });
   });
 
   describe('extractFailedLocators', () => {

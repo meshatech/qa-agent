@@ -231,6 +231,17 @@ describe('RiskClassifierService', () => {
     expect(historyFactor!.contribution).toBeGreaterThan(0);
   });
 
+  it('returns zero failure_history when fewer than 3 runs exist', () => {
+    const history = makeRunHistory([
+      { status: 'FAILED' }, { status: 'PASSED' },
+    ]);
+    const score = service.classify(makePrContext(), history);
+    const historyFactor = score.factors.find((f) => f.name === 'failure_history');
+    expect(historyFactor!.contribution).toBe(0);
+    const affectedFactor = score.factors.find((f) => f.name === 'affected_route_failure');
+    expect(affectedFactor!.contribution).toBe(0);
+  });
+
   it('returns critical risk for multiple high-risk factors', () => {
     const prContext = makePrContext({
       changedFiles: [

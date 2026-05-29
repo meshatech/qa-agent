@@ -22,6 +22,7 @@ const AFFECTED_ROUTE_BASE_CONTRIBUTION = 0.03;
 const NEGATIVE_DIFF_THRESHOLD = 0.2;
 const FAILURE_RATE_THRESHOLD = 0.2;
 const RECENT_RUNS_WINDOW = 10;
+const MIN_RUNS_FOR_FAILURE_FACTOR = 3;
 
 const STATUS_MULTIPLIER: Record<ChangedFileStatus, number> = {
   modified: 1.0,
@@ -143,7 +144,7 @@ export class RiskClassifierService {
 
   private calculateRecentFailureRate(runHistory: RunHistoryEntry[]): number {
     const recentRuns = runHistory.slice(-RECENT_RUNS_WINDOW);
-    if (recentRuns.length === 0) {
+    if (recentRuns.length < MIN_RUNS_FOR_FAILURE_FACTOR) {
       return 0;
     }
     const failedRuns = recentRuns.filter(

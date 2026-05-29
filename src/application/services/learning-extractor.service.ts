@@ -86,7 +86,7 @@ export class LearningExtractorService {
     const targetElementId = this.targetElementIdFromAction(action);
     if (!targetElementId) return undefined;
 
-    const succeeded = step.error === undefined && step.validation?.ok === true;
+    const succeeded = step.error === undefined && step.validation?.ok !== false;
     if (resultType === 'success' && !succeeded) return undefined;
     if (resultType === 'failure' && succeeded) return undefined;
 
