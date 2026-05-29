@@ -34,7 +34,7 @@ describe('RiskClassifierService', () => {
     const score = service.classify(makePrContext(), []);
     expect(score.level).toBe('low');
     expect(score.value).toBe(0);
-    expect(score.factors).toHaveLength(8);
+    expect(score.factors).toHaveLength(9);
     expect(score.factors.every((f) => f.contribution === 0)).toBe(true);
   });
 
@@ -229,6 +229,67 @@ describe('RiskClassifierService', () => {
     const score = service.classify(prContext, history);
     expect(score.value).toBeGreaterThanOrEqual(0.75);
     expect(score.level).toBe('critical');
+  });
+
+  it('returns zero affected_route_failure when no history', () => {
+    const prContext = makePrContext({
+      affectedRoutes: ['/users'],
+      affectedSchemas: ['user-schema'],
+    });
+    const score = service.classify(prContext, []);
+    const factor = score.factors.find((f) => f.name === 'affected_route_failure');
+    expect(factor!.contribution).toBe(0);
+  });
+
+  it('returns zero affected_route_failure when no failures', () => {
+    const history = makeRunHistory([
+      { status: 'passed' }, { status: 'passed' }, { status: 'passed' },
+    ]);
+    const prContext = makePrContext({
+      affectedRoutes: ['/users'],
+    });
+    const score = service.classify(prContext, history);
+    const factor = score.factors.find((f) => f.name === 'affected_route_failure');
+    expect(factor!.contribution).toBe(0);
+  });
+
+  it('returns zero affected_route_failure when no affected routes', () => {
+    const history = makeRunHistory([
+      { status: 'failed' }, { status: 'failed' }, { status: 'failed' },
+      { status: 'failed' }, { status: 'failed' }, { status: 'failed' },
+    ]);
+    const score = service.classify(makePrContext(), history);
+    const factor = score.factors.find((f) => f.name === 'affected_route_failure');
+    expect(factor!.contribution).toBe(0);
+  });
+
+  it('increases risk for failures with affected routes', () => {
+    const history = makeRunHistory([
+      { status: 'failed' }, { status: 'failed' }, { status: 'failed' },
+      { status: 'failed' }, { status: 'failed' }, { status: 'passed' },
+    ]);
+    const prContext = makePrContext({
+      affectedRoutes: ['/users', '/orders', '/payments'],
+      affectedSchemas: ['user-schema'],
+    });
+    const score = service.classify(prContext, history);
+    const factor = score.factors.find((f) => f.name === 'affected_route_failure');
+    expect(factor!.contribution).toBeGreaterThan(0);
+    expect(factor!.contribution).toBeLessThanOrEqual(0.08);
+  });
+
+  it('caps affected_route_failure at max weight', () => {
+    const history = makeRunHistory([
+      { status: 'failed' }, { status: 'failed' }, { status: 'failed' },
+      { status: 'failed' }, { status: 'failed' }, { status: 'failed' },
+    ]);
+    const prContext = makePrContext({
+      affectedRoutes: Array.from({ length: 20 }, (_, i) => `/route-${i}`),
+      affectedSchemas: Array.from({ length: 20 }, (_, i) => `schema-${i}`),
+    });
+    const score = service.classify(prContext, history);
+    const factor = score.factors.find((f) => f.name === 'affected_route_failure');
+    expect(factor!.contribution).toBe(0.08);
   });
 
   it('caps risk value at 1.0', () => {

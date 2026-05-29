@@ -13,6 +13,7 @@ const RISK_WEIGHTS = {
   otherChange: 0.02,
   negativeDiff: 0.10,
   failureHistory: 0.10,
+  affectedRouteFailure: 0.08,
 } as const;
 
 const STATUS_MULTIPLIER: Record<ChangedFileStatus, number> = {
@@ -35,6 +36,7 @@ export class RiskClassifierService {
     factors.push(this.calculateFileTypeFactor(prContext, 'other', RISK_WEIGHTS.otherChange));
     factors.push(this.calculateNegativeDiffFactor(prContext));
     factors.push(this.calculateFailureHistoryFactor(runHistory));
+    factors.push(this.calculateAffectedRouteFailureFactor(prContext, runHistory));
 
     const value = Math.min(
       factors.reduce((sum, f) => sum + f.contribution, 0),
@@ -101,6 +103,31 @@ export class RiskClassifierService {
       ? Math.min(failureRate * RISK_WEIGHTS.failureHistory * 3, RISK_WEIGHTS.failureHistory)
       : 0;
     return { name: 'failure_history', weight: RISK_WEIGHTS.failureHistory, contribution };
+  }
+
+  private calculateAffectedRouteFailureFactor(
+    prContext: PrDiffContext,
+    runHistory: RunHistoryEntry[],
+  ): RiskFactor {
+    const recentRuns = runHistory.slice(-10);
+    if (recentRuns.length === 0) {
+      return { name: 'affected_route_failure', weight: RISK_WEIGHTS.affectedRouteFailure, contribution: 0 };
+    }
+    const failedRuns = recentRuns.filter(
+      (run) => run.status === 'failed' || run.status === 'FAILED',
+    );
+    if (failedRuns.length === 0) {
+      return { name: 'affected_route_failure', weight: RISK_WEIGHTS.affectedRouteFailure, contribution: 0 };
+    }
+    const affectedCount = prContext.affectedRoutes.length + prContext.affectedSchemas.length;
+    if (affectedCount === 0) {
+      return { name: 'affected_route_failure', weight: RISK_WEIGHTS.affectedRouteFailure, contribution: 0 };
+    }
+    const failureRate = failedRuns.length / recentRuns.length;
+    const contribution = failureRate > 0.2
+      ? Math.min(affectedCount * 0.03 * failureRate, RISK_WEIGHTS.affectedRouteFailure)
+      : 0;
+    return { name: 'affected_route_failure', weight: RISK_WEIGHTS.affectedRouteFailure, contribution };
   }
 
   private levelFromValue(value: number): RiskLevel {
