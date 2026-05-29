@@ -6,64 +6,104 @@ import type { RunConfig } from '../../domain/schemas/config.schema.js';
 @Injectable()
 export class LearningExtractorService {
   extract(result: QaRunResult, _config: RunConfig): MemoryCandidate[] {
-    const candidates: MemoryCandidate[] = [];
     const runId = this.runIdFromResult(result);
     const timestamp = result.finishedAt ?? new Date().toISOString();
 
-    for (const step of result.steps) {
-      const candidate = this.extractLocatorCandidate(step, runId, timestamp);
-      if (candidate) candidates.push(candidate);
-    }
+    const successfulLocators = this.extractSuccessfulLocators(result.steps, runId, timestamp);
+    const failedLocators = this.extractFailedLocators(result.steps, runId, timestamp);
+    const scenarioResults = this.extractScenarioResults(result.scenarios ?? [], runId, timestamp);
 
-    for (const scenario of result.scenarios ?? []) {
-      const candidate = this.extractScenarioCandidate(scenario, runId, timestamp);
-      if (candidate) candidates.push(candidate);
-    }
-
-    return candidates;
+    return [...successfulLocators, ...failedLocators, ...scenarioResults];
   }
 
-  private extractLocatorCandidate(step: QaStep, runId: string, timestamp: string): MemoryCandidate | undefined {
+  extractSuccessfulLocators(steps: QaStep[], runId: string, timestamp: string): MemoryCandidate[] {
+    return steps
+      .map((step) => this.buildSuccessfulLocatorCandidate(step, runId, timestamp))
+      .filter((candidate): candidate is MemoryCandidate => candidate !== undefined);
+  }
+
+  private extractFailedLocators(steps: QaStep[], runId: string, timestamp: string): MemoryCandidate[] {
+    return steps
+      .map((step) => this.buildFailedLocatorCandidate(step, runId, timestamp))
+      .filter((candidate): candidate is MemoryCandidate => candidate !== undefined);
+  }
+
+  private extractScenarioResults(scenarios: NonNullable<QaRunResult['scenarios']>, runId: string, timestamp: string): MemoryCandidate[] {
+    return scenarios
+      .map((scenario) => this.buildScenarioCandidate(scenario, runId, timestamp))
+      .filter((candidate): candidate is MemoryCandidate => candidate !== undefined);
+  }
+
+  private buildSuccessfulLocatorCandidate(step: QaStep, runId: string, timestamp: string): MemoryCandidate | undefined {
     const action = step.resolvedAction;
     if (action.type !== 'click' || !action.targetElementId) return undefined;
 
     const succeeded = step.error === undefined && step.validation?.ok === true;
-    const type = succeeded ? 'locator' : 'known_issue';
-    const title = succeeded
-      ? `Locator succeeded: ${step.thoughtSummary ?? action.targetElementId}`
-      : `Locator failed: ${step.thoughtSummary ?? action.targetElementId}`;
+    if (!succeeded) return undefined;
+
     const content = JSON.stringify({
       actionType: action.type,
       targetElementId: action.targetElementId,
       observationId: step.observationId,
-      succeeded,
+      stepSummary: step.thoughtSummary,
+      validation: step.validation,
+    });
+
+    return {
+      id: this.candidateId('locator', step.stepId, runId),
+      type: 'locator',
+      title: `Resolved locator: ${step.thoughtSummary ?? action.targetElementId}`,
+      content,
+      sourceRunId: runId,
+      sourceScenarioId: step.scenarioId,
+      sourceTaskId: step.taskId,
+      sourceStepId: step.stepId,
+      confidence: 0.9,
+      isConfirmed: false,
+      status: 'pending_review',
+      createdAt: timestamp,
+      metadata: { elementId: action.targetElementId, result: 'success' },
+    };
+  }
+
+  private buildFailedLocatorCandidate(step: QaStep, runId: string, timestamp: string): MemoryCandidate | undefined {
+    const action = step.resolvedAction;
+    if (action.type !== 'click' || !action.targetElementId) return undefined;
+
+    const succeeded = step.error === undefined && step.validation?.ok === true;
+    if (succeeded) return undefined;
+
+    const content = JSON.stringify({
+      actionType: action.type,
+      targetElementId: action.targetElementId,
+      observationId: step.observationId,
+      stepSummary: step.thoughtSummary,
       validation: step.validation,
       error: step.error,
     });
 
     return {
       id: this.candidateId('locator', step.stepId, runId),
-      type,
-      title,
+      type: 'known_issue',
+      title: `Failed locator: ${step.thoughtSummary ?? action.targetElementId}`,
       content,
       sourceRunId: runId,
       sourceScenarioId: step.scenarioId,
       sourceTaskId: step.taskId,
       sourceStepId: step.stepId,
-      confidence: succeeded ? 0.9 : 0.5,
+      confidence: 0.5,
       isConfirmed: false,
       status: 'pending_review',
       createdAt: timestamp,
-      metadata: { stepResult: succeeded ? 'passed' : 'failed' },
+      metadata: { elementId: action.targetElementId, result: 'failure' },
     };
   }
 
-  private extractScenarioCandidate(scenario: NonNullable<QaRunResult['scenarios']>[number], runId: string, timestamp: string): MemoryCandidate | undefined {
+  private buildScenarioCandidate(scenario: NonNullable<QaRunResult['scenarios']>[number], runId: string, timestamp: string): MemoryCandidate | undefined {
     const status = scenario.status;
     if (status !== 'PASSED' && status !== 'FAILED' && status !== 'BLOCKED') return undefined;
 
     const type = status === 'PASSED' ? 'scenario_result' : 'known_issue';
-    const title = `Scenario ${status.toLowerCase()}: ${scenario.title}`;
     const failedTasks = scenario.tasks.filter((task) => task.status === 'FAILED' || task.status === 'BLOCKED');
     const content = JSON.stringify({
       scenarioId: scenario.id,
@@ -75,7 +115,7 @@ export class LearningExtractorService {
     return {
       id: this.candidateId('scenario', scenario.id, runId),
       type,
-      title,
+      title: `Scenario ${status.toLowerCase()}: ${scenario.title}`,
       content,
       sourceRunId: runId,
       sourceScenarioId: scenario.id,
