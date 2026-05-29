@@ -1,10 +1,15 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type { MemoryCandidate } from '../../domain/schemas/memory-candidate.schema.js';
 import type { QaRunResult, QaStep } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
+import type { RunRepositoryPort } from '../ports/run-repository.port.js';
 
 @Injectable()
 export class LearningExtractorService {
+  constructor(
+    @Inject('RunRepositoryPort') private readonly repository: RunRepositoryPort,
+  ) {}
+
   extract(result: QaRunResult, _config: RunConfig): MemoryCandidate[] {
     const runId = this.runIdFromResult(result);
     const timestamp = result.finishedAt ?? new Date().toISOString();
@@ -14,6 +19,20 @@ export class LearningExtractorService {
     const scenarioResults = this.extractScenarioResults(result.scenarios ?? [], runId, timestamp);
 
     return [...successfulLocators, ...failedLocators, ...scenarioResults];
+  }
+
+  async persist(result: QaRunResult, candidates: MemoryCandidate[]): Promise<void> {
+    const runId = this.runIdFromResult(result);
+    const entry = {
+      runId,
+      timestamp: result.finishedAt ?? new Date().toISOString(),
+      status: result.status,
+      totalSteps: result.steps.length,
+      totalScenarios: result.scenarios?.length ?? 0,
+      candidateCount: candidates.length,
+      candidates: candidates.map((c) => ({ id: c.id, type: c.type, title: c.title, confidence: c.confidence })),
+    };
+    await this.repository.appendRunHistory(result.runDir, entry);
   }
 
   extractSuccessfulLocators(steps: QaStep[], runId: string, timestamp: string): MemoryCandidate[] {

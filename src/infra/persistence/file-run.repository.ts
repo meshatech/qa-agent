@@ -1,9 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { access, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { access, appendFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { realpath as realpathCallback } from 'node:fs';
 import { promisify } from 'node:util';
 import { dirname, join, resolve, sep } from 'node:path';
-import type { RunRepositoryPort } from '../../application/ports/run-repository.port.js';
+import type { RunRepositoryPort, RunHistoryEntry } from '../../application/ports/run-repository.port.js';
 import type { QaRunResult } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
 import { RunDirectoryManager } from './run-directory.manager.js';
@@ -75,6 +75,12 @@ export class FileRunRepository implements RunRepositoryPort {
     } catch {
       return [];
     }
+  }
+
+  async appendRunHistory(runDir: string, entry: RunHistoryEntry): Promise<void> {
+    const target = join(runDir, 'run-history.jsonl');
+    const line = JSON.stringify(entry);
+    await appendFile(target, `${line}\n`);
   }
 
   private async resolveInsideRunDir(runDir: string, relativePath: string): Promise<string> {

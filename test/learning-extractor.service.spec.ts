@@ -1,11 +1,31 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { LearningExtractorService } from '../src/application/services/learning-extractor.service.js';
 import type { QaRunResult, QaStep } from '../src/domain/models/run.model.js';
 import type { RunConfig } from '../src/domain/schemas/config.schema.js';
+import type { RunRepositoryPort } from '../src/application/ports/run-repository.port.js';
+
+const createMockRepository = (): RunRepositoryPort =>
+  ({
+    appendRunHistory: vi.fn().mockResolvedValue(undefined),
+    createRunDir: vi.fn(),
+    ensureDir: vi.fn(),
+    writeJson: vi.fn(),
+    writeFile: vi.fn(),
+    writeReport: vi.fn(),
+    findRunDir: vi.fn(),
+    readJson: vi.fn(),
+    exists: vi.fn(),
+    listFiles: vi.fn(),
+  } as unknown as RunRepositoryPort);
 
 describe('LearningExtractorService', () => {
-  const service = new LearningExtractorService();
+  const mockRepository = createMockRepository();
+  const service = new LearningExtractorService(mockRepository);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
   const makeStep = (overrides: Partial<QaStep> & { stepId: string }): QaStep => ({
     stepId: overrides.stepId,
@@ -366,6 +386,86 @@ describe('LearningExtractorService', () => {
       expect(candidates).toHaveLength(1);
       expect(candidates[0].type).toBe('known_issue');
       expect(candidates[0].confidence).toBe(0.5);
+    });
+  });
+
+  describe('persist', () => {
+    it('appends run history with candidates', async () => {
+      const step = makeStep({
+        stepId: 'step-persist-001',
+        thoughtSummary: 'Click login',
+        resolvedAction: { type: 'click', targetElementId: 'el_001', reason: 'login' },
+        validation: { ok: true, type: 'no_console_errors', durationMs: 100 },
+      });
+      const result: QaRunResult = {
+        status: 'PASSED',
+        runDir: '/tmp/run-persist-001',
+        steps: [step],
+        finishedAt: '2024-05-29T17:00:00Z',
+      };
+      const candidates = service.extract(result, makeConfig());
+      await service.persist(result, candidates);
+
+      expect(mockRepository.appendRunHistory).toHaveBeenCalledOnce();
+      const callArgs = (mockRepository.appendRunHistory as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(callArgs[0]).toBe('/tmp/run-persist-001');
+      expect(callArgs[1].runId).toBe('run-persist-001');
+      expect(callArgs[1].status).toBe('PASSED');
+      expect(callArgs[1].totalSteps).toBe(1);
+      expect(callArgs[1].candidateCount).toBe(1);
+      expect(callArgs[1].candidates[0]).toEqual({
+        id: candidates[0].id,
+        type: 'locator',
+        title: candidates[0].title,
+        confidence: 0.9,
+      });
+    });
+
+    it('appends run history with zero candidates', async () => {
+      const result: QaRunResult = {
+        status: 'PASSED',
+        runDir: '/tmp/run-persist-002',
+        steps: [],
+        finishedAt: '2024-05-29T18:00:00Z',
+      };
+      const candidates = service.extract(result, makeConfig());
+      await service.persist(result, candidates);
+
+      expect(mockRepository.appendRunHistory).toHaveBeenCalledOnce();
+      const callArgs = (mockRepository.appendRunHistory as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(callArgs[1].candidateCount).toBe(0);
+      expect(callArgs[1].candidates).toEqual([]);
+    });
+
+    it('appends run history with multiple candidate types', async () => {
+      const step = makeStep({
+        stepId: 'step-persist-003',
+        thoughtSummary: 'Click submit',
+        resolvedAction: { type: 'click', targetElementId: 'el_003', reason: 'submit' },
+        validation: { ok: true, type: 'no_console_errors', durationMs: 50 },
+      });
+      const result: QaRunResult = {
+        status: 'PASSED',
+        runDir: '/tmp/run-persist-003',
+        steps: [step],
+        scenarios: [
+          {
+            id: 'scenario-persist-001',
+            title: 'Submit form',
+            tasks: [{ id: 'T001', title: 'Submit', expected: 'Submitted', status: 'PASSED' }],
+            status: 'PASSED',
+          },
+        ],
+        finishedAt: '2024-05-29T19:00:00Z',
+      };
+      const candidates = service.extract(result, makeConfig());
+      await service.persist(result, candidates);
+
+      expect(mockRepository.appendRunHistory).toHaveBeenCalledOnce();
+      const callArgs = (mockRepository.appendRunHistory as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(callArgs[1].candidateCount).toBe(2);
+      expect(callArgs[1].totalScenarios).toBe(1);
+      expect(callArgs[1].candidates).toHaveLength(2);
     });
   });
 });
