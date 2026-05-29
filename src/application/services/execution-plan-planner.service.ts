@@ -85,6 +85,10 @@ export class ExecutionPlanPlannerService {
     if (this.hasInvalidAppearanceState(plan)) {
       issues.push('appearance ui_state uses invalid expected value; use expected "changed" or a concrete runtime condition');
     }
+    const unsafeClickStep = plan.steps.find((step) => step.action.type === 'click' && !this.hasVerifiedStatePostcondition(step));
+    if (unsafeClickStep) {
+      issues.push(`click step "${unsafeClickStep.id}" has no state-changing postcondition; may execute destructive action without verification`);
+    }
     const weakThemeStep = plan.steps.find((step) => this.isThemeAction(step, scenarios) && !this.hasStateChangePostcondition(step));
     if (weakThemeStep) {
       issues.push(`theme/appearance step "${weakThemeStep.id}" lacks a changed ui_state/attribute_state/storage_state postcondition`);
@@ -121,6 +125,10 @@ export class ExecutionPlanPlannerService {
     return step.postconditions.some((condition) => ['ui_state', 'attribute_state', 'storage_state'].includes(condition.type)
       && 'expected' in condition
       && condition.expected === 'changed');
+  }
+
+  private hasVerifiedStatePostcondition(step: ExecutionStep): boolean {
+    return step.postconditions.some((condition) => ['auth_state', 'ui_state', 'attribute_state', 'storage_state'].includes(condition.type));
   }
 
   private isPassiveAction(step: ExecutionStep): boolean {

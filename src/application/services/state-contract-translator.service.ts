@@ -53,6 +53,7 @@ export class StateContractTranslatorService {
         return [{ type: 'no_console_errors' }];
 
       case 'NO_REGRESSION':
+      case 'CLASSIFICATION_FAILED':
         return [{ type: 'no_console_errors' }];
 
       default:

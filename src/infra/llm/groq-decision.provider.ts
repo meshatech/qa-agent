@@ -138,7 +138,7 @@ export class GroqDecisionProvider implements DecisionProviderPort {
   private extractOutcomeKind(raw: unknown): ExpectedOutcome['kind'] | undefined {
     const kind = typeof raw === 'object' && raw && typeof (raw as Record<string, unknown>).kind === 'string' ? (raw as Record<string, unknown>).kind : undefined;
     if (!kind) return undefined;
-    const validKinds: ExpectedOutcome['kind'][] = ['AUTHENTICATION', 'DEAUTHENTICATION', 'NAVIGATION', 'APPEARANCE_CHANGE', 'DISCLOSURE', 'CONTENT_PRESENCE', 'DATA_ENTRY', 'NO_REGRESSION'];
+    const validKinds: ExpectedOutcome['kind'][] = ['AUTHENTICATION', 'DEAUTHENTICATION', 'NAVIGATION', 'APPEARANCE_CHANGE', 'DISCLOSURE', 'CONTENT_PRESENCE', 'DATA_ENTRY', 'NO_REGRESSION', 'CLASSIFICATION_FAILED'];
     return validKinds.find((k) => k.toLowerCase() === (kind as string).toLowerCase().trim());
   }
 

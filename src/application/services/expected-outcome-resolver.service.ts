@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { DecisionProviderPort } from '../ports/decision-provider.port.js';
 import type { ExpectedOutcome } from '../../domain/schemas/expected-outcome.schema.js';
 import type { QaTask } from '../../domain/models/run.model.js';
@@ -17,6 +17,8 @@ import type { RunConfig } from '../../domain/schemas/config.schema.js';
  */
 @Injectable()
 export class ExpectedOutcomeResolverService {
+  private readonly logger = new Logger(ExpectedOutcomeResolverService.name);
+
   constructor(
     @Inject('DecisionProviderPort') private readonly provider: DecisionProviderPort,
   ) {}
@@ -25,17 +27,18 @@ export class ExpectedOutcomeResolverService {
     if (task.expectedOutcome) {
       return task.expectedOutcome;
     }
-    if (this.provider.classifyOutcome) {
-      try {
-        return await this.provider.classifyOutcome(config, task);
-      } catch {
-        // fall through to NO_REGRESSION
-      }
+    if (!this.provider.classifyOutcome) {
+      return this.defaultOutcome(task);
     }
-    return {
-      kind: 'NO_REGRESSION',
-      description: task.title,
-    };
+    try {
+      return await this.provider.classifyOutcome(config, task);
+    } catch (error) {
+      this.logger.warn(`Expected outcome classification failed for task "${task.id}": ${this.errorMessage(error)}`);
+      return {
+        kind: 'CLASSIFICATION_FAILED',
+        description: task.title,
+      };
+    }
   }
 
   async resolveMany(config: RunConfig, tasks: QaTask[]): Promise<ExpectedOutcome[]> {
@@ -51,7 +54,14 @@ export class ExpectedOutcomeResolverService {
         // fall through to individual resolution/fallback
       }
     }
-    return Promise.all(tasks.map((task) => this.resolve(config, task)));
+    const results: ExpectedOutcome[] = [];
+    for (const task of tasks) {
+      if (results.length > 0) {
+        await this.sleep(100);
+      }
+      results.push(await this.resolve(config, task));
+    }
+    return results;
   }
 
   private defaultOutcome(task: QaTask): ExpectedOutcome {
@@ -59,5 +69,13 @@ export class ExpectedOutcomeResolverService {
       kind: 'NO_REGRESSION',
       description: task.title,
     };
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 }

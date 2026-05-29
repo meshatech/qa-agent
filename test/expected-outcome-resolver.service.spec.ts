@@ -41,7 +41,7 @@ describe('ExpectedOutcomeResolverService', () => {
     expect(result.description).toBe('cerrar sesión');
   });
 
-  it('falls back to NO_REGRESSION when LLM is unavailable', async () => {
+  it('returns CLASSIFICATION_FAILED when classifyOutcome throws', async () => {
     const provider: DecisionProviderPort = {
       async classifyOutcome() { throw new Error('unavailable'); },
       async decide() { throw new Error('unused'); },
@@ -49,7 +49,7 @@ describe('ExpectedOutcomeResolverService', () => {
     const resolver = new ExpectedOutcomeResolverService(provider);
     const task = makeTask({ title: '任意のタスク' });
     const result = await resolver.resolve(makeConfig(), task);
-    expect(result.kind).toBe('NO_REGRESSION');
+    expect(result.kind).toBe('CLASSIFICATION_FAILED');
     expect(result.description).toBe('任意のタスク');
   });
 
@@ -108,7 +108,7 @@ describe('ExpectedOutcomeResolverService', () => {
 
     expect(result).toEqual([
       { kind: 'DISCLOSURE', description: 'good' },
-      { kind: 'NO_REGRESSION', description: 'bad' },
+      { kind: 'CLASSIFICATION_FAILED', description: 'bad' },
       { kind: 'AUTHENTICATION', description: 'existing' },
     ]);
   });

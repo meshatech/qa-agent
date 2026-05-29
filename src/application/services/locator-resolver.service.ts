@@ -1,13 +1,14 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { LocatorDescriptor } from '../../domain/schemas/action.schema.js';
 import type { ScreenObservation } from '../../domain/schemas/observation.schema.js';
 import { DomainError } from '../../domain/shared/result.js';
 
 const ACTIONABLE_ROLES = new Set(['button', 'link', 'menuitem', 'option', 'checkbox', 'radio', 'switch', 'tab', 'textbox', 'combobox']);
-const MIN_TOKEN_OVERLAP = 0.67;
+const MIN_TOKEN_OVERLAP = 0.75;
 
 @Injectable()
 export class LocatorResolverService {
+  private readonly logger = new Logger(LocatorResolverService.name);
   private observationId = '';
   private readonly map = new Map<string, LocatorDescriptor>();
   private readonly names = new Map<string, string>();
@@ -90,7 +91,11 @@ export class LocatorResolverService {
       .map((element) => ({ element, score: this.matchScore(element, expected) }))
       .filter((item) => item.score >= MIN_TOKEN_OVERLAP)
       .sort((a, b) => b.score - a.score || this.actionableScore(b.element) - this.actionableScore(a.element));
-    return ranked[0]?.element;
+    const selected = ranked[0];
+    if (selected && process.env.DEBUG_LOCATOR === 'true') {
+      this.logger.debug(`token overlap selected element "${selected.element.id}" with score ${selected.score}; expected=${JSON.stringify(expected)}`);
+    }
+    return selected?.element;
   }
 
   private expectedTexts(locator: LocatorDescriptor): string[] {

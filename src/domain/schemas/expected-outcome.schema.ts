@@ -9,6 +9,7 @@ export const ExpectedOutcomeKindSchema = z.enum([
   'CONTENT_PRESENCE',
   'DATA_ENTRY',
   'NO_REGRESSION',
+  'CLASSIFICATION_FAILED',
 ]);
 
 export const ExpectedOutcomeSchema = z

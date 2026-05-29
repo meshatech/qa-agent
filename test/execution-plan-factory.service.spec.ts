@@ -100,6 +100,25 @@ describe('ExecutionPlanFactoryService', () => {
     expect((step.action as { target: { strategy: string } }).target.strategy).toBe('text_any');
   });
 
+  it('uses safe console check when data entry target resolves to NO_REGRESSION', async () => {
+    const noTargetConfig: RunConfig = {
+      ...config,
+      runtime: {
+        ...config.runtime,
+        semanticAliases: { DATA_ENTRY: ['NO_REGRESSION'] },
+      },
+    };
+    const scenario = makeScenario('SCN-004B', 'Preencher campo desconhecido', [
+      { id: 'T004B', title: 'preencher campo desconhecido', expected: 'Sem erro', status: 'PENDING', expectedOutcome: { kind: 'DATA_ENTRY', description: 'fill' } },
+    ]);
+
+    const plan = await factory.fromScenarios(noTargetConfig, [scenario]);
+
+    const step = plan!.steps[0];
+    expect(step.action.type).toBe('waitForStable');
+    expect(step.postconditions).toEqual([{ type: 'no_console_errors' }]);
+  });
+
   it('preserves known flows: theme', async () => {
     const scenario = makeScenario('SCN-005', 'Alterar tema', [
       { id: 'T005', title: 'Alterar tema do app', expected: 'Tema alterado', status: 'PENDING' },
@@ -154,6 +173,37 @@ describe('ExecutionPlanFactoryService', () => {
     expect(step.postconditions).toEqual([
       { type: 'menu_state', expected: 'open', semanticKey: 'menu' },
     ]);
+  });
+
+  it('uses safe console check when disclosure target resolves to NO_REGRESSION', async () => {
+    const noTargetConfig: RunConfig = {
+      ...config,
+      runtime: {
+        ...config.runtime,
+        semanticAliases: { DISCLOSURE: ['NO_REGRESSION'] },
+      },
+    };
+    const scenario = makeScenario('SCN-008B', 'Abrir painel desconhecido', [
+      { id: 'T008B', title: 'Abrir painel desconhecido', expected: 'Sem erro', status: 'PENDING', expectedOutcome: { kind: 'DISCLOSURE', description: 'menu' } },
+    ]);
+
+    const plan = await factory.fromScenarios(noTargetConfig, [scenario]);
+
+    const step = plan!.steps[0];
+    expect(step.action.type).toBe('waitForStable');
+    expect(step.postconditions).toEqual([{ type: 'no_console_errors' }]);
+  });
+
+  it('uses safe console check for classification failure outcome', async () => {
+    const scenario = makeScenario('SCN-008C', 'Classificação falhou', [
+      { id: 'T008C', title: 'Classificação falhou', expected: 'Sem erro', status: 'PENDING', expectedOutcome: { kind: 'CLASSIFICATION_FAILED', description: 'classification failed' } },
+    ]);
+
+    const plan = await factory.fromScenarios(config, [scenario]);
+
+    const step = plan!.steps[0];
+    expect(step.action.type).toBe('waitForStable');
+    expect(step.postconditions).toEqual([{ type: 'no_console_errors' }]);
   });
 
   it('generates single step for logout task with multiple text alternatives', async () => {

@@ -58,6 +58,9 @@ export class ExecutionPlanFactoryService {
         return this.themeSteps(scenarioId, task, config, outcome);
       case 'DISCLOSURE': {
         const disclosureTarget = await this.semanticTarget(outcome, config);
+        if (!disclosureTarget) {
+          return [this.makeSafeCheckStep(scenarioId, task, outcome.description)];
+        }
         return [this.makeStep(scenarioId, task, { type: 'click', target: disclosureTarget, reason: outcome.description }, [{ type: 'menu_state', semanticKey: outcome.target ?? 'menu', expected: 'open' }])];
       }
       case 'NAVIGATION': {
@@ -66,11 +69,15 @@ export class ExecutionPlanFactoryService {
       }
       case 'DATA_ENTRY': {
         const dataTarget = await this.semanticTarget(outcome, config);
+        if (!dataTarget) {
+          return [this.makeSafeCheckStep(scenarioId, task, outcome.description)];
+        }
         return [this.makeStep(scenarioId, task, { type: 'fill', target: dataTarget, value: 'safe-test-value', reason: outcome.description }, [{ type: 'no_console_errors' }])];
       }
+      case 'CLASSIFICATION_FAILED':
       case 'NO_REGRESSION':
       default:
-        return [this.makeStep(scenarioId, task, { type: 'waitForStable', timeoutMs: 1000, reason: outcome.description }, [{ type: 'no_console_errors' }])];
+        return [this.makeSafeCheckStep(scenarioId, task, outcome.description)];
     }
   }
 
@@ -88,14 +95,22 @@ export class ExecutionPlanFactoryService {
     };
   }
 
+  private makeSafeCheckStep(scenarioId: string, task: QaTask, reason: string): ExecutionStep {
+    return this.makeStep(scenarioId, task, { type: 'waitForStable', timeoutMs: 1000, reason }, [{ type: 'no_console_errors' }]);
+  }
+
   private async logoutSteps(scenarioId: string, task: QaTask, config: RunConfig, outcome: ExpectedOutcome): Promise<ExecutionStep[]> {
+    const target = await this.semanticTarget(outcome, config);
+    if (!target) {
+      return [this.makeSafeCheckStep(scenarioId, task, outcome.description)];
+    }
     const logoutStep: ExecutionStep = {
       id: `${task.id}-logout`,
       scenarioId,
       taskId: task.id,
       description: task.title,
       preconditions: [],
-      action: { type: 'click', target: await this.semanticTarget(outcome, config), reason: outcome.description },
+      action: { type: 'click', target, reason: outcome.description },
       postconditions: [{ type: 'auth_state', expected: 'anonymous' }],
       assertions: [],
       onFailure: 'RECOVER',
@@ -104,13 +119,17 @@ export class ExecutionPlanFactoryService {
   }
 
   private async themeSteps(scenarioId: string, task: QaTask, config: RunConfig, outcome: ExpectedOutcome): Promise<ExecutionStep[]> {
+    const target = await this.semanticTarget(outcome, config);
+    if (!target) {
+      return [this.makeSafeCheckStep(scenarioId, task, outcome.description)];
+    }
     const themeStep: ExecutionStep = {
       id: `${task.id}-theme`,
       scenarioId,
       taskId: task.id,
       description: task.title,
       preconditions: [],
-      action: { type: 'click', target: await this.semanticTarget(outcome, config), reason: outcome.description },
+      action: { type: 'click', target, reason: outcome.description },
       postconditions: [{ type: 'ui_state', semanticKey: 'appearance_mode', expected: 'exists', source: 'dom' }],
       assertions: [],
       onFailure: 'RECOVER',
@@ -118,8 +137,9 @@ export class ExecutionPlanFactoryService {
     return [themeStep];
   }
 
-  private async semanticTarget(outcome: ExpectedOutcome, config?: RunConfig): Promise<LocatorDescriptor> {
+  private async semanticTarget(outcome: ExpectedOutcome, config?: RunConfig): Promise<LocatorDescriptor | null> {
     const texts = config?.runtime.semanticAliases?.[outcome.kind] ?? this.splitCandidates(outcome.target ?? outcome.description ?? '');
+    if (texts.length === 1 && texts[0] === 'NO_REGRESSION') return null;
     return {
       strategy: 'text_any',
       texts,

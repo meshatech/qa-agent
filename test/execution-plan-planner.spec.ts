@@ -44,7 +44,7 @@ describe('ExecutionPlanPlannerService', () => {
             description: 'Open menu',
             preconditions: [],
             action: { type: 'click', target: { strategy: 'role', role: 'button', name: 'Conta' }, reason: 'open account menu' },
-            postconditions: [{ type: 'text_visible', text: 'Sair' }],
+            postconditions: [{ type: 'ui_state', semanticKey: 'account_menu', expected: 'exists', source: 'dom' }],
             assertions: [],
             onFailure: 'RECOVER',
           }],
@@ -59,6 +59,40 @@ describe('ExecutionPlanPlannerService', () => {
 
     expect(result.source).toBe('llm');
     expect(result.plan?.planId).toBe('llm-plan');
+  });
+
+  it('falls back when a click step has no state-changing postcondition', async () => {
+    const provider: DecisionProviderPort = {
+      async buildPlan() {
+        return {
+          schemaVersion: 'execution-plan.v1',
+          planId: 'unsafe-click-plan',
+          version: 1,
+          goal: 'Smoke',
+          mode: 'HYBRID_GUARDED',
+          runtime: { maxAttemptsPerStep: 1, maxReplansPerScenario: 1, destructiveActionPolicy: 'BLOCK' },
+          steps: [{
+            id: 'S001',
+            scenarioId: 'scenario-001',
+            taskId: 'T001',
+            description: 'Open menu',
+            preconditions: [],
+            action: { type: 'click', target: { strategy: 'role', role: 'button', name: 'Conta' }, reason: 'open account menu' },
+            postconditions: [{ type: 'text_visible', text: 'Sair' }],
+            assertions: [],
+            onFailure: 'RECOVER',
+          }],
+          assertions: [],
+        };
+      },
+      async decide() { throw new Error('not used'); },
+    };
+
+    const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, scenarios);
+
+    expect(result.source).toBe('factory');
+    expect(result.fallbackReason).toContain('has no state-changing postcondition');
   });
 
   it('falls back to factory when LLM persists el_*', async () => {
