@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { ExecutionPlanSchema } from '../src/domain/schemas/execution-plan.schema.js';
 import { ExecutionPlanFactoryService } from '../src/application/services/execution-plan-factory.service.js';
+import { ActionPolicyService } from '../src/application/services/action-policy.service.js';
+import { ValueGeneratorService } from '../src/application/services/value-generator.service.js';
 import type { QaScenario } from '../src/domain/models/run.model.js';
 import type { RunConfig } from '../src/domain/schemas/config.schema.js';
 
@@ -41,7 +43,7 @@ describe('ExecutionPlanFactoryService', () => {
       return { kind: 'NO_REGRESSION' as const, description: 'safe' };
     },
   } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
-  const factory = new ExecutionPlanFactoryService(stubOutcomeResolver);
+  const factory = new ExecutionPlanFactoryService(stubOutcomeResolver, new ActionPolicyService(), new ValueGeneratorService());
   const config = makeConfig();
 
   it('generates plan for generic scenario with task', async () => {
@@ -342,6 +344,45 @@ describe('ExecutionPlanFactoryService', () => {
     const step = plan!.steps[0];
     expect(step.action.type).toBe('fill');
     expect((step.action as { value: string }).value).toBe('Test@123456');
+  });
+
+  it('blocks single destructive semantic text', async () => {
+    const unsafeConfig: RunConfig = {
+      ...config,
+      runtime: {
+        ...config.runtime,
+        semanticAliases: { DISCLOSURE: ['delete'] },
+      },
+    };
+    const scenario = makeScenario('SCN-019', 'Abrir destrutivo', [
+      { id: 'T019', title: 'Abrir destrutivo', expected: 'Bloqueado', status: 'PENDING', expectedOutcome: { kind: 'DISCLOSURE', description: 'options' } },
+    ]);
+
+    await expect(factory.fromScenarios(unsafeConfig, [scenario])).rejects.toThrow(/destructive action policy/i);
+  });
+
+  it('returns safe check step when validateDestructiveText throws unexpectedly', async () => {
+    const throwingPolicy = {
+      validateDestructiveText() {
+        throw new Error('policy crashed');
+      },
+    } as unknown as ActionPolicyService;
+    const crashingFactory = new ExecutionPlanFactoryService(stubOutcomeResolver, throwingPolicy, new ValueGeneratorService());
+    const scenario = makeScenario('SCN-020', 'Abrir opções', [
+      { id: 'T020', title: 'Abrir opções', expected: 'Opções visíveis', status: 'PENDING', expectedOutcome: { kind: 'DISCLOSURE', description: 'options' } },
+    ]);
+
+    const plan = await crashingFactory.fromScenarios(config, [scenario]);
+    expect(plan).toBeDefined();
+    expect(plan!.steps[0].action.type).toBe('waitForStable');
+  });
+
+  it('rejects navigation target with encoded path traversal', async () => {
+    const scenario = makeScenario('SCN-021', 'Traversal codificado', [
+      { id: 'T021', title: 'Navegar codificado', expected: 'Bloqueado', status: 'PENDING', expectedOutcome: { kind: 'NAVIGATION', target: '/%2e%2e/secret', description: 'navigate' } },
+    ]);
+
+    await expect(factory.fromScenarios(config, [scenario])).rejects.toThrow(/path traversal/i);
   });
 
   it('returns undefined when no steps can be generated', async () => {

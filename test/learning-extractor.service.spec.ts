@@ -480,6 +480,21 @@ describe('LearningExtractorService', () => {
       expect(mockRepository.renameFile).not.toHaveBeenCalled();
     });
 
+    it('cleans up temp file when renameFile fails', async () => {
+      const result: QaRunResult = {
+        status: 'PASSED',
+        runDir: '/tmp/run-persist-rename-fail',
+        steps: [],
+        finishedAt: '2024-05-29T18:30:00Z',
+      };
+      const candidates = service.extract(result, makeConfig());
+      (mockRepository.renameFile as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('rename failed'));
+
+      await expect(service.persist(result, candidates)).rejects.toThrow(/rename failed/);
+      expect(mockRepository.appendRunHistory).toHaveBeenCalledOnce();
+      expect(mockRepository.deleteFile).toHaveBeenCalledWith('/tmp/run-persist-rename-fail', 'learning-candidates.json.tmp');
+    });
+
     it('does not call deleteFile when persist succeeds', async () => {
       const result: QaRunResult = {
         status: 'PASSED',

@@ -138,8 +138,7 @@ describe('ExpectedOutcomeResolverService', () => {
     ]);
   });
 
-  it('resolveMany falls back to individual classification with delay when batch is unavailable', async () => {
-    vi.useFakeTimers();
+  it('resolveMany falls back to individual classification when batch is unavailable', async () => {
     const classified: string[] = [];
     const provider: DecisionProviderPort = {
       async classifyOutcome(_cfg, task) {
@@ -154,12 +153,9 @@ describe('ExpectedOutcomeResolverService', () => {
       makeTask({ id: 'T2', title: 'second' }),
     ];
 
-    const pending = resolver.resolveMany(makeConfig(), tasks);
-    await vi.advanceTimersByTimeAsync(0);
-    expect(classified).toEqual(['first']);
+    const result = await resolver.resolveMany(makeConfig(), tasks);
 
-    await vi.advanceTimersByTimeAsync(100);
-    await expect(pending).resolves.toEqual([
+    expect(result).toEqual([
       { kind: 'CONTENT_PRESENCE', description: 'first' },
       { kind: 'CONTENT_PRESENCE', description: 'second' },
     ]);

@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { Logger } from '@nestjs/common';
 import { ExecutionPlanPlannerService } from '../src/application/services/execution-plan-planner.service.js';
 import { ExecutionPlanFactoryService } from '../src/application/services/execution-plan-factory.service.js';
 import { RunConfigSchema } from '../src/domain/schemas/config.schema.js';
@@ -247,7 +248,7 @@ describe('ExecutionPlanPlannerService', () => {
   });
 
   it('warns for orphan steps and treats them as non-theme/non-logout for safety', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
     const provider: DecisionProviderPort = {
       async buildPlan() {
         return {

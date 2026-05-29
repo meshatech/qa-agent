@@ -84,18 +84,20 @@ export class ExecutionPlanFactoryService {
       case 'NAVIGATION': {
         let targetUrl: string;
         if (outcome.target) {
-          if (outcome.target.includes('..')) {
+          if (this.decodeTarget(outcome.target).includes('..')) {
             throw new Error(`Navigation target contains path traversal: ${outcome.target}`);
           }
           targetUrl = new URL(outcome.target, config.baseUrl).href;
-          const targetProtocol = new URL(targetUrl).protocol;
-          if (!['http:', 'https:'].includes(targetProtocol)) {
-            throw new Error(`Navigation target uses unsupported protocol: ${targetProtocol}`);
+          const resolved = new URL(targetUrl);
+          if (!['http:', 'https:'].includes(resolved.protocol)) {
+            throw new Error(`Navigation target uses unsupported protocol: ${resolved.protocol}`);
+          }
+          if (this.decodeTarget(resolved.pathname).includes('..')) {
+            throw new Error(`Navigation target contains path traversal after resolution: ${outcome.target}`);
           }
           const baseHost = new URL(config.baseUrl).host;
-          const targetHost = new URL(targetUrl).host;
-          if (targetHost !== baseHost) {
-            throw new Error(`Navigation target resolves to external host: ${targetHost}`);
+          if (resolved.host !== baseHost) {
+            throw new Error(`Navigation target resolves to external host: ${resolved.host}`);
           }
         } else {
           targetUrl = config.baseUrl;
@@ -180,7 +182,14 @@ export class ExecutionPlanFactoryService {
     if (texts.length === 1 && texts[0] === 'NO_REGRESSION') return null;
     if (config) {
       for (const text of texts) {
-        if (!this.actionPolicy.validateDestructiveText(text, config).ok) {
+        let validation: { ok: boolean };
+        try {
+          validation = this.actionPolicy.validateDestructiveText(text, config);
+        } catch (error) {
+          this.logger.warn(`validateDestructiveText threw for "${text}": ${error instanceof Error ? error.message : String(error)}; treating semantic target as unresolved`);
+          return null;
+        }
+        if (!validation.ok) {
           throw new Error(`Unsafe semantic target blocked by destructive action policy: ${text}`);
         }
       }
@@ -189,6 +198,14 @@ export class ExecutionPlanFactoryService {
       strategy: 'text_any',
       texts,
     };
+  }
+
+  private decodeTarget(value: string): string {
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
   }
 
   private splitCandidates(value: string): string[] {

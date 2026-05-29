@@ -59,9 +59,6 @@ export class ExpectedOutcomeResolverService {
     }
     const results: ExpectedOutcome[] = [];
     for (const task of tasks) {
-      if (results.length > 0) {
-        await this.sleep(100);
-      }
       results.push(await this.resolve(config, task));
     }
     return results;
@@ -72,10 +69,6 @@ export class ExpectedOutcomeResolverService {
       kind: 'NO_REGRESSION',
       description: task.title,
     };
-  }
-
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private errorMessage(error: unknown): string {
