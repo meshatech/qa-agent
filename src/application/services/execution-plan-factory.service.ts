@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { posix as posixPath } from 'node:path';
 import type { ExecutionPlan, ExecutionStep, PlanAction } from '../../domain/schemas/execution-plan.schema.js';
 import type { LocatorDescriptor } from '../../domain/schemas/action.schema.js';
 import type { ExpectedOutcome } from '../../domain/schemas/expected-outcome.schema.js';
@@ -84,7 +85,7 @@ export class ExecutionPlanFactoryService {
       case 'NAVIGATION': {
         let targetUrl: string;
         if (outcome.target) {
-          if (this.decodeTarget(outcome.target).includes('..')) {
+          if (this.hasPathTraversal(outcome.target)) {
             throw new Error(`Navigation target contains path traversal: ${outcome.target}`);
           }
           targetUrl = new URL(outcome.target, config.baseUrl).href;
@@ -92,12 +93,19 @@ export class ExecutionPlanFactoryService {
           if (!['http:', 'https:'].includes(resolved.protocol)) {
             throw new Error(`Navigation target uses unsupported protocol: ${resolved.protocol}`);
           }
-          if (this.decodeTarget(resolved.pathname).includes('..')) {
+          if (this.hasPathTraversal(resolved.pathname)) {
             throw new Error(`Navigation target contains path traversal after resolution: ${outcome.target}`);
           }
           const baseHost = new URL(config.baseUrl).host;
           if (resolved.host !== baseHost) {
             throw new Error(`Navigation target resolves to external host: ${resolved.host}`);
+          }
+          const basePath = posixPath.normalize(new URL(config.baseUrl).pathname || '/');
+          if (basePath !== '/') {
+            const resolvedPath = posixPath.normalize(this.decodeTarget(resolved.pathname));
+            if (!resolvedPath.startsWith(basePath)) {
+              throw new Error(`Navigation target escapes base path: ${outcome.target}`);
+            }
           }
         } else {
           targetUrl = config.baseUrl;
@@ -109,7 +117,14 @@ export class ExecutionPlanFactoryService {
         if (!dataTarget) {
           return [this.makeSafeCheckStep(scenarioId, task, outcome.description)];
         }
-        const testValue = this.valueGenerator?.generate(task.title, outcome) ?? 'safe-test-value';
+        let testValue = this.valueGenerator?.generate(task.title, outcome) ?? 'safe-test-value';
+        if (config) {
+          const check = this.actionPolicy.validateDestructiveText(testValue, config);
+          if (!check.ok) {
+            this.logger.warn(`Generated DATA_ENTRY value blocked by destructive policy; using safe-test-value (${check.message})`);
+            testValue = 'safe-test-value';
+          }
+        }
         return [this.makeStep(scenarioId, task, { type: 'fill', target: dataTarget, value: testValue, reason: outcome.description }, [{ type: 'no_console_errors' }])];
       }
       case 'CLASSIFICATION_FAILED':
@@ -180,24 +195,39 @@ export class ExecutionPlanFactoryService {
     if (!this.SEMANTIC_TARGET_KINDS.has(outcome.kind)) return null;
     const texts = config?.runtime.semanticAliases?.[outcome.kind] ?? this.splitCandidates(outcome.target ?? outcome.description ?? '');
     if (texts.length === 1 && texts[0] === 'NO_REGRESSION') return null;
+    if (!texts.length || texts.some((text) => text.trim().length < 3)) {
+      this.logger.warn(`Semantic target for ${outcome.kind} has empty or too-short candidates; emitting safe check step`);
+      return null;
+    }
     if (config) {
+      const safeTexts: string[] = [];
       for (const text of texts) {
-        let validation: { ok: boolean };
+        let ok = false;
         try {
-          validation = this.actionPolicy.validateDestructiveText(text, config);
+          ok = this.actionPolicy.validateDestructiveText(text, config).ok;
         } catch (error) {
-          this.logger.warn(`validateDestructiveText threw for "${text}": ${error instanceof Error ? error.message : String(error)}; treating semantic target as unresolved`);
-          return null;
+          this.logger.warn(`validateDestructiveText threw for "${text}": ${error instanceof Error ? error.message : String(error)}; skipping candidate`);
+          continue;
         }
-        if (!validation.ok) {
-          throw new Error(`Unsafe semantic target blocked by destructive action policy: ${text}`);
+        if (!ok) {
+          this.logger.warn(`Skipping unsafe semantic target candidate blocked by destructive action policy: ${text}`);
+          continue;
         }
+        safeTexts.push(text);
       }
+      if (!safeTexts.length) return null;
+      return { strategy: 'text_any', texts: safeTexts };
     }
     return {
       strategy: 'text_any',
       texts,
     };
+  }
+
+  private hasPathTraversal(rawPath: string): boolean {
+    const decoded = this.decodeTarget(rawPath);
+    const normalized = posixPath.normalize(decoded);
+    return decoded.split('/').includes('..') || normalized.split('/').includes('..');
   }
 
   private decodeTarget(value: string): string {

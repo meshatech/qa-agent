@@ -416,9 +416,9 @@ describe('LearningExtractorService', () => {
       expect(mockRepository.appendRunHistory).toHaveBeenCalledOnce();
       expect(mockRepository.renameFile).toHaveBeenCalledWith('/tmp/run-persist-001', 'learning-candidates.json.tmp', 'learning-candidates.json');
       expect((mockRepository.writeJson as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0])
-        .toBeLessThan((mockRepository.appendRunHistory as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]!);
-      expect((mockRepository.appendRunHistory as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0])
         .toBeLessThan((mockRepository.renameFile as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]!);
+      expect((mockRepository.renameFile as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0])
+        .toBeLessThan((mockRepository.appendRunHistory as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]!);
       const callArgs = (mockRepository.appendRunHistory as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(callArgs[0]).toBe('/tmp/run-persist-001');
       expect(callArgs[1].runId).toBe('run-persist-001');
@@ -465,7 +465,7 @@ describe('LearningExtractorService', () => {
       expect(mockRepository.renameFile).not.toHaveBeenCalled();
     });
 
-    it('cleans up temp file when appendRunHistory fails', async () => {
+    it('keeps the renamed file and does not roll back when appendRunHistory fails', async () => {
       const result: QaRunResult = {
         status: 'PASSED',
         runDir: '/tmp/run-persist-rollback',
@@ -476,11 +476,11 @@ describe('LearningExtractorService', () => {
       (mockRepository.appendRunHistory as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('disk full'));
 
       await expect(service.persist(result, candidates)).rejects.toThrow(/disk full/);
-      expect(mockRepository.deleteFile).toHaveBeenCalledWith('/tmp/run-persist-rollback', 'learning-candidates.json.tmp');
-      expect(mockRepository.renameFile).not.toHaveBeenCalled();
+      expect(mockRepository.renameFile).toHaveBeenCalledOnce();
+      expect(mockRepository.deleteFile).not.toHaveBeenCalled();
     });
 
-    it('cleans up temp file when renameFile fails', async () => {
+    it('cleans up temp file and skips history when renameFile fails', async () => {
       const result: QaRunResult = {
         status: 'PASSED',
         runDir: '/tmp/run-persist-rename-fail',
@@ -491,7 +491,7 @@ describe('LearningExtractorService', () => {
       (mockRepository.renameFile as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('rename failed'));
 
       await expect(service.persist(result, candidates)).rejects.toThrow(/rename failed/);
-      expect(mockRepository.appendRunHistory).toHaveBeenCalledOnce();
+      expect(mockRepository.appendRunHistory).not.toHaveBeenCalled();
       expect(mockRepository.deleteFile).toHaveBeenCalledWith('/tmp/run-persist-rename-fail', 'learning-candidates.json.tmp');
     });
 

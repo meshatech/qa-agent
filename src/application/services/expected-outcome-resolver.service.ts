@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { DecisionProviderPort } from '../ports/decision-provider.port.js';
-import type { ExpectedOutcome } from '../../domain/schemas/expected-outcome.schema.js';
+import { ExpectedOutcomeSchema, type ExpectedOutcome } from '../../domain/schemas/expected-outcome.schema.js';
 import type { QaTask } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
 
@@ -31,7 +31,8 @@ export class ExpectedOutcomeResolverService {
       return this.defaultOutcome(task);
     }
     try {
-      return await this.provider.classifyOutcome(config, task);
+      const classified = await this.provider.classifyOutcome(config, task);
+      return ExpectedOutcomeSchema.parse(classified);
     } catch (error) {
       this.logger.warn(`Expected outcome classification failed for task "${task.id}": ${this.errorMessage(error)}`);
       return {

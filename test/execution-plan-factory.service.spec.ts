@@ -220,12 +220,13 @@ describe('ExecutionPlanFactoryService', () => {
     expect(step.postconditions).toEqual([{ type: 'no_console_errors' }]);
   });
 
-  it('blocks destructive semantic targets before creating click steps', async () => {
+  it('emits a safe check step when the only semantic target is destructive', async () => {
     const scenario = makeScenario('SCN-008E', 'Abrir alvo inseguro', [
       { id: 'T008E', title: 'Abrir alvo inseguro', expected: 'Bloqueado', status: 'PENDING', expectedOutcome: { kind: 'DISCLOSURE', target: 'Excluir conta', description: 'unsafe target' } },
     ]);
 
-    await expect(factory.fromScenarios(config, [scenario])).rejects.toThrow(/destructive action policy/i);
+    const plan = await factory.fromScenarios(config, [scenario]);
+    expect(plan!.steps[0].action.type).toBe('waitForStable');
   });
 
   it('generates single step for logout task with multiple text alternatives', async () => {
@@ -283,7 +284,7 @@ describe('ExecutionPlanFactoryService', () => {
     expect((step.action as { to: string }).to).toBe('http://localhost:3000/dashboard');
   });
 
-  it('blocks destructive semantic targets when any text is unsafe', async () => {
+  it('filters unsafe candidates and keeps safe semantic targets', async () => {
     const unsafeConfig: RunConfig = {
       ...config,
       runtime: {
@@ -295,7 +296,10 @@ describe('ExecutionPlanFactoryService', () => {
       { id: 'T013', title: 'Abrir opções', expected: 'Opções visíveis', status: 'PENDING', expectedOutcome: { kind: 'DISCLOSURE', description: 'options' } },
     ]);
 
-    await expect(factory.fromScenarios(unsafeConfig, [scenario])).rejects.toThrow(/Unsafe semantic target blocked by destructive action policy: Excluir conta/i);
+    const plan = await factory.fromScenarios(unsafeConfig, [scenario]);
+    const step = plan!.steps[0];
+    expect(step.action.type).toBe('click');
+    expect((step.action as { target: { texts: string[] } }).target.texts).toEqual(['Abrir']);
   });
 
   it('returns safe check step for unwhitelisted outcome kind', async () => {
@@ -346,7 +350,24 @@ describe('ExecutionPlanFactoryService', () => {
     expect((step.action as { value: string }).value).toBe('Test@123456');
   });
 
-  it('blocks single destructive semantic text', async () => {
+  it('substitutes a safe value when the generated DATA_ENTRY value is destructive', async () => {
+    const destructiveGenerator = {
+      generate() {
+        return 'deletar tudo';
+      },
+    } as unknown as ValueGeneratorService;
+    const destructiveFactory = new ExecutionPlanFactoryService(stubOutcomeResolver, new ActionPolicyService(), destructiveGenerator);
+    const scenario = makeScenario('SCN-022', 'Preencher campo', [
+      { id: 'T022', title: 'preencher campo', expected: 'Preenchido', status: 'PENDING', expectedOutcome: { kind: 'DATA_ENTRY', description: 'fill' } },
+    ]);
+
+    const plan = await destructiveFactory.fromScenarios(config, [scenario]);
+    const step = plan!.steps[0];
+    expect(step.action.type).toBe('fill');
+    expect((step.action as { value: string }).value).toBe('safe-test-value');
+  });
+
+  it('emits a safe check step when the single semantic candidate is destructive', async () => {
     const unsafeConfig: RunConfig = {
       ...config,
       runtime: {
@@ -358,7 +379,8 @@ describe('ExecutionPlanFactoryService', () => {
       { id: 'T019', title: 'Abrir destrutivo', expected: 'Bloqueado', status: 'PENDING', expectedOutcome: { kind: 'DISCLOSURE', description: 'options' } },
     ]);
 
-    await expect(factory.fromScenarios(unsafeConfig, [scenario])).rejects.toThrow(/destructive action policy/i);
+    const plan = await factory.fromScenarios(unsafeConfig, [scenario]);
+    expect(plan!.steps[0].action.type).toBe('waitForStable');
   });
 
   it('returns safe check step when validateDestructiveText throws unexpectedly', async () => {

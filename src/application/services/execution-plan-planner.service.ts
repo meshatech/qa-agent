@@ -4,6 +4,7 @@ import type { QaScenario } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
 import { ExecutionPlanSchema, type ExecutionPlan, type ExecutionStep, type PlanCondition } from '../../domain/schemas/execution-plan.schema.js';
 import type { DecisionProviderPort } from '../ports/decision-provider.port.js';
+import { ExecutionPlanBuildError } from '../../domain/errors.js';
 import { ExecutionPlanFactoryService } from './execution-plan-factory.service.js';
 
 export type ExecutionPlanSource = 'llm' | 'factory' | 'manual';
@@ -31,7 +32,21 @@ export class ExecutionPlanPlannerService {
 
   async build(config: RunConfig, scenarios: QaScenario[]): Promise<PlannedExecutionPlan> {
     if (config.runtime.planning?.executionPlanStrategy === 'factory_first') {
-      return { plan: await this.factory.fromScenarios(config, scenarios), source: 'factory' };
+      const factoryPlan = await this.factory.fromScenarios(config, scenarios);
+      if (factoryPlan) {
+        return { plan: factoryPlan, source: 'factory' };
+      }
+      this.logger.warn('factory_first strategy produced no plan; attempting LLM buildPlan fallback');
+      if (this.decision.buildPlan) {
+        try {
+          const plan = this.alignRuntime(ExecutionPlanSchema.parse(await this.decision.buildPlan(config, scenarios)), config);
+          this.validateSemanticPlan(plan, config, scenarios);
+          return { plan, source: 'llm', fallbackReason: 'factory_first produced no steps; used LLM buildPlan' };
+        } catch (error) {
+          throw new ExecutionPlanBuildError(`factory_first produced no steps and LLM fallback failed: ${this.fallbackReason(error)}`);
+        }
+      }
+      throw new ExecutionPlanBuildError('factory_first produced no steps and no LLM fallback available');
     }
     if (this.decision.buildPlan) {
       try {
@@ -164,7 +179,11 @@ export class ExecutionPlanPlannerService {
 
   private isLogoutProofCondition(condition: PlanCondition): boolean {
     if (condition.type === 'auth_state') return condition.expected === 'anonymous';
-    if (condition.type === 'route_state') return condition.expected === 'matches' && Boolean(condition.expectedUrlPattern);
+    if (condition.type === 'route_state') {
+      const loginPaths = ['/login', '/signin', '/auth'];
+      return condition.expected === 'matches'
+        && loginPaths.some((path) => condition.expectedUrlPattern?.includes(path) ?? false);
+    }
     if (condition.type === 'url_contains') return Boolean(condition.value);
     if (condition.type === 'text_visible') return Boolean(condition.text);
     if (condition.type === 'text_any_visible') return condition.texts.length > 0;
