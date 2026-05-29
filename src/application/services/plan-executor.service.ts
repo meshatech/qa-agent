@@ -334,10 +334,12 @@ export class PlanExecutorService {
     const text = [...obs.visibleTexts, ...obs.elements.flatMap((e) => [e.name, e.text ?? ''])].join(' | ');
     const loginRoute = /\/(login|signin|sign-in|auth)\b/i.test(obs.url);
     const loginFormText = /\b(entrar|login|senha|password|sign in|acessar)\b/i.test(text) && /\b(senha|password)\b/i.test(text);
-    const appSurface = /\b(caixa de entrada|inbox|escrever|arquivados|rascunhos|lixeira|configura[cç][õo]es|settings)\b/i.test(text);
+    const interactiveSurface = obs.elements.some((element) =>
+      element.inViewport && ['button', 'link', 'textbox', 'searchbox', 'combobox', 'menuitem'].includes(element.role),
+    );
     return {
-      auth: loginRoute || (loginFormText && !appSurface) ? 'anonymous' : 'authenticated',
-      menuOpen: /\b(sair|logout|sign out|tema|theme|configura[cç][õo]es|settings)\b/i.test(text),
+      auth: loginRoute || (loginFormText && !interactiveSurface) ? 'anonymous' : 'authenticated',
+      menuOpen: obs.elements.some((element) => element.inViewport && (element.expanded === true || element.role === 'menuitem')),
       appearance_mode: text.slice(0, 4000),
       visibleTextSignature: text.slice(0, 500),
     };
@@ -395,28 +397,13 @@ export class PlanExecutorService {
   }
 
   private elementAvailabilityPolicy(step: ExecutionStep, config: RunConfig): EnsureElementAvailablePolicy {
+    const elementAvailability = config.runtime.elementAvailability;
     return {
-      enabled: config.runtime.elementAvailability.enabled,
-      maxOpenAttempts: config.runtime.elementAvailability.maxOpenAttempts,
-      allowClickOutside: config.runtime.elementAvailability.allowClickOutside,
-      allowGlobalEscape: config.runtime.elementAvailability.allowGlobalEscape,
-      allowedContainers: [{
-        semanticKey: 'account_menu',
-        openAction: {
-          type: 'click',
-          target: {
-            strategy: 'semantic',
-            semanticKey: 'account_menu_trigger',
-            intent: 'open account or settings menu',
-            candidates: [
-              { strategy: 'role', role: 'button', name: 'Conta e opções' },
-              { strategy: 'role', role: 'button', name: 'Account' },
-              { strategy: 'text_any', texts: ['Conta', 'Opções', 'Account', 'Perfil', 'Profile', 'JN'] },
-            ],
-          },
-          reason: `open related container for ${step.id}`,
-        },
-      }],
+      enabled: elementAvailability.enabled,
+      maxOpenAttempts: elementAvailability.maxOpenAttempts,
+      allowClickOutside: elementAvailability.allowClickOutside,
+      allowGlobalEscape: elementAvailability.allowGlobalEscape,
+      allowedContainers: elementAvailability.allowedContainers,
     };
   }
 

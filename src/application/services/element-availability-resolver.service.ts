@@ -66,11 +66,7 @@ export class ElementAvailabilityResolver {
     }
   }
 
-  private pickContainer(target: LocatorDescriptor, containers: SemanticContainerDescriptor[]): SemanticContainerDescriptor | undefined {
-    const text = JSON.stringify(target).toLowerCase();
-    if (/(sair|logout|sign out|tema|theme|escuro|claro|account|conta|perfil)/i.test(text)) {
-      return containers.find((container) => /account|conta|perfil|menu/i.test(container.semanticKey)) ?? containers[0];
-    }
+  private pickContainer(_target: LocatorDescriptor, containers: SemanticContainerDescriptor[]): SemanticContainerDescriptor | undefined {
     return containers[0];
   }
 

@@ -14,7 +14,7 @@ function makeConfig(): RunConfig {
     llm: { provider: 'fake', model: 'test', apiKeyEnv: 'TEST_KEY', maxSchemaRetries: 1, rateLimitRetries: 1, rateLimitMaxWaitMs: 1000, promptVersion: 'v1', temperature: 0, maxTokens: 100 },
     browser: { engine: 'chromium', headed: false, viewport: { width: 1280, height: 720 }, locale: 'pt-BR', timezone: 'America/Sao_Paulo' },
     timeouts: { quiescenceMs: 1000, actionMs: 5000, navigationMs: 10000, scenarioMs: 60000, runMs: 300000 },
-    runtime: { maxActionsPerTask: 5, mode: 'HYBRID_GUARDED', maxAttemptsPerStep: 2, maxReplansPerScenario: 2, destructiveActionPolicy: 'BLOCK', semanticKeys: {}, elementAvailability: { enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false }, tools: { enabled: false } },
+    runtime: { maxActionsPerTask: 5, mode: 'HYBRID_GUARDED', maxAttemptsPerStep: 2, maxReplansPerScenario: 2, destructiveActionPolicy: 'BLOCK', semanticKeys: {}, semanticAliases: {}, elementAvailability: { enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false, allowedContainers: [] }, tools: { enabled: false } },
     recovery: { maxAttemptsPerTask: 2, maxFallbacksPerStep: 1, maxEmergencyActionsPerScenario: 1 },
     classifier: { knownNoiseRegexes: [], knownTrackingDomains: [], treatThirdPartyNetwork5xxAsBug: false },
     privacy: { maskEmails: true, maskJwt: true, maskCookies: true },
@@ -73,16 +73,14 @@ describe('ExecutionPlanFactoryService — contract-driven (typed state, no words
     expect(step.postconditions).toEqual([{ type: 'route_state', expected: 'matches', expectedUrlPattern: 'http://localhost:3000/settings' }]);
   });
 
-  it('APPEARANCE_CHANGE proves theme via ui_state changed', async () => {
+  it('APPEARANCE_CHANGE proves appearance through typed ui_state without menu hardcode', async () => {
     const scenario = makeScenario('SCN-004', [
       makeTask('T004', 'Trocar modo visual', { kind: 'APPEARANCE_CHANGE', target: 'appearance_mode', description: 'alternar modo visual' }),
     ]);
     const plan = await factory.fromScenarios(config, [scenario]);
 
-    expect(plan!.steps).toHaveLength(2);
-    const menuStep2 = plan!.steps[0];
-    expect(menuStep2.postconditions).toEqual([{ type: 'menu_state', semanticKey: 'menu', expected: 'open' }]);
-    const themeStep = plan!.steps[1];
+    expect(plan!.steps).toHaveLength(1);
+    const themeStep = plan!.steps[0];
     expect(themeStep.postconditions).toEqual([
       { type: 'ui_state', semanticKey: 'appearance_mode', expected: 'exists', source: 'dom' },
     ]);
@@ -113,8 +111,7 @@ describe('ExecutionPlanFactoryService — contract-driven (typed state, no words
     const tasks = kinds.map((o, i) => makeTask(`T${i}`, `task ${i}`, o));
     const plan = await factory.fromScenarios(config, [makeScenario('SCN-ALL', tasks)]);
 
-    // APPEARANCE_CHANGE generates 2 steps, rest generate 1
-    expect(plan!.steps).toHaveLength(kinds.length + 1);
+    expect(plan!.steps).toHaveLength(kinds.length);
     const parsed = ExecutionPlanSchema.safeParse(plan);
     if (!parsed.success) console.log(JSON.stringify(parsed.error.issues.slice(0, 8), null, 2));
     expect(parsed.success).toBe(true);

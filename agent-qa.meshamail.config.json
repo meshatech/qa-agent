@@ -63,6 +63,34 @@
   },
   "runtime": {
     "maxActionsPerTask": 2,
+    "semanticAliases": {
+      "DEAUTHENTICATION": ["Sair", "Logout", "Sign out", "Deslogar", "Encerrar sessão", "Sair da conta"]
+    },
+    "elementAvailability": {
+      "enabled": true,
+      "maxOpenAttempts": 1,
+      "allowGlobalEscape": false,
+      "allowClickOutside": false,
+      "allowedContainers": [
+        {
+          "semanticKey": "account_menu",
+          "openAction": {
+            "type": "click",
+            "target": {
+              "strategy": "semantic",
+              "semanticKey": "account_menu_trigger",
+              "intent": "open account or settings menu",
+              "candidates": [
+                { "strategy": "role", "role": "button", "name": "Conta e opções" },
+                { "strategy": "role", "role": "button", "name": "Account" },
+                { "strategy": "text_any", "texts": ["JN"] }
+              ]
+            },
+            "reason": "open configured account or settings menu container"
+          }
+        }
+      ]
+    },
     "planning": {
       "executionPlanStrategy": "factory_first"
     },

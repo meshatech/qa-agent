@@ -2,21 +2,31 @@ import { RunAgentUseCase } from '../src/application/use-cases/run-agent.usecase.
 import { describe, expect, it } from 'vitest';
 
 const useCase = Object.create(RunAgentUseCase.prototype) as {
-  stepSucceeded(task: { title: string; expected: string }, action: { type: string; reason?: string }, execOk: boolean, validationOk: boolean, recoveredOk: boolean, expected: { type: string; value?: string; text?: string }, changed: boolean): boolean;
-  isPreActionWeakExpected(task: { title: string; expected: string }, action: { type: string; targetElementId?: string }, expected: unknown): boolean;
-  semanticDecisionIssue(task: { title: string; expected: string }, action: { type: string; targetElementId?: string }, expected: { type: string; value?: string; text?: string; target?: { originalElementId: string } }, obs: { elements: Array<{ id: string; name: string; text?: string }> }): string | undefined;
-  promoteThemeMenuExpectation(task: { title: string; expected: string }, action: { type: string; targetElementId?: string }, bound: { type: string }, obs: { elements: Array<{ id: string; name: string; text?: string }> }): { type: 'text_visible'; text: string } | undefined;
-  promoteLogoutMenuExpectation(task: { title: string; expected: string }, action: { type: string; targetElementId?: string }, bound: { type: string }, obs: { elements: Array<{ id: string; name: string; text?: string }> }): { type: 'text_visible'; text: string } | undefined;
-  promoteMenuExpectation(task: { title: string; expected: string }, action: { type: string; targetElementId?: string }, bound: { type: string }, obs: { elements: Array<{ id: string; name: string; text?: string }> }): { type: 'text_visible'; text: string } | undefined;
-  intentAutocorrectEnvelope(task: { title: string; expected: string }, obs: { observationId: string; elements: Array<{ id: string; name: string; text?: string; inViewport: boolean }> }, issue: string): { action: { type: string; targetElementId?: string }; expected_after_action: { type: string; text?: string } } | undefined;
-  taskDecisionContext(task: { id?: string; title: string; expected: string; attempts?: Array<{ actionType: string; reason?: string; result: string }> }, scenarioId: string, cycle: number, semanticIssue?: string): string;
-  isTaskAlreadySatisfied(task: { title: string; expected: string }, config: { auth: { kind: string } }, obs: { url: string; visibleTexts: string[]; elements: Array<{ role: string; inViewport: boolean }> }): boolean;
+  stepSucceeded(task: TestTask, action: { type: string; reason?: string }, execOk: boolean, validationOk: boolean, recoveredOk: boolean, expected: { type: string; value?: string; text?: string }, changed: boolean): boolean;
+  isPreActionWeakExpected(task: TestTask, action: { type: string; targetElementId?: string }, expected: unknown): boolean;
+  semanticDecisionIssue(task: TestTask, action: { type: string; targetElementId?: string }, expected: { type: string; value?: string; text?: string; target?: { originalElementId: string } }, obs: { elements: Array<{ id: string; name: string; text?: string }> }): string | undefined;
+  promoteThemeMenuExpectation(task: TestTask, action: { type: string; targetElementId?: string }, bound: { type: string }, obs: { elements: Array<{ id: string; name: string; text?: string }> }): { type: 'text_visible'; text: string } | undefined;
+  promoteLogoutMenuExpectation(task: TestTask, action: { type: string; targetElementId?: string }, bound: { type: string }, obs: { elements: Array<{ id: string; name: string; text?: string }> }): { type: 'text_visible'; text: string } | undefined;
+  promoteMenuExpectation(task: TestTask, action: { type: string; targetElementId?: string }, bound: { type: string }, obs: { elements: Array<{ id: string; name: string; text?: string }> }): { type: 'text_visible'; text: string } | undefined;
+  intentAutocorrectEnvelope(task: TestTask, obs: { observationId: string; elements: Array<{ id: string; name: string; text?: string; inViewport: boolean }> }, issue: string): { action: { type: string; targetElementId?: string }; expected_after_action: { type: string; text?: string } } | undefined;
+  taskDecisionContext(task: TestTask & { id?: string; attempts?: Array<{ actionType: string; reason?: string; result: string }> }, scenarioId: string, cycle: number, semanticIssue?: string): string;
+  isTaskAlreadySatisfied(task: TestTask, config: { auth: { kind: string } }, obs: { url: string; visibleTexts: string[]; elements: Array<{ role: string; inViewport: boolean }> }): boolean;
   logoutObservationValidation(obs: { url: string; visibleTexts: string[]; elements: Array<{ name: string; text?: string }> }): { result: { ok: boolean } };
   themeObservationValidation(before: { url: string; title: string; visibleTexts: string[]; pageState: unknown; elements: Array<{ role: string; name: string; text?: string; checked?: boolean; selected?: boolean; expanded?: boolean; disabled?: boolean; inViewport: boolean }> }, after: { url: string; title: string; visibleTexts: string[]; pageState: unknown; elements: Array<{ role: string; name: string; text?: string; checked?: boolean; selected?: boolean; expanded?: boolean; disabled?: boolean; inViewport: boolean }> }, label: string): { result: { ok: boolean }; boundExpected: { type: string; text?: string } };
-  isThemeControlText(text: string): boolean;
   observationMeaningfullyChanged(before: { url: string; title: string; visibleTexts: string[]; pageState: unknown; elements: Array<{ role: string; name: string; text?: string; checked?: boolean; selected?: boolean; expanded?: boolean; disabled?: boolean; inViewport: boolean }> }, after: { url: string; title: string; visibleTexts: string[]; pageState: unknown; elements: Array<{ role: string; name: string; text?: string; checked?: boolean; selected?: boolean; expanded?: boolean; disabled?: boolean; inViewport: boolean }> }): boolean;
   memory: { context: () => string };
 };
+
+type TestTask = {
+  title: string;
+  expected: string;
+  expectedOutcome?: { kind: 'AUTHENTICATION' | 'DEAUTHENTICATION' | 'APPEARANCE_CHANGE' | 'DISCLOSURE' | 'NO_REGRESSION'; target?: string; description: string };
+};
+
+const authTask: TestTask = { title: 'Verificar area autenticada', expected: 'Estado autenticado', expectedOutcome: { kind: 'AUTHENTICATION', description: 'auth' } };
+const logoutTask: TestTask = { title: 'Verificar saida', expected: 'Estado anonimo', expectedOutcome: { kind: 'DEAUTHENTICATION', target: 'Sair|Conta e opções', description: 'deauth' } };
+const themeTask: TestTask = { title: 'Alterar aparencia', expected: 'Aparencia alterada', expectedOutcome: { kind: 'APPEARANCE_CHANGE', target: 'Tema|Conta e opções', description: 'appearance' } };
+const menuTask: TestTask = { title: 'Abrir superficie', expected: 'Superficie visivel', expectedOutcome: { kind: 'DISCLOSURE', target: 'Sair|Conta e opções', description: 'disclosure' } };
 
 useCase.memory = { context: () => 'Working memory:\n- Tried: click el_001 -> REJECTED' };
 
@@ -33,7 +43,7 @@ describe('RunAgentUseCase success rules', () => {
 
   it('rejects element_visible validation that only proves the clicked target still exists', () => {
     expect(useCase.isPreActionWeakExpected(
-      { title: 'Trocar tema', expected: 'Tema alterado' },
+      themeTask,
       { type: 'click', targetElementId: 'el_001' },
       { type: 'element_visible', target: { originalElementId: 'el_001' } },
     )).toBe(true);
@@ -41,7 +51,7 @@ describe('RunAgentUseCase success rules', () => {
 
   it('does not pre-block no_console_errors for functional tasks before the action runs', () => {
     expect(useCase.isPreActionWeakExpected(
-      { title: 'Verificar logout', expected: 'Logout retorna para tela de login' },
+      logoutTask,
       { type: 'click', targetElementId: 'el_001' },
       { type: 'no_console_errors' },
     )).toBe(false);
@@ -70,7 +80,7 @@ describe('RunAgentUseCase success rules', () => {
 
   it('does not complete a theme task when it only opened the menu and made the theme option visible', () => {
     expect(useCase.stepSucceeded(
-      { title: 'Alterar tema visual', expected: 'Tema visual da aplicação foi alterado' },
+      themeTask,
       { type: 'click', reason: 'open settings menu' },
       true,
       true,
@@ -82,7 +92,7 @@ describe('RunAgentUseCase success rules', () => {
 
   it('allows a theme task to complete after a real theme click with a stronger proof', () => {
     expect(useCase.stepSucceeded(
-      { title: 'Alterar tema visual', expected: 'Tema visual da aplicação foi alterado' },
+      themeTask,
       { type: 'click', reason: 'toggle dark theme' },
       true,
       true,
@@ -94,7 +104,7 @@ describe('RunAgentUseCase success rules', () => {
 
   it('rejects no_console_errors as logout proof even when the page changed', () => {
     expect(useCase.stepSucceeded(
-      { title: 'Verificar logout', expected: 'Logout retorna para tela de login' },
+      logoutTask,
       { type: 'click' },
       true,
       true,
@@ -106,7 +116,7 @@ describe('RunAgentUseCase success rules', () => {
 
   it('promotes logout menu clicks from no_console_errors to visible Sair proof', () => {
     expect(useCase.promoteLogoutMenuExpectation(
-      { title: 'Verificar logout', expected: 'Logout retorna para tela inicial não autenticada' },
+      logoutTask,
       { type: 'click', targetElementId: 'el_001' },
       { type: 'no_console_errors' },
       { elements: [{ id: 'el_001', name: 'Conta e opções' }] },
@@ -115,7 +125,7 @@ describe('RunAgentUseCase success rules', () => {
 
   it('promotes account menu tasks from no_console_errors to a visible menu-item proof', () => {
     expect(useCase.promoteMenuExpectation(
-      { title: 'Verificar menu de conta ou configurações', expected: 'Menu ou painel solicitado fica visível com itens acionáveis' },
+      menuTask,
       { type: 'click', targetElementId: 'el_001' },
       { type: 'no_console_errors' },
       { elements: [{ id: 'el_001', name: 'Conta e opções' }] },
@@ -124,7 +134,7 @@ describe('RunAgentUseCase success rules', () => {
 
   it('does not complete logout when it only opened the menu and revealed Sair', () => {
     expect(useCase.stepSucceeded(
-      { title: 'Verificar logout', expected: 'Logout retorna para tela inicial não autenticada' },
+      logoutTask,
       { type: 'click', reason: 'open account menu' },
       true,
       true,
@@ -136,7 +146,7 @@ describe('RunAgentUseCase success rules', () => {
 
   it('autocorrects weak logout decisions to opening the account menu', () => {
     const envelope = useCase.intentAutocorrectEnvelope(
-      { title: 'Verificar logout', expected: 'Logout retorna para tela inicial não autenticada' },
+      logoutTask,
       { observationId: 'obs_1', elements: [{ id: 'el_001', name: 'Conta e opções', inViewport: true }] },
       'Logout action must prove a non-authenticated state',
     );
@@ -147,7 +157,7 @@ describe('RunAgentUseCase success rules', () => {
 
   it('autocorrects weak theme decisions to opening the account menu', () => {
     const envelope = useCase.intentAutocorrectEnvelope(
-      { title: 'Alterar tema visual', expected: 'Tema alternado' },
+      themeTask,
       { observationId: 'obs_1', elements: [{ id: 'el_001', name: 'Conta e opções', inViewport: true }] },
       'Functional task cannot use no_console_errors',
     );
@@ -158,7 +168,7 @@ describe('RunAgentUseCase success rules', () => {
 
   it('accepts logout proof when URL clearly points to login', () => {
     expect(useCase.stepSucceeded(
-      { title: 'Verificar logout', expected: 'Logout retorna para tela de login' },
+      logoutTask,
       { type: 'click' },
       true,
       true,
@@ -180,7 +190,7 @@ describe('RunAgentUseCase success rules', () => {
 
   it('pre-satisfies authenticated area checks from current non-login app state', () => {
     expect(useCase.isTaskAlreadySatisfied(
-      { title: 'Verificar área autenticada', expected: 'Área autenticada visível' },
+      authTask,
       { auth: { kind: 'formLogin' } },
       { url: 'https://app.local/', visibleTexts: ['Caixa de entrada'], elements: [{ role: 'button', inViewport: true }] },
     )).toBe(true);
@@ -188,7 +198,7 @@ describe('RunAgentUseCase success rules', () => {
 
   it('does not pre-satisfy authenticated area checks on login routes', () => {
     expect(useCase.isTaskAlreadySatisfied(
-      { title: 'Verificar área autenticada', expected: 'Área autenticada visível' },
+      authTask,
       { auth: { kind: 'formLogin' } },
       { url: 'https://app.local/login', visibleTexts: ['Entrar'], elements: [{ role: 'button', inViewport: true }] },
     )).toBe(false);
@@ -197,40 +207,33 @@ describe('RunAgentUseCase success rules', () => {
   it('feeds previous weak-validation failure back into the next LLM decision', () => {
     const context = useCase.taskDecisionContext({
       id: 'T001',
-      title: 'Trocar tema da aplicação',
-      expected: 'Tema alterado',
+      ...themeTask,
       attempts: [{ actionType: 'click', result: 'FAILED', reason: 'Weak validation: expected_after_action does not prove the requested state change' }],
     }, 'scenario-001', 1, 'Functional task cannot use no_console_errors as primary success proof');
 
     expect(context).toContain('Previous failed attempts');
     expect(context).toContain('Do not repeat the same weak action/validation');
-    expect(context).toContain('For logout/sign-out tasks');
+    expect(context).toContain('For deauthentication tasks');
     expect(context).toContain('Working memory');
     expect(context).toContain('Last rejected LLM decision');
   });
 
   it('rejects semantic no_console_errors decisions for generic functional tasks before execution', () => {
     expect(useCase.semanticDecisionIssue(
-      { title: 'Trocar tema da aplicação', expected: 'Tema alterado' },
+      themeTask,
       { type: 'click', targetElementId: 'el_001' },
       { type: 'no_console_errors' },
       { elements: [{ id: 'el_001', name: 'Conta e opções' }] },
-    )).toContain('Theme-change task cannot use no_console_errors');
+    )).toContain('Functional task cannot use no_console_errors');
   });
 
   it('promotes theme menu clicks from no_console_errors to a visible theme proof', () => {
     expect(useCase.promoteThemeMenuExpectation(
-      { title: 'Trocar tema da aplicação', expected: 'Tema alterado' },
+      themeTask,
       { type: 'click', targetElementId: 'el_001' },
       { type: 'no_console_errors' },
       { elements: [{ id: 'el_001', name: 'Conta e opções' }] },
     )).toEqual({ type: 'text_visible', text: 'Tema' });
-  });
-
-  it('recognizes visible theme toggle controls semantically', () => {
-    expect(useCase.isThemeControlText('Tema escuro')).toBe(true);
-    expect(useCase.isThemeControlText('Light theme')).toBe(true);
-    expect(useCase.isThemeControlText('Configurações')).toBe(false);
   });
 
   it('accepts semantic theme validation when the label toggles', () => {
@@ -249,12 +252,12 @@ describe('RunAgentUseCase success rules', () => {
     const validation = useCase.themeObservationValidation(before, after, 'Tema escuro');
 
     expect(validation.result.ok).toBe(true);
-    expect(validation.boundExpected.text).toBe('Tema claro');
+    expect(validation.boundExpected.text).toBe('Tema escuro');
   });
 
   it('rejects theme task that still tries to use no_console_errors even on a real theme control', () => {
     expect(useCase.semanticDecisionIssue(
-      { title: 'Trocar tema da aplicação', expected: 'Tema alterado' },
+      themeTask,
       { type: 'click', targetElementId: 'el_007' },
       { type: 'no_console_errors' },
       { elements: [{ id: 'el_007', name: 'Tema escuro' }] },

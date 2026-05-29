@@ -13,7 +13,7 @@ function makeConfig(): RunConfig {
     llm: { provider: 'fake', model: 'test', apiKeyEnv: 'TEST_KEY', maxSchemaRetries: 1, rateLimitRetries: 1, rateLimitMaxWaitMs: 1000, promptVersion: 'v1', temperature: 0, maxTokens: 100 },
     browser: { engine: 'chromium', headed: false, viewport: { width: 1280, height: 720 }, locale: 'pt-BR', timezone: 'America/Sao_Paulo' },
     timeouts: { quiescenceMs: 1000, actionMs: 5000, navigationMs: 10000, scenarioMs: 60000, runMs: 300000 },
-    runtime: { maxActionsPerTask: 5, mode: 'HYBRID_GUARDED', maxAttemptsPerStep: 2, maxReplansPerScenario: 2, destructiveActionPolicy: 'BLOCK', semanticKeys: {}, elementAvailability: { enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false }, tools: { enabled: false } },
+    runtime: { maxActionsPerTask: 5, mode: 'HYBRID_GUARDED', maxAttemptsPerStep: 2, maxReplansPerScenario: 2, destructiveActionPolicy: 'BLOCK', semanticKeys: {}, semanticAliases: {}, elementAvailability: { enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false, allowedContainers: [] }, tools: { enabled: false } },
     recovery: { maxAttemptsPerTask: 2, maxFallbacksPerStep: 1, maxEmergencyActionsPerScenario: 1 },
     classifier: { knownNoiseRegexes: [], knownTrackingDomains: [], treatThirdPartyNetwork5xxAsBug: false },
     privacy: { maskEmails: true, maskJwt: true, maskCookies: true },
@@ -139,10 +139,19 @@ describe('ExecutionPlanFactoryService', () => {
   });
 
   it('generates single step for logout task with multiple text alternatives', async () => {
+    const logoutConfig: RunConfig = {
+      ...config,
+      runtime: {
+        ...config.runtime,
+        semanticAliases: {
+          DEAUTHENTICATION: ['Sair', 'Logout', 'Sign out'],
+        },
+      },
+    };
     const scenario = makeScenario('SCN-009', 'Sair da conta', [
       { id: 'T009', title: 'Sair da conta', expected: 'Logout concluído', status: 'PENDING', expectedOutcome: { kind: 'DEAUTHENTICATION', description: 'logout' } },
     ]);
-    const plan = await factory.fromScenarios(config, [scenario]);
+    const plan = await factory.fromScenarios(logoutConfig, [scenario]);
 
     expect(plan!.steps).toHaveLength(1);
 

@@ -43,7 +43,7 @@ export class ScenarioPlannerService {
     const resolved = await Promise.all(
       scenarios.map(async (scenario) => {
         const canonicalTasks = scenario.tasks.map((task) => this.canonicalTask(task));
-        const outcomes = await this.outcomeResolver.resolveMany(config, canonicalTasks);
+        const outcomes = await this.resolveOutcomes(config, canonicalTasks);
         return {
           ...scenario,
           tasks: canonicalTasks.map((task, index) => ({
@@ -57,6 +57,13 @@ export class ScenarioPlannerService {
       ...scenario,
       tasks: this.authAwareTasks(this.topoSort(scenario.tasks), config),
     }));
+  }
+
+  private async resolveOutcomes(config: RunConfig, tasks: QaTask[]): Promise<ExpectedOutcome[]> {
+    if (typeof this.outcomeResolver.resolveMany === 'function') {
+      return this.outcomeResolver.resolveMany(config, tasks);
+    }
+    return Promise.all(tasks.map((task) => this.outcomeResolver.resolve(config, task)));
   }
 
   /**
@@ -170,13 +177,13 @@ export class ScenarioPlannerService {
   private expectedTextForOutcome(kind: ExpectedOutcome['kind']): string | undefined {
     switch (kind) {
       case 'DEAUTHENTICATION':
-        return 'Logout retorna para tela de login ou estado não autenticado visível';
+        return 'Expected deauthentication state is visible';
       case 'APPEARANCE_CHANGE':
-        return 'Tema visual alterna e a opção/estado visual alterado fica visível';
+        return 'Expected appearance state changes visibly';
       case 'DISCLOSURE':
-        return 'Menu ou painel solicitado fica visível com itens acionáveis';
+        return 'Expected disclosure surface is visible';
       case 'AUTHENTICATION':
-        return 'Área autenticada está visível e não está na tela de login';
+        return 'Expected authenticated state is visible';
       default:
         return undefined;
     }

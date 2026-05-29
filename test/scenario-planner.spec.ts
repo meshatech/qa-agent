@@ -280,8 +280,8 @@ describe('ScenarioPlannerService', () => {
 
     const scenarios = await new ScenarioPlannerService(provider, resolver).plan(config);
 
-    expect(scenarios[0]?.tasks[0]?.expected).toContain('opção/estado visual');
-    expect(scenarios[0]?.tasks[1]?.expected).toContain('tela de login');
+    expect(scenarios[0]?.tasks[0]?.expected).toContain('appearance state');
+    expect(scenarios[0]?.tasks[1]?.expected).toContain('deauthentication state');
   });
 
   it('topologically sorts tasks when provider returns inverted dependency order', async () => {

@@ -266,11 +266,13 @@ export class PlaywrightHarness implements BrowserHarnessPort {
     const text = [...observation.visibleTexts, ...observation.elements.flatMap((e) => [e.name, e.text ?? '', String(e.checked ?? ''), String(e.expanded ?? '')])].join(' | ');
     const loginRoute = /\/(login|signin|sign-in|auth)\b/i.test(observation.url);
     const loginFormText = /\b(entrar|login|senha|password|sign in|acessar)\b/i.test(text) && /\b(senha|password)\b/i.test(text);
-    const appSurface = /\b(caixa de entrada|inbox|escrever|arquivados|rascunhos|lixeira|configura[cç][õo]es|settings)\b/i.test(text);
+    const interactiveSurface = observation.elements.some((element) =>
+      element.inViewport && ['button', 'link', 'textbox', 'searchbox', 'combobox', 'menuitem'].includes(element.role),
+    );
     return {
       url: observation.url,
-      auth: loginRoute || (loginFormText && !appSurface) ? 'anonymous' : 'authenticated',
-      menuOpen: /\b(sair|logout|sign out|tema|theme|configura[cç][õo]es|settings)\b/i.test(text),
+      auth: loginRoute || (loginFormText && !interactiveSurface) ? 'anonymous' : 'authenticated',
+      menuOpen: observation.elements.some((element) => element.inViewport && (element.expanded === true || element.role === 'menuitem')),
       appearance_mode: JSON.stringify(domState),
       visibleTextSignature: text.slice(0, 800),
     };

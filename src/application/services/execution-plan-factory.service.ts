@@ -95,7 +95,7 @@ export class ExecutionPlanFactoryService {
       taskId: task.id,
       description: task.title,
       preconditions: [],
-      action: { type: 'click', target: await this.semanticTarget({ ...outcome, target: 'Sair|Logout|Sign out|Deslogar|Encerrar sessão|Sair da conta' }, config), reason: outcome.description },
+      action: { type: 'click', target: await this.semanticTarget(outcome, config), reason: outcome.description },
       postconditions: [{ type: 'auth_state', expected: 'anonymous' }],
       assertions: [],
       onFailure: 'RECOVER',
@@ -118,12 +118,15 @@ export class ExecutionPlanFactoryService {
     return [themeStep];
   }
 
-  private async semanticTarget(outcome: ExpectedOutcome, _config?: RunConfig): Promise<LocatorDescriptor> {
-    const raw = outcome.target ?? outcome.description;
-    const texts = raw.includes('|') ? raw.split('|').map((t) => t.trim()).filter(Boolean) : [raw];
+  private async semanticTarget(outcome: ExpectedOutcome, config?: RunConfig): Promise<LocatorDescriptor> {
+    const texts = config?.runtime.semanticAliases[outcome.kind] ?? this.splitCandidates(outcome.target ?? outcome.description);
     return {
       strategy: 'text_any',
       texts,
     };
+  }
+
+  private splitCandidates(value: string): string[] {
+    return value.includes('|') ? value.split('|').map((candidate) => candidate.trim()).filter(Boolean) : [value];
   }
 }
