@@ -9,6 +9,7 @@ describe('RiskScore model', () => {
       level: 'low',
       factors: [{ name: 'flaky_locator', weight: 0.2, contribution: 0.15 }],
       calculatedAt: '2024-05-29T10:00:00Z',
+      explanation: 'Test explanation',
     };
     expect(score.value).toBe(0.15);
     expect(score.level).toBe('low');
@@ -24,6 +25,7 @@ describe('RiskScore model', () => {
         { name: 'data_loss_signal', weight: 0.2, contribution: 0.12 },
       ],
       calculatedAt: '2024-05-29T10:00:00Z',
+      explanation: 'Test explanation',
     };
     expect(score.level).toBe('critical');
     expect(score.factors).toHaveLength(3);
@@ -37,6 +39,7 @@ describe('RiskScore model', () => {
         level,
         factors: [],
         calculatedAt: '2024-05-29T10:00:00Z',
+        explanation: 'Test explanation',
       };
       expect(score.level).toBe(level);
     }
@@ -59,6 +62,7 @@ describe('RiskScore model', () => {
       level: 'low',
       factors: [],
       calculatedAt: '2024-05-29T10:00:00Z',
+      explanation: 'Test explanation',
     };
     expect(score.factors).toHaveLength(0);
   });
@@ -69,6 +73,7 @@ describe('RiskScore model', () => {
       level: 'low',
       factors: [],
       calculatedAt: '2024-05-29T10:00:00Z',
+      explanation: 'Test explanation',
     };
     expect(zeroScore.value).toBe(0);
 
@@ -77,6 +82,7 @@ describe('RiskScore model', () => {
       level: 'critical',
       factors: [],
       calculatedAt: '2024-05-29T10:00:00Z',
+      explanation: 'Test explanation',
     };
     expect(maxScore.value).toBe(1);
   });

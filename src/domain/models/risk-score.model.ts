@@ -11,4 +11,5 @@ export interface RiskScore {
   level: RiskLevel;
   factors: RiskFactor[];
   calculatedAt: string;
+  explanation: string;
 }

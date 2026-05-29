@@ -1,11 +1,31 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { RiskClassifierService } from '../src/application/services/risk-classifier.service.js';
 import type { PrDiffContext } from '../src/domain/schemas/pr-diff-context.schema.js';
 import type { RunHistoryEntry } from '../src/application/services/run-history.service.js';
+import type { RunRepositoryPort } from '../src/application/ports/run-repository.port.js';
+
+const createMockRepository = (): RunRepositoryPort =>
+  ({
+    writeJson: vi.fn().mockResolvedValue(undefined),
+    createRunDir: vi.fn(),
+    ensureDir: vi.fn(),
+    writeFile: vi.fn(),
+    writeReport: vi.fn(),
+    findRunDir: vi.fn(),
+    readJson: vi.fn(),
+    exists: vi.fn(),
+    listFiles: vi.fn(),
+    appendRunHistory: vi.fn().mockResolvedValue(undefined),
+  } as unknown as RunRepositoryPort);
 
 describe('RiskClassifierService', () => {
-  const service = new RiskClassifierService();
+  const mockRepository = createMockRepository();
+  const service = new RiskClassifierService(mockRepository);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
   const makePrContext = (overrides: Partial<PrDiffContext> = {}): PrDiffContext =>
     ({
@@ -312,5 +332,45 @@ describe('RiskClassifierService', () => {
     const score = service.classify(makePrContext(), []);
     const after = new Date().toISOString();
     expect(score.calculatedAt >= before && score.calculatedAt <= after).toBe(true);
+  });
+
+  it('generates explanation with score and level', () => {
+    const score = service.classify(makePrContext(), []);
+    expect(score.explanation).toContain(`Risk score: ${score.value.toFixed(2)}`);
+    expect(score.explanation).toContain(score.level.toUpperCase());
+    expect(score.explanation).toContain('Calculated at:');
+    expect(score.explanation).toContain('Factors considered:');
+  });
+
+  it('generates explanation listing active factors', () => {
+    const prContext = makePrContext({
+      changedFiles: [
+        { path: 'src/routes/user.ts', status: 'modified', kind: 'route', positiveLines: [{ type: 'added' as const, lineNumber: 1, content: 'a' }], negativeLines: [{ type: 'removed' as const, lineNumber: 2, content: 'r' }], contextLines: [] },
+      ],
+    });
+    const score = service.classify(prContext, []);
+    expect(score.explanation).toContain('route_change');
+    expect(score.explanation).toContain('contribution');
+  });
+
+  it('generates explanation with no factors when risk is zero', () => {
+    const score = service.classify(makePrContext(), []);
+    expect(score.explanation).toContain('No risk factors detected');
+  });
+
+  it('saves risk score to risk-score.json', async () => {
+    const score = service.classify(makePrContext(), []);
+    await service.save('/tmp/run-001', score);
+    expect(mockRepository.writeJson).toHaveBeenCalledOnce();
+    const callArgs = (mockRepository.writeJson as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(callArgs[0]).toBe('/tmp/run-001');
+    expect(callArgs[1]).toBe('risk-score.json');
+    expect(callArgs[2]).toEqual(score);
+  });
+
+  it('rejects negative scores', () => {
+    const prContext = makePrContext();
+    const score = service.classify(prContext, []);
+    expect(score.value).toBeGreaterThanOrEqual(0);
   });
 });

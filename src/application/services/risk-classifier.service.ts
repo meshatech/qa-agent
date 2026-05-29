@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type { RiskScore, RiskLevel, RiskFactor } from '../../domain/models/risk-score.model.js';
 import type { PrDiffContext } from '../../domain/schemas/pr-diff-context.schema.js';
 import type { ChangedFileStatus } from '../../domain/schemas/changed-file.schema.js';
 import type { RunHistoryEntry } from './run-history.service.js';
+import type { RunRepositoryPort } from '../ports/run-repository.port.js';
 
 const RISK_WEIGHTS = {
   routeChange: 0.25,
@@ -24,6 +25,10 @@ const STATUS_MULTIPLIER: Record<ChangedFileStatus, number> = {
 
 @Injectable()
 export class RiskClassifierService {
+  constructor(
+    @Inject('RunRepositoryPort') private readonly repository: RunRepositoryPort,
+  ) {}
+
   classify(prContext: PrDiffContext, runHistory: RunHistoryEntry[]): RiskScore {
     const factors: RiskFactor[] = [];
     const timestamp = new Date().toISOString();
@@ -43,8 +48,23 @@ export class RiskClassifierService {
       1.0,
     );
     const level = this.levelFromValue(value);
+    const score: RiskScore = { value, level, factors, calculatedAt: timestamp, explanation: '' };
+    score.explanation = this.generateExplanation(score);
+    return score;
+  }
 
-    return { value, level, factors, calculatedAt: timestamp };
+  async save(runDir: string, score: RiskScore): Promise<void> {
+    await this.repository.writeJson(runDir, 'risk-score.json', score);
+  }
+
+  private generateExplanation(score: RiskScore): string {
+    const activeFactors = score.factors.filter((f) => f.contribution > 0);
+    const factorLines = activeFactors.length > 0
+      ? activeFactors.map((f) => `  - ${f.name}: contribution ${f.contribution.toFixed(3)} (weight ${f.weight})`).join('\n')
+      : '  - No risk factors detected.';
+    return `Risk score: ${score.value.toFixed(2)} (${score.level.toUpperCase()})\n` +
+      `Calculated at: ${score.calculatedAt}\n` +
+      `Factors considered:\n${factorLines}`;
   }
 
   private calculateFileTypeFactor(
@@ -137,3 +157,4 @@ export class RiskClassifierService {
     return 'low';
   }
 }
+
