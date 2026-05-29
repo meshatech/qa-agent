@@ -47,6 +47,9 @@ export class ExpectedOutcomeResolverService {
     if (this.provider.classifyOutcomes) {
       try {
         const resolved = await this.provider.classifyOutcomes(config, unresolved);
+        if (resolved.length !== unresolved.length) {
+          this.logger.warn(`classifyOutcomes returned ${resolved.length} results for ${unresolved.length} tasks; using defaults for missing`);
+        }
         const byTask = new Map<QaTask, ExpectedOutcome>();
         unresolved.forEach((task, index) => byTask.set(task, resolved[index] ?? this.defaultOutcome(task)));
         return tasks.map((task) => task.expectedOutcome ?? byTask.get(task) ?? this.defaultOutcome(task));

@@ -11,6 +11,7 @@ import { ExpectedOutcomeResolverService } from './expected-outcome-resolver.serv
 export class ExecutionPlanFactoryService {
   private readonly logger = new Logger(ExecutionPlanFactoryService.name);
   private readonly actionPolicy: ActionPolicyService;
+  private readonly SEMANTIC_TARGET_KINDS = new Set<ExpectedOutcome['kind']>(['DISCLOSURE', 'DATA_ENTRY', 'DEAUTHENTICATION', 'APPEARANCE_CHANGE']);
 
   constructor(
     @Inject(ExpectedOutcomeResolverService)
@@ -51,6 +52,7 @@ export class ExecutionPlanFactoryService {
     const outcome = task.expectedOutcome ?? await this.outcomeResolver.resolve(config, task);
     if (outcome.kind === 'CLASSIFICATION_FAILED') {
       this.logger.warn(`Expected outcome classification failed for task "${task.id}"; refusing to generate a passing fallback step`);
+      return [this.makeSafeCheckStep(scenarioId, task, `Classification failed: ${outcome.description}`)];
     }
     return this.contractSteps(scenarioId, task, config, outcome);
   }
@@ -76,7 +78,20 @@ export class ExecutionPlanFactoryService {
         return [this.makeStep(scenarioId, task, { type: 'click', target: disclosureTarget, reason: outcome.description }, [{ type: 'menu_state', semanticKey: outcome.target ?? 'menu', expected: 'open' }])];
       }
       case 'NAVIGATION': {
-        const targetUrl = outcome.target ? `${config.baseUrl}${outcome.target}` : config.baseUrl;
+        let targetUrl: string;
+        if (outcome.target) {
+          if (outcome.target.includes('..')) {
+            throw new Error(`Navigation target contains path traversal: ${outcome.target}`);
+          }
+          targetUrl = new URL(outcome.target, config.baseUrl).href;
+          const baseHost = new URL(config.baseUrl).host;
+          const targetHost = new URL(targetUrl).host;
+          if (targetHost !== baseHost) {
+            throw new Error(`Navigation target resolves to external host: ${targetHost}`);
+          }
+        } else {
+          targetUrl = config.baseUrl;
+        }
         return [this.makeStep(scenarioId, task, { type: 'navigate', to: targetUrl, reason: outcome.description }, [{ type: 'route_state', expected: 'matches', expectedUrlPattern: targetUrl }])];
       }
       case 'DATA_ENTRY': {
@@ -151,12 +166,14 @@ export class ExecutionPlanFactoryService {
   }
 
   private async semanticTarget(outcome: ExpectedOutcome, config?: RunConfig): Promise<LocatorDescriptor | null> {
+    if (!this.SEMANTIC_TARGET_KINDS.has(outcome.kind)) return null;
     const texts = config?.runtime.semanticAliases?.[outcome.kind] ?? this.splitCandidates(outcome.target ?? outcome.description ?? '');
     if (texts.length === 1 && texts[0] === 'NO_REGRESSION') return null;
     if (config) {
-      const blocked = texts.find((text) => !this.actionPolicy.validateDestructiveText(text, config).ok);
-      if (blocked) {
-        throw new Error(`Unsafe semantic target blocked by destructive action policy: ${blocked}`);
+      for (const text of texts) {
+        if (!this.actionPolicy.validateDestructiveText(text, config).ok) {
+          throw new Error(`Unsafe semantic target blocked by destructive action policy: ${text}`);
+        }
       }
     }
     return {

@@ -17,6 +17,7 @@ const createMockRepository = (): RunRepositoryPort =>
     readJson: vi.fn(),
     exists: vi.fn(),
     listFiles: vi.fn(),
+    deleteFile: vi.fn().mockResolvedValue(undefined),
   } as unknown as RunRepositoryPort);
 
 describe('LearningExtractorService', () => {
@@ -456,6 +457,32 @@ describe('LearningExtractorService', () => {
 
       await expect(service.persist(result, candidates)).rejects.toThrow(/disk full/);
       expect(mockRepository.appendRunHistory).not.toHaveBeenCalled();
+    });
+
+    it('deletes learning-candidates.json when appendRunHistory fails', async () => {
+      const result: QaRunResult = {
+        status: 'PASSED',
+        runDir: '/tmp/run-persist-rollback',
+        steps: [],
+        finishedAt: '2024-05-29T18:30:00Z',
+      };
+      const candidates = service.extract(result, makeConfig());
+      (mockRepository.appendRunHistory as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('disk full'));
+
+      await expect(service.persist(result, candidates)).rejects.toThrow(/disk full/);
+      expect(mockRepository.deleteFile).toHaveBeenCalledWith('/tmp/run-persist-rollback', 'learning-candidates.json');
+    });
+
+    it('does not call deleteFile when persist succeeds', async () => {
+      const result: QaRunResult = {
+        status: 'PASSED',
+        runDir: '/tmp/run-persist-success',
+        steps: [],
+        finishedAt: '2024-05-29T18:30:00Z',
+      };
+      const candidates = service.extract(result, makeConfig());
+      await service.persist(result, candidates);
+      expect(mockRepository.deleteFile).not.toHaveBeenCalled();
     });
 
     it('appends run history with multiple candidate types', async () => {

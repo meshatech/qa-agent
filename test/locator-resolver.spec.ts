@@ -121,4 +121,22 @@ describe('LocatorResolverService', () => {
     const locator: LocatorDescriptor = { strategy: 'text', text: ' ' };
     expect(() => resolver.findByLocator(observation, locator)).toThrow(/Element not found/);
   });
+
+  it('does not match single-token expected as substring of element text', () => {
+    const resolver = new LocatorResolverService();
+    const observation = obsWithElements([
+      element({ id: 'el_001', name: 'okay button', locator: { strategy: 'text', text: 'okay button' } }),
+    ]);
+    const locator: LocatorDescriptor = { strategy: 'text', text: 'ok' };
+    expect(() => resolver.findByLocator(observation, locator)).toThrow(/Element not found/);
+  });
+
+  it('matches single-token expected when it is an isolated word', () => {
+    const resolver = new LocatorResolverService();
+    const observation = obsWithElements([
+      element({ id: 'el_001', name: 'press ok', locator: { strategy: 'text', text: 'press ok' } }),
+    ]);
+    const locator: LocatorDescriptor = { strategy: 'text', text: 'ok' };
+    expect(resolver.findByLocator(observation, locator)).toBe('el_001');
+  });
 });

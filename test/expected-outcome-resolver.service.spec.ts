@@ -90,6 +90,27 @@ describe('ExpectedOutcomeResolverService', () => {
     ]);
   });
 
+  it('warns and uses defaults when classifyOutcomes returns fewer results than tasks', async () => {
+    const provider: DecisionProviderPort = {
+      async classifyOutcomes(_cfg, tasks) {
+        return tasks.slice(0, 1).map((task) => ({ kind: 'CONTENT_PRESENCE' as const, description: task.title }));
+      },
+      async decide() { throw new Error('unused'); },
+    };
+    const resolver = new ExpectedOutcomeResolverService(provider);
+    const tasks = [
+      makeTask({ id: 'T1', title: 'first' }),
+      makeTask({ id: 'T2', title: 'second' }),
+    ];
+
+    const result = await resolver.resolveMany(makeConfig(), tasks);
+
+    expect(result).toEqual([
+      { kind: 'CONTENT_PRESENCE', description: 'first' },
+      { kind: 'NO_REGRESSION', description: 'second' },
+    ]);
+  });
+
   it('resolveMany falls back per task when batch classification fails', async () => {
     const provider: DecisionProviderPort = {
       async classifyOutcomes() {

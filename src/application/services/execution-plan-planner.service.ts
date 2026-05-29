@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ZodError } from 'zod';
 import type { QaScenario } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
@@ -22,6 +22,8 @@ class SemanticPlanPolicyError extends Error {
 
 @Injectable()
 export class ExecutionPlanPlannerService {
+  private readonly logger = new Logger(ExecutionPlanPlannerService.name);
+
   constructor(
     @Inject('DecisionProviderPort') private readonly decision: DecisionProviderPort,
     @Inject(ExecutionPlanFactoryService) private readonly factory: ExecutionPlanFactoryService,
@@ -76,6 +78,13 @@ export class ExecutionPlanPlannerService {
     const issues: string[] = [];
     const taskIds = new Set(scenarios.flatMap((scenario) => scenario.tasks.map((task) => task.id)));
     const scenarioIds = new Set(scenarios.map((scenario) => scenario.id));
+    for (const step of plan.steps) {
+      if (!step.scenarioId || !scenarioIds.has(step.scenarioId)) {
+        this.logger.warn(`Step "${step.id}" references unknown scenarioId "${step.scenarioId}"; cannot validate theme/logout safety`);
+      } else if (!step.taskId || !taskIds.has(step.taskId)) {
+        this.logger.warn(`Step "${step.id}" references unknown taskId "${step.taskId}"; cannot validate theme/logout safety`);
+      }
+    }
     if (taskIds.size > 0 && plan.steps.some((step) => !step.taskId || !taskIds.has(step.taskId) || !step.scenarioId || !scenarioIds.has(step.scenarioId))) {
       issues.push('plan steps must preserve scenarioId/taskId from scenarioCatalog');
     }
@@ -118,7 +127,8 @@ export class ExecutionPlanPlannerService {
 
   private isThemeAction(step: ExecutionStep, scenarios: QaScenario[]): boolean {
     const task = this.findTask(step, scenarios);
-    return task?.expectedOutcome?.kind === 'APPEARANCE_CHANGE' || false;
+    if (!task) return false;
+    return task.expectedOutcome?.kind === 'APPEARANCE_CHANGE' || false;
   }
 
   private hasStateChangePostcondition(step: ExecutionStep): boolean {
@@ -144,7 +154,8 @@ export class ExecutionPlanPlannerService {
   private isLogoutClick(step: ExecutionStep, scenarios: QaScenario[]): boolean {
     if (step.action.type !== 'click') return false;
     const task = this.findTask(step, scenarios);
-    return task?.expectedOutcome?.kind === 'DEAUTHENTICATION' || false;
+    if (!task) return false;
+    return task.expectedOutcome?.kind === 'DEAUTHENTICATION' || false;
   }
 
   private hasLogoutProof(step: ExecutionStep): boolean {

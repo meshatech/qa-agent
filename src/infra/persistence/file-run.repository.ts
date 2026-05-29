@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { access, appendFile, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { access, appendFile, mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { realpath as realpathCallback } from 'node:fs';
 import { promisify } from 'node:util';
 import { dirname, join, resolve, sep } from 'node:path';
@@ -82,6 +82,15 @@ export class FileRunRepository implements RunRepositoryPort {
     await mkdir(dirname(target), { recursive: true }).catch(() => undefined);
     const line = JSON.stringify(entry);
     await appendFile(target, `${line}\n`);
+  }
+
+  async deleteFile(runDir: string, name: string): Promise<void> {
+    try {
+      const target = await this.resolveInsideRunDir(runDir, name);
+      await rm(target);
+    } catch {
+      // ignore if file does not exist
+    }
   }
 
   private async resolveInsideRunDir(runDir: string, relativePath: string): Promise<string> {

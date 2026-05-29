@@ -23,4 +23,5 @@ export interface RunRepositoryPort {
   exists(runDir: string, relativePath: string): Promise<boolean>;
   listFiles(runDir: string, relativePath: string): Promise<string[]>;
   appendRunHistory(runDir: string, entry: RunHistoryEntry): Promise<void>;
+  deleteFile(runDir: string, name: string): Promise<void>;
 }

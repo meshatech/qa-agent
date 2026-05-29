@@ -39,7 +39,12 @@ export class LearningExtractorService {
       candidateCount: candidates.length,
       candidates: candidates.map((c) => ({ id: c.id, type: c.type, title: c.title, confidence: c.confidence })),
     };
-    await this.repository.appendRunHistory(result.runDir, entry);
+    try {
+      await this.repository.appendRunHistory(result.runDir, entry);
+    } catch (error) {
+      await this.repository.deleteFile(result.runDir, 'learning-candidates.json');
+      throw error;
+    }
   }
 
   extractSuccessfulLocators(steps: QaStep[], runId: string, timestamp: string): MemoryCandidate[] {

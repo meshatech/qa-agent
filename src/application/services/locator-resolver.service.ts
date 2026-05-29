@@ -80,6 +80,11 @@ export class LocatorResolverService {
     if (!value) return false;
     const v = value.toLowerCase();
     const e = expected.toLowerCase();
+    const expectedTokens = this.tokens(expected);
+    if (expectedTokens.length === 1) {
+      const valueTokens = new Set(this.tokens(value));
+      return valueTokens.has(expectedTokens[0]);
+    }
     return v.includes(e) || e.includes(v);
   }
 

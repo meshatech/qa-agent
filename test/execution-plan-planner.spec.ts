@@ -246,6 +246,43 @@ describe('ExecutionPlanPlannerService', () => {
     expect(result.fallbackReason).toContain('scenarioId/taskId');
   });
 
+  it('warns for orphan steps and treats them as non-theme/non-logout for safety', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const provider: DecisionProviderPort = {
+      async buildPlan() {
+        return {
+          schemaVersion: 'execution-plan.v1',
+          planId: 'orphan-plan',
+          version: 1,
+          goal: 'Smoke',
+          mode: 'HYBRID_GUARDED',
+          runtime: { maxAttemptsPerStep: 1, maxReplansPerScenario: 1, destructiveActionPolicy: 'BLOCK' },
+          steps: [{
+            id: 'S001',
+            scenarioId: 'nonexistent-scenario',
+            taskId: 'T999',
+            description: 'Orphan click',
+            preconditions: [],
+            action: { type: 'click', target: { strategy: 'role', role: 'button', name: 'Tema' }, reason: 'toggle theme' },
+            postconditions: [{ type: 'ui_state', semanticKey: 'appearance_mode', expected: 'exists', source: 'dom' }],
+            assertions: [],
+            onFailure: 'RECOVER',
+          }],
+          assertions: [],
+        };
+      },
+      async decide() { throw new Error('not used'); },
+    };
+
+    const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, scenarios);
+
+    expect(result.source).toBe('factory');
+    expect(result.fallbackReason).toContain('scenarioId/taskId');
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('unknown scenarioId'));
+    warnSpy.mockRestore();
+  });
+
   it('falls back when a passive step expects runtime state changed', async () => {
     const provider: DecisionProviderPort = {
       async buildPlan() {

@@ -194,12 +194,17 @@ describe('ExecutionPlanFactoryService', () => {
     expect(step.postconditions).toEqual([{ type: 'no_console_errors' }]);
   });
 
-  it('fails explicitly for classification failure outcome', async () => {
+  it('returns safe check step for classification failure outcome', async () => {
     const scenario = makeScenario('SCN-008C', 'Classificação falhou', [
       { id: 'T008C', title: 'Classificação falhou', expected: 'Sem erro', status: 'PENDING', expectedOutcome: { kind: 'CLASSIFICATION_FAILED', description: 'classification failed' } },
     ]);
 
-    await expect(factory.fromScenarios(config, [scenario])).rejects.toThrow(/classification failed/i);
+    const plan = await factory.fromScenarios(config, [scenario]);
+    expect(plan).toBeDefined();
+    expect(plan!.steps).toHaveLength(1);
+    expect(plan!.steps[0].action.type).toBe('waitForStable');
+    expect((plan!.steps[0].action as { reason: string }).reason).toContain('Classification failed');
+    expect(plan!.steps[0].postconditions).toEqual([{ type: 'no_console_errors' }]);
   });
 
   it('uses safe console check for no regression outcome', async () => {
@@ -247,6 +252,58 @@ describe('ExecutionPlanFactoryService', () => {
     expect(logoutStep.postconditions).toEqual([
       { type: 'auth_state', expected: 'anonymous' },
     ]);
+  });
+
+  it('rejects navigation target with path traversal', async () => {
+    const scenario = makeScenario('SCN-010', 'Acessar perfil', [
+      { id: 'T010', title: 'Navegar para perfil', expected: 'Perfil carregado', status: 'PENDING', expectedOutcome: { kind: 'NAVIGATION', target: '/../etc/passwd', description: 'navigate' } },
+    ]);
+
+    await expect(factory.fromScenarios(config, [scenario])).rejects.toThrow(/path traversal/i);
+  });
+
+  it('rejects navigation target resolving to external host', async () => {
+    const scenario = makeScenario('SCN-011', 'Acessar externo', [
+      { id: 'T011', title: 'Navegar para externo', expected: 'Bloqueado', status: 'PENDING', expectedOutcome: { kind: 'NAVIGATION', target: '//evil.com/admin', description: 'navigate' } },
+    ]);
+
+    await expect(factory.fromScenarios(config, [scenario])).rejects.toThrow(/external host/i);
+  });
+
+  it('normalizes valid relative navigation target with new URL', async () => {
+    const scenario = makeScenario('SCN-012', 'Acessar dashboard', [
+      { id: 'T012', title: 'Navegar para dashboard', expected: 'Dashboard carregado', status: 'PENDING', expectedOutcome: { kind: 'NAVIGATION', target: '/dashboard', description: 'navigate' } },
+    ]);
+
+    const plan = await factory.fromScenarios(config, [scenario]);
+    const step = plan!.steps[0];
+    expect(step.action.type).toBe('navigate');
+    expect((step.action as { to: string }).to).toBe('http://localhost:3000/dashboard');
+  });
+
+  it('blocks destructive semantic targets when any text is unsafe', async () => {
+    const unsafeConfig: RunConfig = {
+      ...config,
+      runtime: {
+        ...config.runtime,
+        semanticAliases: { DISCLOSURE: ['Abrir', 'Excluir conta'] },
+      },
+    };
+    const scenario = makeScenario('SCN-013', 'Abrir opções', [
+      { id: 'T013', title: 'Abrir opções', expected: 'Opções visíveis', status: 'PENDING', expectedOutcome: { kind: 'DISCLOSURE', description: 'options' } },
+    ]);
+
+    await expect(factory.fromScenarios(unsafeConfig, [scenario])).rejects.toThrow(/Unsafe semantic target blocked by destructive action policy: Excluir conta/i);
+  });
+
+  it('returns safe check step for unwhitelisted outcome kind', async () => {
+    const scenario = makeScenario('SCN-014', 'Outcome desconhecido', [
+      { id: 'T014', title: 'Outcome desconhecido', expected: 'Sem erro', status: 'PENDING', expectedOutcome: { kind: 'CONTENT_PRESENCE', description: 'unknown' } },
+    ]);
+
+    const plan = await factory.fromScenarios(config, [scenario]);
+    expect(plan).toBeDefined();
+    expect(plan!.steps[0].action.type).toBe('waitForStable');
   });
 
   it('returns undefined when no steps can be generated', async () => {
