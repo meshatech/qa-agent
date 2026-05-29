@@ -407,6 +407,25 @@ describe('ExecutionPlanFactoryService', () => {
     await expect(factory.fromScenarios(config, [scenario])).rejects.toThrow(/path traversal/i);
   });
 
+  it('rejects navigation target with double-encoded path traversal', async () => {
+    const scenario = makeScenario('SCN-021b', 'Dupla codificação', [
+      { id: 'T021b', title: 'Navegar duplo', expected: 'Bloqueado', status: 'PENDING', expectedOutcome: { kind: 'NAVIGATION', target: '/%252e%252e/secret', description: 'navigate' } },
+    ]);
+
+    await expect(factory.fromScenarios(config, [scenario])).rejects.toThrow(/path traversal/i);
+  });
+
+  it('returns safe check step for CLASSIFICATION_FAILED outcome', async () => {
+    const scenario = makeScenario('SCN-023', 'Classificação falhou', [
+      { id: 'T023', title: 'Tarefa classificada', expected: 'Sem erro', status: 'PENDING', expectedOutcome: { kind: 'CLASSIFICATION_FAILED', description: 'unclassifiable' } },
+    ]);
+
+    const plan = await factory.fromScenarios(config, [scenario]);
+    expect(plan).toBeDefined();
+    expect(plan!.steps[0].action.type).toBe('waitForStable');
+    expect((plan!.steps[0].action as { reason: string }).reason).toContain('Classification failed');
+  });
+
   it('returns undefined when no steps can be generated', async () => {
     const scenario = makeScenario('SCN-006', 'Empty', []);
     const plan = await factory.fromScenarios(config, [scenario]);

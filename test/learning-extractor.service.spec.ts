@@ -489,7 +489,8 @@ describe('LearningExtractorService', () => {
 
       await expect(service.persist(result, candidates)).rejects.toThrow(/disk full/);
       expect(mockRepository.renameFile).toHaveBeenCalledOnce();
-      expect(mockRepository.deleteFile).not.toHaveBeenCalled();
+      expect(mockRepository.deleteFile).toHaveBeenCalledTimes(1);
+      expect(mockRepository.deleteFile).toHaveBeenNthCalledWith(1, '/tmp/run-persist-rollback', 'learning-candidates.json.tmp');
     });
 
     it('cleans up temp file and skips history when renameFile fails', async () => {
@@ -504,10 +505,10 @@ describe('LearningExtractorService', () => {
 
       await expect(service.persist(result, candidates)).rejects.toThrow(/rename failed/);
       expect(mockRepository.appendRunHistory).not.toHaveBeenCalled();
-      expect(mockRepository.deleteFile).toHaveBeenCalledWith('/tmp/run-persist-rename-fail', 'learning-candidates.json.tmp');
+      expect(mockRepository.deleteFile).toHaveBeenLastCalledWith('/tmp/run-persist-rename-fail', 'learning-candidates.json.tmp');
     });
 
-    it('does not call deleteFile when persist succeeds', async () => {
+    it('cleans up orphan temp before writing new persist', async () => {
       const result: QaRunResult = {
         status: 'PASSED',
         runDir: '/tmp/run-persist-success',
@@ -516,7 +517,8 @@ describe('LearningExtractorService', () => {
       };
       const candidates = service.extract(result, makeConfig());
       await service.persist(result, candidates);
-      expect(mockRepository.deleteFile).not.toHaveBeenCalled();
+      expect(mockRepository.deleteFile).toHaveBeenCalledTimes(1);
+      expect(mockRepository.deleteFile).toHaveBeenCalledWith('/tmp/run-persist-success', 'learning-candidates.json.tmp');
     });
 
     it('appends run history with multiple candidate types', async () => {

@@ -31,6 +31,7 @@ export class LearningExtractorService {
     const runId = this.runIdFromResult(result);
     const tempName = 'learning-candidates.json.tmp';
     const finalName = 'learning-candidates.json';
+    await this.repository.deleteFile(result.runDir, tempName);
     await this.repository.writeJson(result.runDir, tempName, candidates);
     const entry = {
       runId,

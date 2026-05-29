@@ -230,9 +230,12 @@ export class ExecutionPlanFactoryService {
     return decoded.split('/').includes('..') || normalized.split('/').includes('..');
   }
 
-  private decodeTarget(value: string): string {
+  private decodeTarget(value: string, depth = 0): string {
+    if (depth >= 3 || !value.includes('%')) return value;
     try {
-      return decodeURIComponent(value);
+      const decoded = decodeURIComponent(value);
+      if (decoded === value) return value;
+      return this.decodeTarget(decoded, depth + 1);
     } catch {
       return value;
     }

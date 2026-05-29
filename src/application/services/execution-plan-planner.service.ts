@@ -46,7 +46,8 @@ export class ExecutionPlanPlannerService {
           throw new ExecutionPlanBuildError(`factory_first produced no steps and LLM fallback failed: ${this.fallbackReason(error)}`);
         }
       }
-      throw new ExecutionPlanBuildError('factory_first produced no steps and no LLM fallback available');
+      this.logger.warn('factory_first produced no steps and no LLM fallback available; generating emergency plan');
+      return { plan: this.makeEmergencyPlan(config), source: 'factory', fallbackReason: 'factory_first produced no steps and no LLM fallback; using emergency navigation plan' };
     }
     if (this.decision.buildPlan) {
       try {
@@ -188,6 +189,33 @@ export class ExecutionPlanPlannerService {
     if (condition.type === 'text_visible') return Boolean(condition.text);
     if (condition.type === 'text_any_visible') return condition.texts.length > 0;
     return false;
+  }
+
+  private makeEmergencyPlan(config: RunConfig): ExecutionPlan {
+    return {
+      schemaVersion: 'execution-plan.v1',
+      planId: `emergency_${config.demand.id}`,
+      version: 1,
+      goal: `${config.demand.title} (emergency fallback)`,
+      mode: config.runtime.mode,
+      runtime: {
+        maxAttemptsPerStep: config.runtime.maxAttemptsPerStep,
+        maxReplansPerScenario: config.runtime.maxReplansPerScenario,
+        destructiveActionPolicy: config.runtime.destructiveActionPolicy,
+      },
+      steps: [{
+        id: 'emergency-navigate',
+        scenarioId: 'emergency',
+        taskId: 'emergency',
+        description: 'Navigate to base URL and verify page stability',
+        preconditions: [],
+        action: { type: 'navigate', to: config.baseUrl, reason: 'Emergency fallback navigation to base URL' },
+        postconditions: [{ type: 'route_state', expected: 'matches', expectedUrlPattern: config.baseUrl }],
+        assertions: [{ type: 'no_console_errors' }],
+        onFailure: 'BLOCK',
+      }],
+      assertions: [],
+    };
   }
 
   private findTask(step: ExecutionStep, scenarios: QaScenario[]): QaScenario['tasks'][number] | undefined {
