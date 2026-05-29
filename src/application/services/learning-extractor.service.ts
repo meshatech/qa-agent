@@ -4,6 +4,11 @@ import type { QaRunResult, QaStep } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
 import type { RunRepositoryPort } from '../ports/run-repository.port.js';
 
+const LOCATOR_CONFIDENCE_HIGH = 0.9;
+const LOCATOR_CONFIDENCE_MEDIUM = 0.5;
+const SCENARIO_CONFIDENCE_PERFECT = 1.0;
+const SCENARIO_CONFIDENCE_MEDIUM = 0.6;
+
 @Injectable()
 export class LearningExtractorService {
   constructor(
@@ -54,67 +59,55 @@ export class LearningExtractorService {
   }
 
   private buildSuccessfulLocatorCandidate(step: QaStep, runId: string, timestamp: string): MemoryCandidate | undefined {
-    const action = step.resolvedAction;
-    if (action.type !== 'click' || !action.targetElementId) return undefined;
-
-    const succeeded = step.error === undefined && step.validation?.ok === true;
-    if (!succeeded) return undefined;
-
-    const content = JSON.stringify({
-      actionType: action.type,
-      targetElementId: action.targetElementId,
-      observationId: step.observationId,
-      stepSummary: step.thoughtSummary,
-      validation: step.validation,
-    });
-
-    return {
-      id: this.candidateId('locator', step.stepId, runId),
-      type: 'locator',
-      title: `Resolved locator: ${step.thoughtSummary ?? action.targetElementId}`,
-      content,
-      sourceRunId: runId,
-      sourceScenarioId: step.scenarioId,
-      sourceTaskId: step.taskId,
-      sourceStepId: step.stepId,
-      confidence: 0.9,
-      isConfirmed: false,
-      status: 'pending_review',
-      createdAt: timestamp,
-      metadata: { elementId: action.targetElementId, result: 'success' },
-    };
+    return this.buildLocatorCandidate(step, runId, timestamp, 'success');
   }
 
   private buildFailedLocatorCandidate(step: QaStep, runId: string, timestamp: string): MemoryCandidate | undefined {
+    return this.buildLocatorCandidate(step, runId, timestamp, 'failure');
+  }
+
+  private buildLocatorCandidate(
+    step: QaStep,
+    runId: string,
+    timestamp: string,
+    resultType: 'success' | 'failure',
+  ): MemoryCandidate | undefined {
     const action = step.resolvedAction;
     if (action.type !== 'click' || !action.targetElementId) return undefined;
 
     const succeeded = step.error === undefined && step.validation?.ok === true;
-    if (succeeded) return undefined;
+    if (resultType === 'success' && !succeeded) return undefined;
+    if (resultType === 'failure' && succeeded) return undefined;
 
-    const content = JSON.stringify({
+    const baseContent = {
       actionType: action.type,
       targetElementId: action.targetElementId,
       observationId: step.observationId,
       stepSummary: step.thoughtSummary,
       validation: step.validation,
-      error: step.error,
-    });
+    };
+    const content = resultType === 'failure'
+      ? JSON.stringify({ ...baseContent, error: step.error })
+      : JSON.stringify(baseContent);
+
+    const titlePrefix = resultType === 'success' ? 'Resolved locator' : 'Failed locator';
+    const type = resultType === 'success' ? 'locator' : 'known_issue';
+    const confidence = resultType === 'success' ? LOCATOR_CONFIDENCE_HIGH : LOCATOR_CONFIDENCE_MEDIUM;
 
     return {
       id: this.candidateId('locator', step.stepId, runId),
-      type: 'known_issue',
-      title: `Failed locator: ${step.thoughtSummary ?? action.targetElementId}`,
+      type,
+      title: `${titlePrefix}: ${step.thoughtSummary ?? action.targetElementId}`,
       content,
       sourceRunId: runId,
       sourceScenarioId: step.scenarioId,
       sourceTaskId: step.taskId,
       sourceStepId: step.stepId,
-      confidence: 0.5,
+      confidence,
       isConfirmed: false,
       status: 'pending_review',
       createdAt: timestamp,
-      metadata: { elementId: action.targetElementId, result: 'failure' },
+      metadata: { elementId: action.targetElementId, result: resultType },
     };
   }
 
@@ -138,7 +131,7 @@ export class LearningExtractorService {
       content,
       sourceRunId: runId,
       sourceScenarioId: scenario.id,
-      confidence: status === 'PASSED' ? 1.0 : 0.6,
+      confidence: status === 'PASSED' ? SCENARIO_CONFIDENCE_PERFECT : SCENARIO_CONFIDENCE_MEDIUM,
       isConfirmed: false,
       status: 'pending_review',
       createdAt: timestamp,

@@ -79,6 +79,7 @@ export class FileRunRepository implements RunRepositoryPort {
 
   async appendRunHistory(runDir: string, entry: RunHistoryEntry): Promise<void> {
     const target = join(runDir, 'run-history.jsonl');
+    await mkdir(dirname(target), { recursive: true }).catch(() => undefined);
     const line = JSON.stringify(entry);
     await appendFile(target, `${line}\n`);
   }

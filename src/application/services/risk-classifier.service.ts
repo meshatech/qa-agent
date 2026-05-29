@@ -17,6 +17,12 @@ const RISK_WEIGHTS = {
   affectedRouteFailure: 0.08,
 } as const;
 
+const FILE_TYPE_BASE_CONTRIBUTION = 0.08;
+const AFFECTED_ROUTE_BASE_CONTRIBUTION = 0.03;
+const NEGATIVE_DIFF_THRESHOLD = 0.2;
+const FAILURE_RATE_THRESHOLD = 0.2;
+const RECENT_RUNS_WINDOW = 10;
+
 const STATUS_MULTIPLIER: Record<ChangedFileStatus, number> = {
   modified: 1.0,
   added: 1.2,
@@ -48,9 +54,8 @@ export class RiskClassifierService {
       1.0,
     );
     const level = this.levelFromValue(value);
-    const score: RiskScore = { value, level, factors, calculatedAt: timestamp, explanation: '' };
-    score.explanation = this.generateExplanation(score);
-    return score;
+    const explanation = this.generateExplanation({ value, level, factors, calculatedAt: timestamp, explanation: '' });
+    return { value, level, factors, calculatedAt: timestamp, explanation };
   }
 
   async save(runDir: string, score: RiskScore): Promise<void> {
@@ -69,13 +74,13 @@ export class RiskClassifierService {
 
   private calculateFileTypeFactor(
     prContext: PrDiffContext,
-    kind: 'route' | 'schema' | 'infra' | 'docs' | 'other',
+    kind: ChangedFileStatus extends string ? 'route' | 'schema' | 'infra' | 'docs' | 'other' : never,
     maxWeight: number,
   ): RiskFactor {
     const files = prContext.changedFiles.filter((f) => f.kind === kind);
     const contribution = files.length > 0
       ? Math.min(
-          files.reduce((sum, f) => sum + 0.08 * STATUS_MULTIPLIER[f.status], 0),
+          files.reduce((sum, f) => sum + FILE_TYPE_BASE_CONTRIBUTION * STATUS_MULTIPLIER[f.status], 0),
           maxWeight,
         )
       : 0;
@@ -104,22 +109,15 @@ export class RiskClassifierService {
       return { name: 'negative_diff_ratio', weight: RISK_WEIGHTS.negativeDiff, contribution: 0 };
     }
     const ratio = totalNegative / totalLines;
-    const contribution = ratio > 0.2
+    const contribution = ratio > NEGATIVE_DIFF_THRESHOLD
       ? Math.min(ratio * RISK_WEIGHTS.negativeDiff * 2, RISK_WEIGHTS.negativeDiff)
       : 0;
     return { name: 'negative_diff_ratio', weight: RISK_WEIGHTS.negativeDiff, contribution };
   }
 
   private calculateFailureHistoryFactor(runHistory: RunHistoryEntry[]): RiskFactor {
-    const recentRuns = runHistory.slice(-10);
-    if (recentRuns.length === 0) {
-      return { name: 'failure_history', weight: RISK_WEIGHTS.failureHistory, contribution: 0 };
-    }
-    const failedRuns = recentRuns.filter(
-      (run) => run.status === 'failed' || run.status === 'FAILED',
-    );
-    const failureRate = failedRuns.length / recentRuns.length;
-    const contribution = failureRate > 0.2
+    const failureRate = this.calculateRecentFailureRate(runHistory);
+    const contribution = failureRate > FAILURE_RATE_THRESHOLD
       ? Math.min(failureRate * RISK_WEIGHTS.failureHistory * 3, RISK_WEIGHTS.failureHistory)
       : 0;
     return { name: 'failure_history', weight: RISK_WEIGHTS.failureHistory, contribution };
@@ -129,25 +127,29 @@ export class RiskClassifierService {
     prContext: PrDiffContext,
     runHistory: RunHistoryEntry[],
   ): RiskFactor {
-    const recentRuns = runHistory.slice(-10);
-    if (recentRuns.length === 0) {
-      return { name: 'affected_route_failure', weight: RISK_WEIGHTS.affectedRouteFailure, contribution: 0 };
-    }
-    const failedRuns = recentRuns.filter(
-      (run) => run.status === 'failed' || run.status === 'FAILED',
-    );
-    if (failedRuns.length === 0) {
+    const failureRate = this.calculateRecentFailureRate(runHistory);
+    if (failureRate === 0) {
       return { name: 'affected_route_failure', weight: RISK_WEIGHTS.affectedRouteFailure, contribution: 0 };
     }
     const affectedCount = prContext.affectedRoutes.length + prContext.affectedSchemas.length;
     if (affectedCount === 0) {
       return { name: 'affected_route_failure', weight: RISK_WEIGHTS.affectedRouteFailure, contribution: 0 };
     }
-    const failureRate = failedRuns.length / recentRuns.length;
-    const contribution = failureRate > 0.2
-      ? Math.min(affectedCount * 0.03 * failureRate, RISK_WEIGHTS.affectedRouteFailure)
+    const contribution = failureRate > FAILURE_RATE_THRESHOLD
+      ? Math.min(affectedCount * AFFECTED_ROUTE_BASE_CONTRIBUTION * failureRate, RISK_WEIGHTS.affectedRouteFailure)
       : 0;
     return { name: 'affected_route_failure', weight: RISK_WEIGHTS.affectedRouteFailure, contribution };
+  }
+
+  private calculateRecentFailureRate(runHistory: RunHistoryEntry[]): number {
+    const recentRuns = runHistory.slice(-RECENT_RUNS_WINDOW);
+    if (recentRuns.length === 0) {
+      return 0;
+    }
+    const failedRuns = recentRuns.filter(
+      (run) => run.status === 'failed' || run.status === 'FAILED',
+    );
+    return failedRuns.length / recentRuns.length;
   }
 
   private levelFromValue(value: number): RiskLevel {
