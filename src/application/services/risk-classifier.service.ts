@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { RiskScore, RiskLevel, RiskFactor } from '../../domain/models/risk-score.model.js';
 import type { PrDiffContext } from '../../domain/schemas/pr-diff-context.schema.js';
+import type { ChangedFileStatus } from '../../domain/schemas/changed-file.schema.js';
 import type { RunHistoryEntry } from './run-history.service.js';
 
 const RISK_WEIGHTS = {
@@ -8,9 +9,17 @@ const RISK_WEIGHTS = {
   schemaChange: 0.20,
   testRemoval: 0.20,
   infraChange: 0.15,
+  docsChange: 0.03,
+  otherChange: 0.02,
   negativeDiff: 0.10,
   failureHistory: 0.10,
 } as const;
+
+const STATUS_MULTIPLIER: Record<ChangedFileStatus, number> = {
+  modified: 1.0,
+  added: 1.2,
+  removed: 1.5,
+};
 
 @Injectable()
 export class RiskClassifierService {
@@ -18,10 +27,12 @@ export class RiskClassifierService {
     const factors: RiskFactor[] = [];
     const timestamp = new Date().toISOString();
 
-    factors.push(this.calculateRouteChangeFactor(prContext));
-    factors.push(this.calculateSchemaChangeFactor(prContext));
+    factors.push(this.calculateFileTypeFactor(prContext, 'route', RISK_WEIGHTS.routeChange));
+    factors.push(this.calculateFileTypeFactor(prContext, 'schema', RISK_WEIGHTS.schemaChange));
     factors.push(this.calculateTestRemovalFactor(prContext));
-    factors.push(this.calculateInfraChangeFactor(prContext));
+    factors.push(this.calculateFileTypeFactor(prContext, 'infra', RISK_WEIGHTS.infraChange));
+    factors.push(this.calculateFileTypeFactor(prContext, 'docs', RISK_WEIGHTS.docsChange));
+    factors.push(this.calculateFileTypeFactor(prContext, 'other', RISK_WEIGHTS.otherChange));
     factors.push(this.calculateNegativeDiffFactor(prContext));
     factors.push(this.calculateFailureHistoryFactor(runHistory));
 
@@ -34,20 +45,19 @@ export class RiskClassifierService {
     return { value, level, factors, calculatedAt: timestamp };
   }
 
-  private calculateRouteChangeFactor(prContext: PrDiffContext): RiskFactor {
-    const routeFiles = prContext.changedFiles.filter((f) => f.kind === 'route');
-    const contribution = routeFiles.length > 0
-      ? Math.min(routeFiles.length * 0.1, RISK_WEIGHTS.routeChange)
+  private calculateFileTypeFactor(
+    prContext: PrDiffContext,
+    kind: 'route' | 'schema' | 'infra' | 'docs' | 'other',
+    maxWeight: number,
+  ): RiskFactor {
+    const files = prContext.changedFiles.filter((f) => f.kind === kind);
+    const contribution = files.length > 0
+      ? Math.min(
+          files.reduce((sum, f) => sum + 0.08 * STATUS_MULTIPLIER[f.status], 0),
+          maxWeight,
+        )
       : 0;
-    return { name: 'route_change', weight: RISK_WEIGHTS.routeChange, contribution };
-  }
-
-  private calculateSchemaChangeFactor(prContext: PrDiffContext): RiskFactor {
-    const schemaFiles = prContext.changedFiles.filter((f) => f.kind === 'schema');
-    const contribution = schemaFiles.length > 0
-      ? Math.min(schemaFiles.length * 0.1, RISK_WEIGHTS.schemaChange)
-      : 0;
-    return { name: 'schema_change', weight: RISK_WEIGHTS.schemaChange, contribution };
+    return { name: `${kind}_change`, weight: maxWeight, contribution };
   }
 
   private calculateTestRemovalFactor(prContext: PrDiffContext): RiskFactor {
@@ -56,14 +66,6 @@ export class RiskClassifierService {
     );
     const contribution = testFiles.length > 0 ? RISK_WEIGHTS.testRemoval : 0;
     return { name: 'test_removal', weight: RISK_WEIGHTS.testRemoval, contribution };
-  }
-
-  private calculateInfraChangeFactor(prContext: PrDiffContext): RiskFactor {
-    const infraFiles = prContext.changedFiles.filter((f) => f.kind === 'infra');
-    const contribution = infraFiles.length > 0
-      ? Math.min(infraFiles.length * 0.08, RISK_WEIGHTS.infraChange)
-      : 0;
-    return { name: 'infra_change', weight: RISK_WEIGHTS.infraChange, contribution };
   }
 
   private calculateNegativeDiffFactor(prContext: PrDiffContext): RiskFactor {
