@@ -28,7 +28,7 @@ export class LearningExtractorService {
       .filter((candidate): candidate is MemoryCandidate => candidate !== undefined);
   }
 
-  private extractScenarioResults(scenarios: NonNullable<QaRunResult['scenarios']>, runId: string, timestamp: string): MemoryCandidate[] {
+  extractScenarioResults(scenarios: NonNullable<QaRunResult['scenarios']>, runId: string, timestamp: string): MemoryCandidate[] {
     return scenarios
       .map((scenario) => this.buildScenarioCandidate(scenario, runId, timestamp))
       .filter((candidate): candidate is MemoryCandidate => candidate !== undefined);

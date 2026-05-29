@@ -213,6 +213,113 @@ describe('LearningExtractorService', () => {
     });
   });
 
+  describe('extractScenarioResults', () => {
+    it('extracts scenario_result from passed scenario', () => {
+      const scenarios = [
+        {
+          id: 'scenario-006',
+          title: 'Login flow passed',
+          tasks: [
+            { id: 'T001', title: 'Enter credentials', expected: 'Entered', status: 'PASSED' },
+            { id: 'T002', title: 'Click login', expected: 'Logged in', status: 'PASSED' },
+          ],
+          status: 'PASSED' as const,
+        },
+      ];
+      const candidates = service.extractScenarioResults(scenarios, 'run-001', '2024-05-29T10:00:00Z');
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0].type).toBe('scenario_result');
+      expect(candidates[0].confidence).toBe(1.0);
+      expect(candidates[0].title).toContain('Scenario passed');
+      expect(candidates[0].metadata).toEqual({ scenarioStatus: 'PASSED' });
+    });
+
+    it('extracts known_issue from failed scenario', () => {
+      const scenarios = [
+        {
+          id: 'scenario-007',
+          title: 'Checkout flow failed',
+          tasks: [
+            { id: 'T001', title: 'Add to cart', expected: 'Added', status: 'PASSED' },
+            { id: 'T002', title: 'Pay', expected: 'Paid', status: 'FAILED' },
+          ],
+          status: 'FAILED' as const,
+        },
+      ];
+      const candidates = service.extractScenarioResults(scenarios, 'run-001', '2024-05-29T10:00:00Z');
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0].type).toBe('known_issue');
+      expect(candidates[0].confidence).toBe(0.6);
+      expect(candidates[0].title).toContain('Scenario failed');
+      expect(candidates[0].metadata).toEqual({ scenarioStatus: 'FAILED' });
+    });
+
+    it('ignores scenarios with non-final status', () => {
+      const scenarios = [
+        {
+          id: 'scenario-008',
+          title: 'Pending scenario',
+          tasks: [{ id: 'T001', title: 'Do something', expected: 'Done', status: 'PENDING' }],
+          status: 'PLANNED' as const,
+        },
+      ];
+      const candidates = service.extractScenarioResults(scenarios, 'run-001', '2024-05-29T10:00:00Z');
+      expect(candidates).toHaveLength(0);
+    });
+
+    it('extracts blocked scenario as known_issue', () => {
+      const scenarios = [
+        {
+          id: 'scenario-009',
+          title: 'Blocked scenario',
+          tasks: [{ id: 'T001', title: 'Step 1', expected: 'Done', status: 'BLOCKED' }],
+          status: 'BLOCKED' as const,
+        },
+      ];
+      const candidates = service.extractScenarioResults(scenarios, 'run-001', '2024-05-29T10:00:00Z');
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0].type).toBe('known_issue');
+      expect(candidates[0].confidence).toBe(0.6);
+      expect(candidates[0].title).toContain('Scenario blocked');
+    });
+
+    it('sets correct source fields on scenario candidate', () => {
+      const scenarios = [
+        {
+          id: 'scenario-010',
+          title: 'Auth flow',
+          tasks: [{ id: 'T001', title: 'Auth', expected: 'Authed', status: 'PASSED' }],
+          status: 'PASSED' as const,
+        },
+      ];
+      const candidates = service.extractScenarioResults(scenarios, 'run-001', '2024-05-29T10:00:00Z');
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0].sourceScenarioId).toBe('scenario-010');
+      expect(candidates[0].sourceRunId).toBe('run-001');
+    });
+
+    it('extracts multiple scenarios with mixed results', () => {
+      const scenarios = [
+        {
+          id: 'scenario-011',
+          title: 'Passing scenario',
+          tasks: [{ id: 'T001', title: 'Step', expected: 'Done', status: 'PASSED' }],
+          status: 'PASSED' as const,
+        },
+        {
+          id: 'scenario-012',
+          title: 'Failing scenario',
+          tasks: [{ id: 'T001', title: 'Step', expected: 'Done', status: 'FAILED' }],
+          status: 'FAILED' as const,
+        },
+      ];
+      const candidates = service.extractScenarioResults(scenarios, 'run-001', '2024-05-29T10:00:00Z');
+      expect(candidates).toHaveLength(2);
+      expect(candidates[0].type).toBe('scenario_result');
+      expect(candidates[1].type).toBe('known_issue');
+    });
+  });
+
   describe('extract (full pipeline)', () => {
     it('extracts both successful locators and scenario results', () => {
       const step = makeStep({
