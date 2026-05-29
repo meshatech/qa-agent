@@ -5,7 +5,8 @@ import { QaActionEnvelopeSchema, type ExpectedAfterAction, type QaAction, type Q
 import type { QaScenario, QaTask } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
 import type { ExecutionPlan, PlanPatch } from '../../domain/schemas/execution-plan.schema.js';
-import { DECISION_SYSTEM_PROMPT, EXECUTION_PLAN_SYSTEM_PROMPT, PLAN_SYSTEM_PROMPT, REPLAN_SYSTEM_PROMPT, buildDecisionUserMessage, buildExecutionPlanUserMessage, buildPlanUserMessage, buildReplanUserMessage } from './prompt-builder.js';
+import { CLASSIFY_OUTCOME_SYSTEM_PROMPT, DECISION_SYSTEM_PROMPT, EXECUTION_PLAN_SYSTEM_PROMPT, PLAN_SYSTEM_PROMPT, REPLAN_SYSTEM_PROMPT, buildClassifyOutcomeUserMessage, buildClassifyOutcomesUserMessage, buildDecisionUserMessage, buildExecutionPlanUserMessage, buildPlanUserMessage, buildReplanUserMessage } from './prompt-builder.js';
+import { ExpectedOutcomeSchema, type ExpectedOutcome } from '../../domain/schemas/expected-outcome.schema.js';
 import { LlmPlanPatchNormalizer } from './llm-output-normalizer.js';
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
@@ -13,7 +14,7 @@ const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 @Injectable()
 export class GroqDecisionProvider implements DecisionProviderPort {
   private calls = 0;
-  private readonly callCounts = { plan: 0, buildPlan: 0, replan: 0, decide: 0 };
+  private readonly callCounts = { plan: 0, classifyOutcome: 0, buildPlan: 0, replan: 0, decide: 0 };
   private readonly wrappers: Array<{ kind: 'plan' | 'patch'; wrapper: string }> = [];
 
   constructor(@Inject(LlmPlanPatchNormalizer) private readonly normalizer: LlmPlanPatchNormalizer = new LlmPlanPatchNormalizer()) {}
@@ -73,6 +74,74 @@ export class GroqDecisionProvider implements DecisionProviderPort {
     return parsed.value;
   }
 
+  async classifyOutcome(config: RunConfig, task: QaTask) {
+    this.callCounts.classifyOutcome++;
+    const key = process.env[config.llm.apiKeyEnv];
+    if (!key) throw new Error(`Missing env ${config.llm.apiKeyEnv}`);
+    const json = await this.chatJson(config, key, 'classify-outcome', {
+      model: config.llm.model,
+      temperature: 0,
+      max_tokens: 512,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: CLASSIFY_OUTCOME_SYSTEM_PROMPT },
+        { role: 'user', content: buildClassifyOutcomeUserMessage(task.title, task.expected) },
+      ],
+    });
+    const raw = JSON.parse(json.choices[0]?.message.content ?? '{}');
+    return this.parseOutcome(raw, task);
+  }
+
+  async classifyOutcomes(config: RunConfig, tasks: QaTask[]): Promise<ExpectedOutcome[]> {
+    if (!tasks.length) return [];
+    this.callCounts.classifyOutcome++;
+    const key = process.env[config.llm.apiKeyEnv];
+    if (!key) throw new Error(`Missing env ${config.llm.apiKeyEnv}`);
+    const json = await this.chatJson(config, key, 'classify-outcome', {
+      model: config.llm.model,
+      temperature: 0,
+      max_tokens: 1024,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: CLASSIFY_OUTCOME_SYSTEM_PROMPT },
+        { role: 'user', content: buildClassifyOutcomesUserMessage(tasks.map((task) => ({ id: task.id, title: task.title, expected: task.expected }))) },
+      ],
+    });
+    const raw = JSON.parse(json.choices[0]?.message.content ?? '{}');
+    const items = this.extractOutcomeItems(raw);
+    if (items.length !== tasks.length) throw new Error('Invalid outcome batch size from LLM');
+    return items.map((item, index) => this.parseOutcome(item, tasks[index]!));
+  }
+
+  private extractOutcomeItems(raw: unknown): unknown[] {
+    if (Array.isArray(raw)) return raw;
+    if (raw && typeof raw === 'object') {
+      const record = raw as Record<string, unknown>;
+      if (Array.isArray(record.outcomes)) return record.outcomes;
+      if (Array.isArray(record.results)) return record.results;
+      if (Array.isArray(record.tasks)) return record.tasks;
+    }
+    return [];
+  }
+
+  private parseOutcome(raw: unknown, task: QaTask): ExpectedOutcome {
+    const kind = this.extractOutcomeKind(raw);
+    if (!kind) throw new Error('Invalid outcome kind from LLM');
+    const record = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+    return ExpectedOutcomeSchema.parse({
+      kind,
+      target: typeof record.target === 'string' && record.target ? record.target : undefined,
+      description: typeof record.description === 'string' && record.description ? record.description : task.title,
+    });
+  }
+
+  private extractOutcomeKind(raw: unknown): ExpectedOutcome['kind'] | undefined {
+    const kind = typeof raw === 'object' && raw && typeof (raw as Record<string, unknown>).kind === 'string' ? (raw as Record<string, unknown>).kind : undefined;
+    if (!kind) return undefined;
+    const validKinds: ExpectedOutcome['kind'][] = ['AUTHENTICATION', 'DEAUTHENTICATION', 'NAVIGATION', 'APPEARANCE_CHANGE', 'DISCLOSURE', 'CONTENT_PRESENCE', 'DATA_ENTRY', 'NO_REGRESSION'];
+    return validKinds.find((k) => k.toLowerCase() === (kind as string).toLowerCase().trim());
+  }
+
   async decide(input: DecisionInput): Promise<QaActionEnvelope> {
     this.callCounts.decide++;
     const key = process.env[input.config.llm.apiKeyEnv];
@@ -103,7 +172,7 @@ export class GroqDecisionProvider implements DecisionProviderPort {
     return { calls: this.calls, wrappers: this.wrappers.slice(-20), breakdown: { ...this.callCounts } };
   }
 
-  private async chatJson(config: RunConfig, key: string, kind: 'plan' | 'decision' | 'execution-plan' | 'replan', body: unknown): Promise<GroqChatResponse> {
+  private async chatJson(config: RunConfig, key: string, kind: 'plan' | 'decision' | 'execution-plan' | 'replan' | 'classify-outcome', body: unknown): Promise<GroqChatResponse> {
     let lastError = '';
     for (let attempt = 0; attempt <= config.llm.rateLimitRetries; attempt++) {
       this.calls++;
@@ -297,8 +366,14 @@ export class GroqDecisionProvider implements DecisionProviderPort {
         status: 'PENDING',
         dependsOn: t.dependsOn,
         intent: t.intent ?? 'POSITIVE',
+        expectedOutcome: this.parseExpectedOutcome(t.expectedOutcome),
       } as QaTask)),
     }));
+  }
+
+  private parseExpectedOutcome(value: unknown): ExpectedOutcome | undefined {
+    const parsed = ExpectedOutcomeSchema.safeParse(value);
+    return parsed.success ? parsed.data : undefined;
   }
 }
 
@@ -306,7 +381,7 @@ interface PlanScenarioRaw {
   id?: string;
   title?: string;
   intent?: 'POSITIVE' | 'NEGATIVE' | 'EDGE' | 'EXPLORATORY';
-  tasks?: Array<{ id?: string; title?: string; expected?: string; intent?: 'POSITIVE' | 'NEGATIVE' | 'EDGE' | 'EXPLORATORY'; dependsOn?: string[] }>;
+  tasks?: Array<{ id?: string; title?: string; expected?: string; intent?: 'POSITIVE' | 'NEGATIVE' | 'EDGE' | 'EXPLORATORY'; dependsOn?: string[]; expectedOutcome?: unknown }>;
 }
 
 interface GroqChatResponse {

@@ -5,12 +5,14 @@ import { QaActionEnvelopeSchema, type QaActionEnvelope } from '../../domain/sche
 import type { QaScenario, QaTask } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
 import type { ExecutionPlan, PlanPatch } from '../../domain/schemas/execution-plan.schema.js';
+import { ExpectedOutcomeSchema, type ExpectedOutcome } from '../../domain/schemas/expected-outcome.schema.js';
 import { DECISION_SYSTEM_PROMPT, EXECUTION_PLAN_SYSTEM_PROMPT, PLAN_SYSTEM_PROMPT, REPLAN_SYSTEM_PROMPT, buildDecisionUserMessage, buildExecutionPlanUserMessage, buildPlanUserMessage, buildReplanUserMessage } from './prompt-builder.js';
 import { LlmPlanPatchNormalizer } from './llm-output-normalizer.js';
 
 @Injectable()
 export class OpenAiLangChainDecisionProvider implements DecisionProviderPort {
   private calls = 0;
+  private readonly callCounts = { plan: 0, classifyOutcome: 0, buildPlan: 0, replan: 0, decide: 0 };
   private readonly wrappers: Array<{ kind: 'plan' | 'patch'; wrapper: string }> = [];
 
   constructor(@Inject(LlmPlanPatchNormalizer) private readonly normalizer: LlmPlanPatchNormalizer = new LlmPlanPatchNormalizer()) {}
@@ -19,6 +21,7 @@ export class OpenAiLangChainDecisionProvider implements DecisionProviderPort {
     const apiKey = process.env[config.llm.apiKeyEnv];
     if (!apiKey) throw new Error(`Missing env ${config.llm.apiKeyEnv}`);
     this.calls++;
+    this.callCounts.plan++;
     const model = new ChatOpenAI({
       apiKey,
       model: config.llm.model,
@@ -38,6 +41,7 @@ export class OpenAiLangChainDecisionProvider implements DecisionProviderPort {
     const apiKey = process.env[config.llm.apiKeyEnv];
     if (!apiKey) throw new Error(`Missing env ${config.llm.apiKeyEnv}`);
     this.calls++;
+    this.callCounts.buildPlan++;
     const model = this.model(config, apiKey);
     const res = await model.invoke([
       ['system', EXECUTION_PLAN_SYSTEM_PROMPT],
@@ -52,6 +56,7 @@ export class OpenAiLangChainDecisionProvider implements DecisionProviderPort {
     const apiKey = process.env[input.config.llm.apiKeyEnv];
     if (!apiKey) throw new Error(`Missing env ${input.config.llm.apiKeyEnv}`);
     this.calls++;
+    this.callCounts.replan++;
     const model = this.model(input.config, apiKey);
     const res = await model.invoke([
       ['system', REPLAN_SYSTEM_PROMPT],
@@ -69,6 +74,7 @@ export class OpenAiLangChainDecisionProvider implements DecisionProviderPort {
     for (let i = 0; i <= input.config.llm.maxSchemaRetries; i++) {
       try {
         this.calls++;
+        this.callCounts.decide++;
         const model = new ChatOpenAI({
           apiKey,
           model: input.config.llm.model,
@@ -90,8 +96,18 @@ export class OpenAiLangChainDecisionProvider implements DecisionProviderPort {
     throw last;
   }
 
+  async classifyOutcome(_config: RunConfig, task: QaTask): Promise<ExpectedOutcome> {
+    this.callCounts.classifyOutcome++;
+    return { kind: 'NO_REGRESSION', description: task.title };
+  }
+
+  async classifyOutcomes(_config: RunConfig, tasks: QaTask[]): Promise<ExpectedOutcome[]> {
+    this.callCounts.classifyOutcome++;
+    return tasks.map((task) => ({ kind: 'NO_REGRESSION', description: task.title }));
+  }
+
   stats() {
-    return { calls: this.calls, wrappers: this.wrappers.slice(-20), breakdown: { plan: 0, buildPlan: 0, replan: 0, decide: 0 } };
+    return { calls: this.calls, wrappers: this.wrappers.slice(-20), breakdown: { ...this.callCounts } };
   }
 
   private extractContent(content: unknown): string {
@@ -124,8 +140,14 @@ export class OpenAiLangChainDecisionProvider implements DecisionProviderPort {
         status: 'PENDING',
         dependsOn: t.dependsOn,
         intent: t.intent ?? 'POSITIVE',
+        expectedOutcome: this.parseExpectedOutcome(t.expectedOutcome),
       } as QaTask)),
     }));
+  }
+
+  private parseExpectedOutcome(value: unknown): ExpectedOutcome | undefined {
+    const parsed = ExpectedOutcomeSchema.safeParse(value);
+    return parsed.success ? parsed.data : undefined;
   }
 }
 
@@ -133,5 +155,5 @@ interface PlanScenarioRaw {
   id?: string;
   title?: string;
   intent?: 'POSITIVE' | 'NEGATIVE' | 'EDGE' | 'EXPLORATORY';
-  tasks?: Array<{ id?: string; title?: string; expected?: string; intent?: 'POSITIVE' | 'NEGATIVE' | 'EDGE' | 'EXPLORATORY'; dependsOn?: string[] }>;
+  tasks?: Array<{ id?: string; title?: string; expected?: string; intent?: 'POSITIVE' | 'NEGATIVE' | 'EDGE' | 'EXPLORATORY'; dependsOn?: string[]; expectedOutcome?: unknown }>;
 }

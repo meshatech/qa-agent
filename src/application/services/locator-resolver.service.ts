@@ -3,6 +3,9 @@ import type { LocatorDescriptor } from '../../domain/schemas/action.schema.js';
 import type { ScreenObservation } from '../../domain/schemas/observation.schema.js';
 import { DomainError } from '../../domain/shared/result.js';
 
+const ACTIONABLE_ROLES = new Set(['button', 'link', 'menuitem', 'option', 'checkbox', 'radio', 'switch', 'tab', 'textbox', 'combobox']);
+const MIN_TOKEN_OVERLAP = 0.5;
+
 @Injectable()
 export class LocatorResolverService {
   private observationId = '';
@@ -37,7 +40,9 @@ export class LocatorResolverService {
       }
       throw new DomainError('LOCATOR_NOT_FOUND', `Element not found for semantic locator: ${locator.semanticKey}`);
     }
-    const found = obs.elements.find((element) => this.sameLocator(element.locator, locator)) ?? obs.elements.find((element) => this.sameElement(element, locator));
+    const found = obs.elements.find((element) => this.sameLocator(element.locator, locator))
+      ?? obs.elements.find((element) => this.sameElement(element, locator))
+      ?? this.bestTokenOverlap(obs, locator);
     if (!found) throw new DomainError('LOCATOR_NOT_FOUND', `Element not found for locator: ${JSON.stringify(locator)}`);
     return found.id;
   }
@@ -54,7 +59,16 @@ export class LocatorResolverService {
       return this.includes(element.name, locator.name) || this.includes(element.text, locator.name);
     }
     if (locator.strategy === 'text') return this.includes(element.name, locator.text) || this.includes(element.text, locator.text);
-    if (locator.strategy === 'text_any') return locator.texts.some((text) => this.includes(element.name, text) || this.includes(element.text, text));
+    if (locator.strategy === 'text_any') {
+      return locator.texts.some((text) =>
+        this.includes(element.name, text) ||
+        this.includes(element.text, text) ||
+        this.includes(element.ariaLabel, text) ||
+        this.includes(element.title, text) ||
+        this.includes(element.alt, text) ||
+        this.includes(element.className, text)
+      );
+    }
     if (locator.strategy === 'label' || locator.strategy === 'placeholder') {
       return this.includes(element.name, locator.text) || this.includes(element.text, locator.text);
     }
@@ -63,6 +77,62 @@ export class LocatorResolverService {
   }
 
   private includes(value: string | undefined, expected: string): boolean {
-    return value?.toLowerCase().includes(expected.toLowerCase()) ?? false;
+    if (!value) return false;
+    const v = value.toLowerCase();
+    const e = expected.toLowerCase();
+    return v.includes(e) || e.includes(v);
+  }
+
+  private bestTokenOverlap(obs: ScreenObservation, locator: LocatorDescriptor): ScreenObservation['elements'][number] | undefined {
+    const expected = this.expectedTexts(locator);
+    if (!expected.length) return undefined;
+    const ranked = obs.elements
+      .map((element) => ({ element, score: this.matchScore(element, expected) }))
+      .filter((item) => item.score >= MIN_TOKEN_OVERLAP)
+      .sort((a, b) => b.score - a.score || this.actionableScore(b.element) - this.actionableScore(a.element));
+    return ranked[0]?.element;
+  }
+
+  private expectedTexts(locator: LocatorDescriptor): string[] {
+    if (locator.strategy === 'text_any') return locator.texts;
+    if (locator.strategy === 'text') return [locator.text];
+    if (locator.strategy === 'label' || locator.strategy === 'placeholder') return [locator.text];
+    if (locator.strategy === 'role' && locator.name) return [locator.name];
+    if (locator.strategy === 'testid') return [locator.value];
+    return [];
+  }
+
+  private matchScore(element: ScreenObservation['elements'][number], expectedTexts: string[]): number {
+    const haystack = this.searchableText(element);
+    const haystackTokens = new Set(this.tokens(haystack));
+    if (!haystackTokens.size) return 0;
+    return Math.max(...expectedTexts.map((expected) => this.overlapScore(this.tokens(expected), haystackTokens)));
+  }
+
+  private overlapScore(expectedTokens: string[], haystackTokens: Set<string>): number {
+    if (expectedTokens.length < 2) return 0;
+    const matched = expectedTokens.filter((token) => haystackTokens.has(token) || [...haystackTokens].some((candidate) => candidate.includes(token) || token.includes(candidate)));
+    return matched.length / expectedTokens.length;
+  }
+
+  private searchableText(element: ScreenObservation['elements'][number]): string {
+    return [element.name, element.text, element.ariaLabel, element.title, element.alt, element.placeholder, element.className]
+      .filter((value): value is string => Boolean(value))
+      .join(' ');
+  }
+
+  private tokens(value: string): string[] {
+    const normalized = value.toLocaleLowerCase().normalize('NFKC');
+    const segmenter = typeof Intl !== 'undefined' && 'Segmenter' in Intl
+      ? new Intl.Segmenter(undefined, { granularity: 'word' })
+      : undefined;
+    const parts = segmenter
+      ? Array.from(segmenter.segment(normalized)).filter((part) => part.isWordLike).map((part) => part.segment)
+      : normalized.split(' ');
+    return Array.from(new Set(parts.map((part) => part.trim()).filter((part) => part.length > 1)));
+  }
+
+  private actionableScore(element: ScreenObservation['elements'][number]): number {
+    return ACTIONABLE_ROLES.has(element.role.toLowerCase()) ? 1 : 0;
   }
 }

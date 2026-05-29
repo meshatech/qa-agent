@@ -32,8 +32,8 @@ function makeScenario(id: string, title: string, tasks: QaScenario['tasks']): Qa
 describe('ExecutionPlanBuilder', () => {
   const config = makeConfig();
 
-  it('calls factory and returns valid ExecutionPlan', () => {
-    const factory = { fromScenarios: vi.fn().mockReturnValue({
+  it('calls factory and returns valid ExecutionPlan', async () => {
+    const factory = { fromScenarios: vi.fn().mockResolvedValue({
       schemaVersion: 'execution-plan.v1',
       planId: 'plan_DEM-001',
       version: 1,
@@ -53,13 +53,13 @@ describe('ExecutionPlanBuilder', () => {
     }) } as unknown as ExecutionPlanFactoryService;
 
     const builder = new ExecutionPlanBuilder(factory);
-    const plan = builder.build({ scenarios: [makeScenario('SCN-001', 'Test', [{ id: 'T001', title: 'Task', expected: 'Ok', status: 'PENDING' }])], config });
+    const plan = await builder.build({ scenarios: [makeScenario('SCN-001', 'Test', [{ id: 'T001', title: 'Task', expected: 'Ok', status: 'PENDING' }])], config });
 
     expect(factory.fromScenarios).toHaveBeenCalledTimes(1);
     expect(ExecutionPlanSchema.safeParse(plan).success).toBe(true);
   });
 
-  it('normalizes scenario without tasks and still generates plan', () => {
+  it('normalizes scenario without tasks and still generates plan', async () => {
     const factory = { fromScenarios: vi.fn().mockImplementation((_cfg: RunConfig, scenarios: QaScenario[]) => {
       const steps = scenarios.flatMap((s) => s.tasks.map((t) => ({
         id: `${t.id}-step`,
@@ -84,7 +84,7 @@ describe('ExecutionPlanBuilder', () => {
 
     const builder = new ExecutionPlanBuilder(factory);
     const scenario = makeScenario('SCN-001', 'Empty scenario', []);
-    const plan = builder.build({ scenarios: [scenario], config });
+    const plan = await builder.build({ scenarios: [scenario], config });
 
     expect(factory.fromScenarios).toHaveBeenCalledTimes(1);
     const passedScenarios = (factory.fromScenarios as ReturnType<typeof vi.fn>).mock.calls[0][1] as QaScenario[];
@@ -93,37 +93,38 @@ describe('ExecutionPlanBuilder', () => {
     expect(ExecutionPlanSchema.safeParse(plan).success).toBe(true);
   });
 
-  it('throws ExecutionPlanBuildError when scenarios is empty', () => {
+  it('throws ExecutionPlanBuildError when scenarios is empty', async () => {
     const factory = { fromScenarios: vi.fn() } as unknown as ExecutionPlanFactoryService;
     const builder = new ExecutionPlanBuilder(factory);
 
-    expect(() => builder.build({ scenarios: [], config })).toThrow(ExecutionPlanBuildError);
+    await expect(builder.build({ scenarios: [], config })).rejects.toThrow(ExecutionPlanBuildError);
     expect(factory.fromScenarios).not.toHaveBeenCalled();
   });
 
-  it('throws ExecutionPlanBuildError when factory returns undefined', () => {
-    const factory = { fromScenarios: vi.fn().mockReturnValue(undefined) } as unknown as ExecutionPlanFactoryService;
+  it('throws ExecutionPlanBuildError when factory returns undefined', async () => {
+    const factory = { fromScenarios: vi.fn().mockResolvedValue(undefined) } as unknown as ExecutionPlanFactoryService;
     const builder = new ExecutionPlanBuilder(factory);
 
-    expect(() => builder.build({ scenarios: [makeScenario('SCN-001', 'Test', [{ id: 'T001', title: 'Task', expected: 'Ok', status: 'PENDING' }])], config })).toThrow(ExecutionPlanBuildError);
+    await expect(builder.build({ scenarios: [makeScenario('SCN-001', 'Test', [{ id: 'T001', title: 'Task', expected: 'Ok', status: 'PENDING' }])], config })).rejects.toThrow(ExecutionPlanBuildError);
   });
 
-  it('throws ExecutionPlanBuildError when plan fails schema validation', () => {
-    const factory = { fromScenarios: vi.fn().mockReturnValue({ invalid: true }) } as unknown as ExecutionPlanFactoryService;
+  it('throws ExecutionPlanBuildError when plan fails schema validation', async () => {
+    const factory = { fromScenarios: vi.fn().mockResolvedValue({ invalid: true }) } as unknown as ExecutionPlanFactoryService;
     const builder = new ExecutionPlanBuilder(factory);
 
-    expect(() => builder.build({ scenarios: [makeScenario('SCN-001', 'Test', [{ id: 'T001', title: 'Task', expected: 'Ok', status: 'PENDING' }])], config })).toThrow(ExecutionPlanBuildError);
+    await expect(builder.build({ scenarios: [makeScenario('SCN-001', 'Test', [{ id: 'T001', title: 'Task', expected: 'Ok', status: 'PENDING' }])], config })).rejects.toThrow(ExecutionPlanBuildError);
   });
 
-  it('includes steps from multiple scenarios', () => {
-    const factory = new ExecutionPlanFactoryService();
+  it('includes steps from multiple scenarios', async () => {
+    const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
+    const factory = new ExecutionPlanFactoryService(stubOutcomeResolver);
     const builder = new ExecutionPlanBuilder(factory);
     const scenarios = [
       makeScenario('SCN-001', 'Cenario A', [{ id: 'T001', title: 'clicar botao A', expected: 'A', status: 'PENDING' }]),
       makeScenario('SCN-002', 'Cenario B', [{ id: 'T002', title: 'clicar botao B', expected: 'B', status: 'PENDING' }]),
     ];
 
-    const plan = builder.build({ scenarios, config });
+    const plan = await builder.build({ scenarios, config });
 
     expect(plan.steps.length).toBe(2);
     expect(plan.steps.some((s) => s.scenarioId === 'SCN-001')).toBe(true);

@@ -140,6 +140,10 @@ export class DomPurifier {
               bounds: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
               inViewport: inViewport(rect),
               type: inputType || undefined,
+              ariaLabel: el.getAttribute('aria-label') || undefined,
+              title: el.getAttribute('title') || undefined,
+              alt: (el as HTMLImageElement).alt || undefined,
+              className: el.className || undefined,
               options: opts,
             } as RawElement;
           });

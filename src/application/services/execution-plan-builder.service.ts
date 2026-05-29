@@ -12,10 +12,10 @@ export class ExecutionPlanBuilder {
     @Inject(ExecutionPlanFactoryService) private readonly factory: ExecutionPlanFactoryService,
   ) {}
 
-  build(input: {
+  async build(input: {
     scenarios: QaScenario[];
     config: RunConfig;
-  }): ExecutionPlan {
+  }): Promise<ExecutionPlan> {
     const { scenarios, config } = input;
 
     if (!scenarios || scenarios.length === 0) {
@@ -24,7 +24,7 @@ export class ExecutionPlanBuilder {
 
     const normalized = scenarios.map((scenario) => this.ensureTasks(scenario));
 
-    const plan = this.factory.fromScenarios(config, normalized);
+    const plan = await this.factory.fromScenarios(config, normalized);
 
     if (!plan) {
       throw new ExecutionPlanBuildError('ExecutionPlanFactory returned undefined; no steps could be generated');

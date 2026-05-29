@@ -67,7 +67,7 @@ describe('ExecutionPlanSchema', () => {
         id: 'S001',
         description: 'Toggle appearance',
         action: { type: 'click', target: { strategy: 'text_any', texts: ['Tema escuro', 'Tema claro'] }, reason: 'toggle appearance' },
-        postconditions: [{ type: 'ui_state', semanticKey: 'appearance_mode', expected: 'changed', source: 'dom' }],
+        postconditions: [{ type: 'ui_state', semanticKey: 'appearance_mode', expected: 'exists', source: 'dom' }],
       }],
     });
 

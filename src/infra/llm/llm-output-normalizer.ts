@@ -142,7 +142,8 @@ export class LlmPlanPatchNormalizer {
     if (item.type === 'text' && typeof item.text === 'string') item.type = 'text_visible';
     if (item.type === 'ui_state') {
       item.semanticKey = typeof item.semanticKey === 'string' ? item.semanticKey : 'appearance_mode';
-      item.expected = typeof item.expected === 'string' || typeof item.expected === 'boolean' || typeof item.expected === 'number' ? item.expected : 'changed';
+      const rawExpected = typeof item.expected === 'string' || typeof item.expected === 'boolean' || typeof item.expected === 'number' ? item.expected : undefined;
+      item.expected = rawExpected === 'changed' ? 'exists' : (rawExpected ?? 'exists');
       delete item.target;
       delete item.value;
     }

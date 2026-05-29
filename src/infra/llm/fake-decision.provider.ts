@@ -4,12 +4,16 @@ import type { QaScenario } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
 import type { QaActionEnvelope } from '../../domain/schemas/action.schema.js';
 import type { ExecutionPlan, PlanPatch } from '../../domain/schemas/execution-plan.schema.js';
+import type { ExpectedOutcome } from '../../domain/schemas/expected-outcome.schema.js';
+import type { QaTask } from '../../domain/models/run.model.js';
 
 @Injectable()
 export class FakeDecisionProvider implements DecisionProviderPort {
   private calls = 0;
+  private readonly callCounts = { plan: 0, classifyOutcome: 0, buildPlan: 0, replan: 0, decide: 0 };
 
   async plan(config: RunConfig): Promise<QaScenario[]> {
+    this.callCounts.plan++;
     return [{
       id: 'scenario-001',
       title: config.demand.title,
@@ -21,6 +25,7 @@ export class FakeDecisionProvider implements DecisionProviderPort {
 
   async buildPlan(config: RunConfig, _scenarios?: QaScenario[]): Promise<ExecutionPlan> {
     this.calls++;
+    this.callCounts.buildPlan++;
     const text = `${config.demand.title} ${config.demand.description}`;
     const isNameFill = /\b(preencher|fill|campo|field|nome|name)\b/i.test(text);
     return {
@@ -53,6 +58,7 @@ export class FakeDecisionProvider implements DecisionProviderPort {
 
   async replan(input: ReplanInput): Promise<PlanPatch> {
     this.calls++;
+    this.callCounts.replan++;
     return {
       basePlanId: input.plan.planId,
       basePlanVersion: input.plan.version,
@@ -66,6 +72,7 @@ export class FakeDecisionProvider implements DecisionProviderPort {
 
   async decide({ observation }: DecisionInput): Promise<QaActionEnvelope> {
     this.calls++;
+    this.callCounts.decide++;
     const input = observation.elements.find((e) => e.role === 'textbox') ?? observation.elements[0];
     return {
       schemaVersion: 'action.v1',
@@ -78,7 +85,17 @@ export class FakeDecisionProvider implements DecisionProviderPort {
     };
   }
 
+  async classifyOutcome(_config: RunConfig, task: QaTask): Promise<ExpectedOutcome> {
+    this.callCounts.classifyOutcome++;
+    return { kind: 'NO_REGRESSION', description: task.title };
+  }
+
+  async classifyOutcomes(_config: RunConfig, tasks: QaTask[]): Promise<ExpectedOutcome[]> {
+    this.callCounts.classifyOutcome++;
+    return tasks.map((task) => ({ kind: 'NO_REGRESSION', description: task.title }));
+  }
+
   stats() {
-    return { calls: this.calls, breakdown: { plan: 0, buildPlan: 0, replan: 0, decide: 0 } };
+    return { calls: this.calls, breakdown: { ...this.callCounts } };
   }
 }

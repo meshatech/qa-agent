@@ -31,17 +31,19 @@ const obs = (texts: string[], value = ''): ScreenObservation => ({
 
 const config = RunConfigSchema.parse({ baseUrl: 'https://app.local', appDomains: ['app.local'], demand: { id: 'D', title: 'T', description: 'D' } });
 
+const fakeDecision = { async decide() { return { action: { type: 'waitForStable', reason: 'fallback' }, expected_after_action: { type: 'no_console_errors' }, fallback_action: { type: 'waitForStable', reason: 'fallback' }, confidence: 0.5, thought_summary: 'fallback', observationId: 'obs_1', schemaVersion: 'action.v1' } as import('../src/domain/schemas/action.schema.js').QaActionEnvelope; } } as unknown as import('../src/application/ports/decision-provider.port.js').DecisionProviderPort;
+
 function executor(browser: BrowserHarnessPort): PlanExecutorService {
   const recovery = new RecoveryPolicyService(browser);
   const replanner = { replan: async () => { throw new Error('no replanner in unit test'); } } as unknown as PlanReplannerService;
   const locators = new LocatorResolverService();
-  return new PlanExecutorService(browser, locators, new DataHarnessService(), new ActionPolicyService(), new ElementAvailabilityResolver(browser, locators), recovery, new TaskMemoryService(), replanner);
+  return new PlanExecutorService(browser, locators, new DataHarnessService(), new ActionPolicyService(), new ElementAvailabilityResolver(browser, locators), recovery, new TaskMemoryService(), replanner, fakeDecision);
 }
 
 function executorWithReplanner(browser: BrowserHarnessPort, replanner: PlanReplannerService): PlanExecutorService {
   const recovery = new RecoveryPolicyService(browser);
   const locators = new LocatorResolverService();
-  return new PlanExecutorService(browser, locators, new DataHarnessService(), new ActionPolicyService(), new ElementAvailabilityResolver(browser, locators), recovery, new TaskMemoryService(), replanner);
+  return new PlanExecutorService(browser, locators, new DataHarnessService(), new ActionPolicyService(), new ElementAvailabilityResolver(browser, locators), recovery, new TaskMemoryService(), replanner, fakeDecision);
 }
 
 describe('PlanExecutorService', () => {

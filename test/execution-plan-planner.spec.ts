@@ -54,7 +54,8 @@ describe('ExecutionPlanPlannerService', () => {
       async decide() { throw new Error('not used'); },
     };
 
-    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService()).build(config, scenarios);
+    const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, scenarios);
 
     expect(result.source).toBe('llm');
     expect(result.plan?.planId).toBe('llm-plan');
@@ -72,7 +73,8 @@ describe('ExecutionPlanPlannerService', () => {
       async decide() { throw new Error('not used'); },
     };
 
-    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService()).build(config, scenarios);
+    const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, scenarios);
 
     expect(result.source).toBe('factory');
     expect(result.fallbackReason).toContain('targetElementId');
@@ -91,9 +93,11 @@ describe('ExecutionPlanPlannerService', () => {
           runtime: { maxAttemptsPerStep: 1, maxReplansPerScenario: 1, destructiveActionPolicy: 'BLOCK' },
           steps: [{
             id: 'S001',
+            scenarioId: 'scenario-001',
+            taskId: 'T001',
             description: 'Fill login form',
             preconditions: [],
-            action: { type: 'fill', target: { strategy: 'label', text: 'E-mail' }, value: 'qa@example.com', reason: 'fill login email' },
+            action: { type: 'navigate', to: 'https://app.local/login', reason: 'go to login page' },
             postconditions: [{ type: 'text_visible', text: 'Entrar' }],
             assertions: [],
             onFailure: 'RECOVER',
@@ -104,28 +108,31 @@ describe('ExecutionPlanPlannerService', () => {
       async decide() { throw new Error('not used'); },
     };
 
-    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService()).build(authenticatedConfig, scenarios);
+    const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(authenticatedConfig, scenarios);
 
     expect(result.source).toBe('factory');
     expect(result.fallbackReason).toContain('auth is already handled');
   });
 
-  it('falls back to factory when LLM invents generic placeholder labels', async () => {
+  it('falls back to factory when LLM tries to navigate to login after runtime auth', async () => {
     const provider: DecisionProviderPort = {
       async buildPlan() {
         return {
           schemaVersion: 'execution-plan.v1',
-          planId: 'placeholder-plan',
+          planId: 'login-nav-plan',
           version: 1,
           goal: 'Smoke',
           mode: 'HYBRID_GUARDED',
           runtime: { maxAttemptsPerStep: 1, maxReplansPerScenario: 1, destructiveActionPolicy: 'BLOCK' },
           steps: [{
             id: 'S001',
-            description: 'Verify authenticated area',
+            scenarioId: 'scenario-001',
+            taskId: 'T001',
+            description: 'Navigate to login',
             preconditions: [],
-            action: { type: 'waitForStable', timeoutMs: 1000, reason: 'wait for authenticated area' },
-            postconditions: [{ type: 'text_visible', text: 'Authenticated area' }],
+            action: { type: 'navigate', to: 'https://app.local/login', reason: 'go to login page' },
+            postconditions: [{ type: 'text_visible', text: 'Login' }],
             assertions: [],
             onFailure: 'RECOVER',
           }],
@@ -135,10 +142,11 @@ describe('ExecutionPlanPlannerService', () => {
       async decide() { throw new Error('not used'); },
     };
 
-    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService()).build(config, scenarios);
+    const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(authenticatedConfig, scenarios);
 
     expect(result.source).toBe('factory');
-    expect(result.fallbackReason).toContain('generic placeholder UI labels');
+    expect(result.fallbackReason).toContain('auth is already handled');
   });
 
   it('does not reject generic words when they appear only in action reasons', async () => {
@@ -156,7 +164,7 @@ describe('ExecutionPlanPlannerService', () => {
             description: 'Toggle appearance',
             preconditions: [],
             action: { type: 'click', target: { strategy: 'role', role: 'button', name: 'Tema escuro' }, reason: 'change theme' },
-            postconditions: [{ type: 'ui_state', semanticKey: 'appearance_mode', expected: 'changed', source: 'dom' }],
+            postconditions: [{ type: 'ui_state', semanticKey: 'appearance_mode', expected: 'exists', source: 'dom' }],
             assertions: [],
             onFailure: 'RECOVER',
           }],
@@ -166,7 +174,8 @@ describe('ExecutionPlanPlannerService', () => {
       async decide() { throw new Error('not used'); },
     };
 
-    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService()).build(config, []);
+    const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, []);
 
     expect(result.source).toBe('llm');
   });
@@ -196,7 +205,8 @@ describe('ExecutionPlanPlannerService', () => {
       async decide() { throw new Error('not used'); },
     };
 
-    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService()).build(config, scenarios);
+    const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, scenarios);
 
     expect(result.source).toBe('factory');
     expect(result.fallbackReason).toContain('scenarioId/taskId');
@@ -229,7 +239,8 @@ describe('ExecutionPlanPlannerService', () => {
       async decide() { throw new Error('not used'); },
     };
 
-    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService()).build(config, scenarios);
+    const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, scenarios);
 
     expect(result.source).toBe('factory');
     expect(result.fallbackReason).toContain('cannot expect runtime state changed');
@@ -261,7 +272,8 @@ describe('ExecutionPlanPlannerService', () => {
       async decide() { throw new Error('not used'); },
     };
 
-    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService()).build(config, scenarios);
+    const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, scenarios);
 
     expect(result.source).toBe('factory');
     expect(result.fallbackReason).toContain('appearance ui_state uses invalid expected value');

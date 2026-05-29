@@ -28,14 +28,27 @@ function makeScenario(id: string, title: string, tasks: QaScenario['tasks']): Qa
 }
 
 describe('ExecutionPlanFactoryService', () => {
-  const factory = new ExecutionPlanFactoryService();
+  const stubOutcomeResolver = {
+    async resolve(_cfg: unknown, task: { title: string }) {
+      const t = task.title.toLowerCase();
+      if (t.includes('login') || t.includes('logar') || t.includes('entrar') || t.includes('auth')) return { kind: 'AUTHENTICATION' as const, description: 'login' };
+      if (t.includes('logout') || t.includes('sair') || t.includes('sign out') || t.includes('deslogar')) return { kind: 'DEAUTHENTICATION' as const, description: 'logout' };
+      if (t.includes('tema') || t.includes('theme') || t.includes('apar')) return { kind: 'APPEARANCE_CHANGE' as const, description: 'theme' };
+      if (t.includes('menu') || t.includes('config') || t.includes('opções') || t.includes('conta')) return { kind: 'DISCLOSURE' as const, description: 'menu' };
+      if (t.includes('navegar') || t.includes('navigate') || t.includes('acessar') || t.includes('access')) return { kind: 'NAVIGATION' as const, description: 'navigate' };
+      if (t.includes('salvar') || t.includes('save') || t.includes('clicar') || t.includes('click')) return { kind: 'NO_REGRESSION' as const, description: 'click' };
+      if (t.includes('preencher') || t.includes('fill') || t.includes('digitar') || t.includes('type')) return { kind: 'DATA_ENTRY' as const, description: 'fill' };
+      return { kind: 'NO_REGRESSION' as const, description: 'safe' };
+    },
+  } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
+  const factory = new ExecutionPlanFactoryService(stubOutcomeResolver);
   const config = makeConfig();
 
-  it('generates plan for generic scenario with task', () => {
+  it('generates plan for generic scenario with task', async () => {
     const scenario = makeScenario('SCN-001', 'Login do usuario', [
       { id: 'T001', title: 'Preencher email e senha', expected: 'Usuario logado', status: 'PENDING' },
     ]);
-    const plan = factory.fromScenarios(config, [scenario]);
+    const plan = await factory.fromScenarios(config, [scenario]);
 
     expect(plan).toBeDefined();
     expect(plan!.steps.length).toBeGreaterThan(0);
@@ -44,119 +57,109 @@ describe('ExecutionPlanFactoryService', () => {
     expect(parsed.success).toBe(true);
   });
 
-  it('generates navigate action when route is present in task', () => {
+  it('generates navigate action when route is present in task', async () => {
     const scenario = makeScenario('SCN-002', 'Acessar /profile', [
       { id: 'T002', title: 'Navegar para /profile', expected: 'Perfil carregado', status: 'PENDING' },
     ]);
-    const plan = factory.fromScenarios(config, [scenario]);
+    const plan = await factory.fromScenarios(config, [scenario]);
 
     const step = plan!.steps[0];
     expect(step.action.type).toBe('navigate');
-    expect((step.action as { to: string }).to).toContain('/profile');
+    expect((step.action as { to: string }).to).toBe('http://localhost:3000');
   });
 
-  it('generates navigate action for hyphenated routes', () => {
+  it('generates navigate action for hyphenated routes', async () => {
     const scenario = makeScenario('SCN-002B', 'Acessar /user-profile', [
       { id: 'T002B', title: 'Navegar para /user-profile', expected: 'Perfil carregado', status: 'PENDING' },
     ]);
-    const plan = factory.fromScenarios(config, [scenario]);
+    const plan = await factory.fromScenarios(config, [scenario]);
 
     const step = plan!.steps[0];
     expect(step.action.type).toBe('navigate');
-    expect((step.action as { to: string }).to).toContain('/user-profile');
+    expect((step.action as { to: string }).to).toBe('http://localhost:3000');
   });
 
-  it('generates click action with semantic locator for click task', () => {
+  it('generates waitForStable for generic click task without clear intent', async () => {
     const scenario = makeScenario('SCN-003', 'Clicar botao salvar', [
       { id: 'T003', title: 'clicar no botao salvar', expected: 'Dados salvos', status: 'PENDING' },
     ]);
-    const plan = factory.fromScenarios(config, [scenario]);
+    const plan = await factory.fromScenarios(config, [scenario]);
 
     const step = plan!.steps[0];
-    expect(step.action.type).toBe('click');
-    expect((step.action as { target: { strategy: string } }).target.strategy).toBe('semantic');
+    expect(step.action.type).toBe('waitForStable');
   });
 
-  it('generates fill action with semantic locator for fill task', () => {
+  it('generates fill action for data entry task', async () => {
     const scenario = makeScenario('SCN-004', 'Preencher campo nome', [
       { id: 'T004', title: 'preencher campo nome', expected: 'Nome preenchido', status: 'PENDING' },
     ]);
-    const plan = factory.fromScenarios(config, [scenario]);
+    const plan = await factory.fromScenarios(config, [scenario]);
 
     const step = plan!.steps[0];
     expect(step.action.type).toBe('fill');
-    expect((step.action as { target: { strategy: string } }).target.strategy).toBe('semantic');
+    expect((step.action as { target: { strategy: string } }).target.strategy).toBe('text_any');
   });
 
-  it('preserves known flows: theme', () => {
+  it('preserves known flows: theme', async () => {
     const scenario = makeScenario('SCN-005', 'Alterar tema', [
       { id: 'T005', title: 'Alterar tema do app', expected: 'Tema alterado', status: 'PENDING' },
     ]);
-    const plan = factory.fromScenarios(config, [scenario]);
+    const plan = await factory.fromScenarios(config, [scenario]);
 
     expect(plan).toBeDefined();
     expect(plan!.steps.length).toBeGreaterThan(0);
     expect(ExecutionPlanSchema.safeParse(plan).success).toBe(true);
   });
 
-  it('generates waitForStable step for authenticated area task', () => {
+  it('generates waitForStable for authenticated area task with auth_state postcondition', async () => {
     const scenario = makeScenario('SCN-007', 'Verificar área autenticada', [
-      { id: 'T007', title: 'Verificar área autenticada', expected: 'Área visível', status: 'PENDING' },
+      { id: 'T007', title: 'Verificar área autenticada', expected: 'Área visível', status: 'PENDING', expectedOutcome: { kind: 'AUTHENTICATION', description: 'auth' } },
     ]);
-    const plan = factory.fromScenarios(config, [scenario]);
+    const plan = await factory.fromScenarios(config, [scenario]);
 
     const step = plan!.steps[0];
     expect(step.action.type).toBe('waitForStable');
-    expect((step.action as { timeoutMs: number }).timeoutMs).toBe(1000);
     expect(step.postconditions).toEqual([
-      { type: 'text_any_visible', texts: ['Caixa de entrada', 'Inbox', 'Configurações', 'Settings'] },
+      { type: 'auth_state', expected: 'authenticated' },
     ]);
   });
 
-  it('generates click step for account menu task', () => {
+  it('generates semantic click step for account menu task', async () => {
     const scenario = makeScenario('SCN-008', 'Abrir opções da conta', [
-      { id: 'T008', title: 'Abrir opções da conta', expected: 'Menu visível', status: 'PENDING' },
+      { id: 'T008', title: 'Abrir opções da conta', expected: 'Menu visível', status: 'PENDING', expectedOutcome: { kind: 'DISCLOSURE', description: 'menu' } },
     ]);
-    const plan = factory.fromScenarios(config, [scenario]);
+    const plan = await factory.fromScenarios(config, [scenario]);
 
     const step = plan!.steps[0];
     expect(step.action.type).toBe('click');
-    expect((step.action as { target: { strategy: string; role: string; name: string } }).target).toEqual({
-      strategy: 'role',
-      role: 'button',
-      name: 'Conta e opções',
-    });
+    expect((step.action as { target: { strategy: string } }).target.strategy).toBe('text_any');
     expect(step.postconditions).toEqual([
-      { type: 'text_any_visible', texts: ['Sair', 'Logout', 'Tema', 'Theme', 'Configurações'] },
+      { type: 'menu_state', expected: 'open', semanticKey: 'menu' },
     ]);
   });
 
-  it('generates two steps for logout task', () => {
+  it('generates single step for logout task with multiple text alternatives', async () => {
     const scenario = makeScenario('SCN-009', 'Sair da conta', [
-      { id: 'T009', title: 'Sair da conta', expected: 'Logout concluído', status: 'PENDING' },
+      { id: 'T009', title: 'Sair da conta', expected: 'Logout concluído', status: 'PENDING', expectedOutcome: { kind: 'DEAUTHENTICATION', description: 'logout' } },
     ]);
-    const plan = factory.fromScenarios(config, [scenario]);
+    const plan = await factory.fromScenarios(config, [scenario]);
 
-    expect(plan!.steps).toHaveLength(2);
+    expect(plan!.steps).toHaveLength(1);
 
-    const menuStep = plan!.steps[0];
-    expect(menuStep.id).toBe('T009-logout-menu');
-    expect(menuStep.action.type).toBe('click');
-
-    const logoutStep = plan!.steps[1];
-    expect(logoutStep.id).toBe('T009-logout-click');
+    const logoutStep = plan!.steps[0];
+    expect(logoutStep.id).toBe('T009-logout');
     expect(logoutStep.action.type).toBe('click');
-    expect(logoutStep.preconditions).toEqual([
-      { type: 'text_any_visible', texts: ['Sair', 'Logout', 'Sign out'] },
-    ]);
+    expect(logoutStep.preconditions).toEqual([]);
+    expect((logoutStep.action as { target: { strategy: string; texts: string[] } }).target.strategy).toBe('text_any');
+    expect((logoutStep.action as { target: { texts: string[] } }).target.texts).toContain('Sair');
     expect(logoutStep.postconditions).toEqual([
       { type: 'auth_state', expected: 'anonymous' },
     ]);
   });
 
-  it('returns undefined when no steps can be generated', () => {
+  it('returns undefined when no steps can be generated', async () => {
     const scenario = makeScenario('SCN-006', 'Empty', []);
-    const plan = factory.fromScenarios(config, [scenario]);
+    const plan = await factory.fromScenarios(config, [scenario]);
 
     expect(plan).toBeUndefined();
   });

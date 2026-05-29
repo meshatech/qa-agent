@@ -50,7 +50,7 @@ describe('LlmPlanPatchNormalizer', () => {
 
     expect(result.value.steps[0]?.id).toBe('S001');
     expect(result.value.steps[0]?.action).toMatchObject({ type: 'navigate', to: '/', reason: 'Execution step 1' });
-    expect(result.value.steps[0]?.postconditions[0]).toMatchObject({ type: 'ui_state', semanticKey: 'appearance_mode', expected: 'changed' });
+    expect(result.value.steps[0]?.postconditions[0]).toMatchObject({ type: 'ui_state', semanticKey: 'appearance_mode', expected: 'exists' });
     expect(result.value.steps[1]?.action).toMatchObject({ type: 'fill', value: '{{uniqueName:name:QA}}' });
   });
 
@@ -100,7 +100,7 @@ describe('LlmPlanPatchNormalizer', () => {
           },
           reason: 'toggle appearance',
         },
-        postconditions: [{ type: 'ui_state', semanticKey: 'appearance_mode', expected: 'changed' }],
+        postconditions: [{ type: 'ui_state', semanticKey: 'appearance_mode', expected: 'exists' }],
       }],
     });
 

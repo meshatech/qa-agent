@@ -1236,8 +1236,8 @@ describe('PipelinePreflightService', () => {
       const passRaw = await readFile(join(passDir, 'preflight-report.json'), 'utf8');
       expect(PreflightReportSchema.parse(JSON.parse(passRaw)).status).toBe('PASS');
 
-      Object.keys(process.env).forEach((key) => delete process.env[key]);
       const blockedDir = await tempDir();
+      Object.keys(process.env).forEach((key) => delete process.env[key]);
       await makeService().run(blockedDir);
       const blockedRaw = await readFile(join(blockedDir, 'preflight-report.json'), 'utf8');
       expect(PreflightReportSchema.parse(JSON.parse(blockedRaw)).status).toBe('BLOCKED');

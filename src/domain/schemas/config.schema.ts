@@ -80,6 +80,12 @@ export const RunConfigSchema = z.object({
     tools: z.object({
       enabled: z.boolean().default(false),
     }).default({ enabled: false }),
+    observation: z.object({
+      includeScreenshot: z.boolean().default(false),
+    }).optional(),
+    planning: z.object({
+      executionPlanStrategy: z.enum(['llm_with_factory_fallback', 'factory_first']).default('llm_with_factory_fallback'),
+    }).optional(),
   }).default({ maxActionsPerTask: 3, mode: 'HYBRID_GUARDED', maxAttemptsPerStep: 2, maxReplansPerScenario: 2, destructiveActionPolicy: 'BLOCK', semanticKeys: {}, elementAvailability: { enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false }, tools: { enabled: false } }),
   recovery: z.object({
     maxAttemptsPerTask: z.number().int().positive().default(3),

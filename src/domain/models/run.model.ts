@@ -37,8 +37,10 @@ export type BugCategory =
   | 'BROWSER_EXTENSION_NOISE';
 
 import type { ScenarioIntent } from '../schemas/scenario-intent.schema.js';
+import type { ExpectedOutcome } from '../schemas/expected-outcome.schema.js';
 
 export type { ScenarioIntent };
+export type { ExpectedOutcome };
 
 export interface QuiescenceResult {
   stable: boolean;
@@ -87,6 +89,7 @@ export interface QaTask {
   status: 'PENDING' | 'PASSED' | 'PASSED_WITH_WARNINGS' | 'FAILED' | 'BLOCKED' | 'SKIPPED';
   dependsOn?: string[];
   intent?: ScenarioIntent;
+  expectedOutcome?: ExpectedOutcome;
   attempts?: AttemptRecord[];
 }
 

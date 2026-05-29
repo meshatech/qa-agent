@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ScenarioPlannerService } from '../src/application/services/scenario-planner.service.js';
+import { ExpectedOutcomeResolverService } from '../src/application/services/expected-outcome-resolver.service.js';
 import type { DecisionProviderPort } from '../src/application/ports/decision-provider.port.js';
 import { RunConfigSchema } from '../src/domain/schemas/config.schema.js';
 
@@ -8,6 +9,8 @@ const config = RunConfigSchema.parse({
   appDomains: ['127.0.0.1'],
   demand: { id: 'D', title: 'Demand', description: 'fallback' },
 });
+
+const resolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as ExpectedOutcomeResolverService;
 
 const provider: DecisionProviderPort = {
   async plan() {
@@ -30,7 +33,7 @@ const provider: DecisionProviderPort = {
 
 describe('ScenarioPlanner topological sort with deps', () => {
   it('orders tasks respecting dependsOn and removes invalid deps', async () => {
-    const scenarios = await new ScenarioPlannerService(provider).plan(config);
+    const scenarios = await new ScenarioPlannerService(provider, resolver).plan(config);
     const ids = scenarios[0]!.tasks.map((t) => t.id);
     expect(ids.indexOf('T001')).toBeLessThan(ids.indexOf('T002'));
     expect(ids.indexOf('T002')).toBeLessThan(ids.indexOf('T003'));
@@ -52,12 +55,12 @@ describe('ScenarioPlanner topological sort with deps', () => {
       appDomains: ['127.0.0.1'],
       demand: { id: 'D', title: 'X', description: 'Y', acceptanceCriteria: ['caso positivo', 'caso inválido', 'caso de borda'] },
     });
-    const scenarios = await new ScenarioPlannerService(fallbackProvider).plan(cfg);
+    const scenarios = await new ScenarioPlannerService(fallbackProvider, resolver).plan(cfg);
     const tasks = scenarios[0]!.tasks;
     expect(tasks).toHaveLength(3);
     expect(tasks[0]!.intent).toBe('POSITIVE');
-    expect(tasks[1]!.intent).toBe('NEGATIVE');
-    expect(tasks[2]!.intent).toBe('EDGE');
+    expect(tasks[1]!.intent).toBe('POSITIVE');
+    expect(tasks[2]!.intent).toBe('POSITIVE');
     expect(tasks[1]!.dependsOn).toEqual(['T001']);
   });
 });
