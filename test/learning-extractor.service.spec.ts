@@ -123,6 +123,96 @@ describe('LearningExtractorService', () => {
     });
   });
 
+  describe('extractFailedLocators', () => {
+    it('extracts known_issue from failed click step', () => {
+      const step = makeStep({
+        stepId: 'step-010',
+        thoughtSummary: 'Click broken button',
+        resolvedAction: { type: 'click', targetElementId: 'el_010', reason: 'test' },
+        validation: { ok: false, type: 'no_console_errors', actual: 'Error', durationMs: 0 },
+        error: { code: 'LOCATOR_NOT_FOUND', message: 'Element not found' },
+      });
+      const candidates = service.extractFailedLocators([step], 'run-001', '2024-05-29T10:00:00Z');
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0].type).toBe('known_issue');
+      expect(candidates[0].confidence).toBe(0.5);
+      expect(candidates[0].title).toContain('Failed locator');
+      expect(candidates[0].metadata).toEqual({ elementId: 'el_010', result: 'failure' });
+    });
+
+    it('ignores successful click steps', () => {
+      const step = makeStep({
+        stepId: 'step-011',
+        thoughtSummary: 'Click login button',
+        resolvedAction: { type: 'click', targetElementId: 'el_011', reason: 'login' },
+        validation: { ok: true, type: 'no_console_errors', durationMs: 100 },
+      });
+      const candidates = service.extractFailedLocators([step], 'run-001', '2024-05-29T10:00:00Z');
+      expect(candidates).toHaveLength(0);
+    });
+
+    it('ignores non-click steps', () => {
+      const step = makeStep({
+        stepId: 'step-012',
+        resolvedAction: { type: 'fill', targetElementId: 'el_012', value: 'test', reason: 'fill' },
+      });
+      const candidates = service.extractFailedLocators([step], 'run-001', '2024-05-29T10:00:00Z');
+      expect(candidates).toHaveLength(0);
+    });
+
+    it('ignores click steps without targetElementId', () => {
+      const step = makeStep({
+        stepId: 'step-013',
+        resolvedAction: { type: 'click', reason: 'click somewhere' } as QaStep['resolvedAction'],
+        validation: { ok: false, type: 'no_console_errors', actual: 'Error', durationMs: 0 },
+        error: { code: 'LOCATOR_NOT_FOUND', message: 'Not found' },
+      });
+      const candidates = service.extractFailedLocators([step], 'run-001', '2024-05-29T10:00:00Z');
+      expect(candidates).toHaveLength(0);
+    });
+
+    it('sets correct source fields on failed locator candidate', () => {
+      const step = makeStep({
+        stepId: 'step-014',
+        scenarioId: 'scenario-005',
+        taskId: 'T004',
+        resolvedAction: { type: 'click', targetElementId: 'el_014', reason: 'test' },
+        validation: { ok: false, type: 'no_console_errors', actual: 'Timeout', durationMs: 0 },
+        error: { code: 'LOCATOR_NOT_FOUND', message: 'Timeout' },
+      });
+      const candidates = service.extractFailedLocators([step], 'run-001', '2024-05-29T10:00:00Z');
+      expect(candidates).toHaveLength(1);
+      expect(candidates[0].sourceScenarioId).toBe('scenario-005');
+      expect(candidates[0].sourceTaskId).toBe('T004');
+      expect(candidates[0].sourceStepId).toBe('step-014');
+    });
+
+    it('extracts multiple failed locators', () => {
+      const steps = [
+        makeStep({
+          stepId: 'step-015',
+          thoughtSummary: 'Click missing',
+          resolvedAction: { type: 'click', targetElementId: 'el_015', reason: 'test' },
+          validation: { ok: false, type: 'no_console_errors', actual: 'Not found', durationMs: 0 },
+          error: { code: 'LOCATOR_NOT_FOUND', message: 'Not found' },
+        }),
+        makeStep({
+          stepId: 'step-016',
+          thoughtSummary: 'Click stale',
+          resolvedAction: { type: 'click', targetElementId: 'el_016', reason: 'test' },
+          validation: { ok: false, type: 'no_console_errors', actual: 'Stale', durationMs: 0 },
+          error: { code: 'LOCATOR_NOT_FOUND', message: 'Stale element' },
+        }),
+      ];
+      const candidates = service.extractFailedLocators(steps, 'run-001', '2024-05-29T10:00:00Z');
+      expect(candidates).toHaveLength(2);
+      expect(candidates[0].type).toBe('known_issue');
+      expect(candidates[1].type).toBe('known_issue');
+      expect(candidates[0].confidence).toBe(0.5);
+      expect(candidates[1].confidence).toBe(0.5);
+    });
+  });
+
   describe('extract (full pipeline)', () => {
     it('extracts both successful locators and scenario results', () => {
       const step = makeStep({
@@ -151,7 +241,7 @@ describe('LearningExtractorService', () => {
       expect(candidates.some((c) => c.type === 'scenario_result')).toBe(true);
     });
 
-    it('extracts failed locators as known_issue', () => {
+    it('extracts failed locators as known_issue via extract pipeline', () => {
       const step = makeStep({
         stepId: 'step-009',
         thoughtSummary: 'Click broken',

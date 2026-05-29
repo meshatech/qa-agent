@@ -22,7 +22,7 @@ export class LearningExtractorService {
       .filter((candidate): candidate is MemoryCandidate => candidate !== undefined);
   }
 
-  private extractFailedLocators(steps: QaStep[], runId: string, timestamp: string): MemoryCandidate[] {
+  extractFailedLocators(steps: QaStep[], runId: string, timestamp: string): MemoryCandidate[] {
     return steps
       .map((step) => this.buildFailedLocatorCandidate(step, runId, timestamp))
       .filter((candidate): candidate is MemoryCandidate => candidate !== undefined);
