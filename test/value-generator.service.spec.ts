@@ -27,4 +27,16 @@ describe('ValueGeneratorService', () => {
     expect(service.generate('click button', makeOutcome())).toBe('safe-test-value');
     expect(service.generate('check box', makeOutcome())).toBe('safe-test-value');
   });
+
+  it.each([
+    { title: '', expected: 'safe-test-value' },
+    { title: ' ', expected: 'safe-test-value' },
+    { title: '12345', expected: 'safe-test-value' },
+    { title: '日本語', expected: 'safe-test-value' },
+    { title: 'العربية', expected: 'safe-test-value' },
+    { title: '!!!@@@###', expected: 'safe-test-value' },
+    { title: 'a very long task title that exceeds normal length and contains many words', expected: 'safe-test-value' },
+  ])('returns safe-test-value for atypical title "$title"', ({ title, expected }) => {
+    expect(service.generate(title, makeOutcome())).toBe(expected);
+  });
 });
