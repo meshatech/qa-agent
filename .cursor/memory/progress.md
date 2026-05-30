@@ -12,6 +12,18 @@
 - [x] Evidências e diretório de run
 - [x] Specs `doc/01`–`21` e release notes v0.2-stable
 
+## Concluído (correção de bugs no pipeline de execução)
+
+- [x] Bug 1 — `semanticTarget` retorna `null` para candidatos vazios/curtos (<3 chars)
+- [x] Bug 2 — NAVIGATION endurecida contra path traversal via `posix.normalize` + checagem de segmento `..` + containment de base path
+- [x] Bug 3 — `resolve()` valida saída do LLM com `ExpectedOutcomeSchema.parse`; falha → `CLASSIFICATION_FAILED`
+- [x] Bug 4 — planner `factory_first` faz fallback para LLM/`ExecutionPlanBuildError` em vez de plano `undefined`
+- [x] Bug 5 — DATA_ENTRY valida `testValue` e substitui por `safe-test-value` se destrutivo
+- [x] Bug 6 — `learning-extractor.persist` ordena write→rename→appendRunHistory (sem referência pendente)
+- [x] Bug 7 — `semanticTarget` não lança exceção; ignora candidatos inseguros e retorna subconjunto seguro ou `null`
+- [x] Bug 8 — `isLogoutProofCondition` restringe `route_state` a paths de login (`/login`, `/signin`, `/auth`)
+- [x] Testes atualizados (factory throw→safe-check, persist ordering) + mocks de repo com `deleteFile`/`renameFile`; `npm run check` verde (validate:agent-config falha por motivo pré-existente de contagem de .mdc)
+
 ## Concluído (tooling agêntico nota 10)
 
 - [x] `.cursor/rules/` — 12 rules modulares (EN)
@@ -37,16 +49,134 @@
 - [x] `npm run check` passando
 - [x] ClickUp PRJ-11315 subtasks auditadas — todas **desenvolvido**
 
-## Em andamento
+## Concluído (PRJ-11317 — Pipeline Preflight)
 
-- [ ] Nenhuma feature de código em progresso registrada neste memory bank
+- [x] PRJ-11348 — `PipelinePreflightService` base + `preflight-report.json`
+- [x] PRJ-11349 — check dedicado `CLICKUP_TOKEN` (`validateClickUpToken`, `checks.clickupToken`)
+- [x] PRJ-11351 — check permissão leitura ClickUp (`validateClickUpReadAccess`, `ClickUpApiPort`, 401/403 → `BLOCKED`)
+- [x] PRJ-11350 — check dedicado `clickupTaskId` extraído do PR (`validateClickUpTaskId`, `checks.clickupTaskId`)
+- [x] PRJ-11352 — check dedicado `GITHUB_TOKEN` (`validateGitHubToken`, `checks.githubToken`, warning não fatal)
+- [x] PRJ-11357 — check permissão comentário PR (`validatePrCommentPermission`, `GitHubApiPort`, warning não fatal)
+- [x] PRJ-11353 — check contexto PR GitHub Actions (`validatePrContext`, `checks.prContext`, evento + refs → `BLOCKED`)
+- [x] PRJ-11354 — check config do projeto (`validateConfig`, reutiliza `ValidateConfigUseCase` com `skipHealthCheck`)
+- [x] PRJ-11355 — check branch head (`readBranchHead`, `checks.branchHead`, `GITHUB_HEAD_REF` → `BLOCKED` se ausente)
+- [x] PRJ-11356 — check checkout history (`validateCheckoutHistory`, `GitRepositoryPort`, shallow + base → `BLOCKED`)
+- [x] PRJ-11358 — mascaramento tokens em logs/relatórios (`sanitizeForOutput`, secrets do env)
+- [x] PRJ-11359 — contrato `preflight-report.v1` (`checkItems`, `tokensMasked`, schema Zod, `buildPreflightReport`)
+- [x] PRJ-11360 — interrupção BLOCKED (`runOrThrow`, `PreflightBlockedError`, CLI `preflight`, exit code 6)
+- [x] Hardening — `PreflightReportWriterPort`, use case enriquecido, testes adapter/integration, docs README/AGENTS
+- [x] Review fixes — `tokensMasked` honesto, fallbacks token GitHub, `GitHubEventContextPort`, write atômico, config path absoluto, `pull_request_target`
+- [x] Gate pipeline — CLI `pipeline prepare` (preflight → read-pr-context); PRJ-11550
 
-## Planejado (spec em tasks-clickup/, sem código)
+## Concluído (PRJ-11318 — Leitor ClickUp)
 
-- [ ] Pipeline preflight (ClickUp, GitHub tokens)
-- [ ] Leitura de demanda ClickUp e diff de PR
-- [ ] Correlação demanda/diff/memória
-- [ ] Seleção de cenários e execution plan para PR
+- [x] PRJ-11361 — `DemandContext` + `DemandAttachmentSchema` em domínio (`demand-context.schema.ts`, testes)
+- [x] PRJ-11362 — `BugContext` em domínio (`bug-context.schema.ts`, testes)
+- [x] PRJ-11363 — `DemandAttachment` em `demand-attachment.schema.ts` + `test/demand-attachment.schema.spec.ts` (sem model redundante)
+- [x] PRJ-11364 — `ClickUpReaderPort` + `FakeClickUpReaderAdapter` + `test/clickup-reader.port.spec.ts`
+- [x] PRJ-11365 — `ClickUpHttpReaderAdapter`, testes HTTP/DI, wiring `ClickUpReaderPort` (ClickUp: desenvolvido)
+- [x] PRJ-11366 — `resolveClickUpTaskId`, `RunConfig.clickup.taskId`, `readConfiguredTask` (ClickUp: critérios [x], status mantido em fazendo)
+- [x] PRJ-11367 — `clickup-task-content.mapper.ts` + sanitização HTML em `ClickUpHttpReaderAdapter` (ClickUp: critérios atualizados, status mantido em fazendo)
+- [x] Custom ID HTTP — `clickup-task-url.builder.ts`, `clickup-team-id.resolver.ts`, `RunConfig.clickup.teamId`, `CLICKUP_TEAM_ID`
+- [x] PRJ-11368 — `clickup-acceptance-criteria.parser.ts` + testes unitários título/critérios (ClickUp: critérios [x], status mantido em fazendo)
+- [x] PRJ-11369 — `clickup-reproduction-steps.parser.ts` + `BugContext` opcional no adapter (ClickUp: critérios [x], status mantido em fazendo)
+- [x] PRJ-11370 — `clickup-bug-results.parser.ts` + `expectedResult`/`actualResult` no `BugContext` (ClickUp: critérios [x], status mantido em fazendo)
+- [x] PRJ-11371 — `clickup-task-attachments.mapper.ts` + `DemandAttachment[]` no adapter (ClickUp: critérios [x], status mantido em fazendo)
+- [x] PRJ-11372 — `clickup-http-error.handler.ts` + códigos HTTP + retry 429 (ClickUp: critérios [x], status mantido em fazendo)
+- [x] PRJ-11373 — `demand-context.json` via `DemandContextPersistenceService` + writer atômico (ClickUp: critérios [x], status mantido em fazendo)
+- [x] Review clean code — `clickup-description-sections.ts`, `clickup-task-response.mapper.ts`, retorno sanitizado em `persistDemandContext`/`persistFromClickUpTask`; 99 testes ClickUp/demand OK
+- [x] Auditoria bugs — MAJOR/MINOR sanados; R1 `BugContextSchema.safeParse` + warning; integração `RunAgentUseCase.persistClickUpDemandContext`; Docker test scripts (`test:docker`, `check:docker`)
+
+## Concluído (duplicatas temáticas PRJ-11318)
+
+- [x] PRJ-11374 — duplicata de PRJ-11372 (erros HTTP) — coberta em código; spec `tasks-clickup/` atualizada
+- [x] PRJ-11375 — duplicata de PRJ-11373 (`demand-context.json`) — coberta em código; spec + ClickUp atualizados
+
+## Concluído (PRJ-11319 — Leitor PR/diff GitHub Actions)
+
+- [x] PRJ-11376 — `PullRequestContext` em domínio (`pull-request-context.schema.ts`, `test/pull-request-context.schema.spec.ts`)
+- [x] PRJ-11377 — `ChangedFile` em domínio (`changed-file.schema.ts`, `test/changed-file.schema.spec.ts`)
+- [x] PRJ-11378 — `DiffLine` em domínio (`diff-line.schema.ts`, `test/diff-line.schema.spec.ts`); entregue junto com PRJ-11377
+- [x] PRJ-11379 — `GitHubActionsPrContextReaderAdapter` + mapper env/event → `PullRequestContext` + `git diff origin/${base}...HEAD` (`PrContextReaderError`, 11 testes)
+- [x] PRJ-11380 — resolvers `github-actions-pr-refs.resolver.ts` (`prNumber`, `baseBranch`, `headBranch`); DRY com `FileGitHubEventContextAdapter`; 9 testes dedicados
+- [x] PRJ-11381 — `ensureBaseBranchAvailable` (verify + fetch `origin/${base}`); reader wired; `BASE_BRANCH_UNAVAILABLE`; PRJ-11383 duplicata
+- [x] Validação `assertValidBaseBranchRef` — `VALIDATION_FAILED` antes de git em `ensureBaseBranchAvailable`; 3 casos em `exec-git-repository.adapter.spec.ts`
+- [x] PRJ-11382 — `resolveHeadBranchFromEnv` DRY no preflight + mapper; `checks.branchHead` no report (PRJ-11355)
+- [x] PRJ-11383 — auditoria fetch da base (duplicata PRJ-11381); testes fetch-restore + shallow
+- [x] PRJ-11384 — `buildPullRequestDiffArgs`; diff vazio + E2E reader (`rawDiff` via git real); spec + 12 testes git/reader
+- [x] PRJ-11385 — `parseGitDiffAddedLines`; metadados ignorados; 7 testes parser (+ integração git fixture)
+- [x] PRJ-11386 — `parseGitDiffRemovedLines`; line numbers lado antigo; 7 testes parser (+ integração git fixture)
+- [x] PRJ-11387 — `parseGitDiffContextLines` + `git-diff.parser.shared.ts`; 7 testes parser (+ regressão 3 parsers)
+- [x] PRJ-11388 — `parseGitDiffChangedFiles` + `classifyChangedFiles`; `ChangedFile.kind`; reader `changedFiles`; 50 testes diff/reader
+- [x] PRJ-11389 — `detectAffectedRoutes`; `affectedRoutes` no reader; 15 testes detector/reader
+- [x] PRJ-11390 — `detectAffectedSchemas`; `affectedSchemas` no reader; testes detector/reader
+- [x] PRJ-11391 — `PrDiffContextSchema`; `pr-diff-context.json`; CLI `read-pr-context`; testes schema/writer/persistência
+- [x] Fix `tokensMasked` pr-diff — dual check: warn pré-sanitize + `tokensMasked` pós-sanitize
+- [x] Fix git diff maxBuffer — 50MB + mensagem `ERR_CHILD_PROCESS_STDIO_MAXBUFFER` em `formatGitDiffFailedMessage`
+- [x] Auditoria PRJ-11319 — DIP mapper, sanitização env, docs CLI, integração Nest, fix preflight spec flaky
+- [x] PRJ-11550 — `RunPipelinePrepareUseCase` + CLI `pipeline prepare` (preflight gate + read-pr-context)
+- [x] PRJ-11552 hardening — regex configurável; preflight skip WARN; schema opcional; env deprecada com fallback
+- [x] PRJ-11552 follow-up — mapper omite ID sem throw; preflight try/catch + error/warning; regex inválido → WARN
+- [x] PRJ-11552 security — safe-regex ReDoS; body sanitizado; sanitizePrContextErrorMessage no preflight
+- [x] ClickUp secrets/warnings — CLICKUP_TASK_ID collector; pattern warning centralizado; log truncamento body
+
+Epic PRJ-11319 entregue (11376–11391 + PRJ-11550 + PRJ-11552).
+
+## Concluído (PRJ-11320 — Correlator demanda/diff/memória)
+
+- [x] PRJ-11392 — `DemandDiffMemoryCorrelatorService` + CLI `pipeline correlate` + `RunPipelineCorrelateUseCase`
+- [x] PRJ-11393 — `CorrelationItem` dedicado (`correlation-item.schema.ts`, `createCorrelationItem`, testes schema)
+- [x] PRJ-11394 — `RiskItem` dedicado (`risk-item.schema.ts`, `createRiskItem`, testes schema)
+- [x] PRJ-11395 — `RequiredScenario` dedicado (`required-scenario.schema.ts`, `createRequiredScenario`, testes schema)
+- [x] PRJ-11396 — consumo `DemandContext` (`demand-context-consumer.ts`, `consumeDemandContext`, testes)
+- [x] PRJ-11397 — consumo `PrDiffContext` (`pr-diff-context-consumer.ts`, `consumePrDiffContext`, testes)
+- [x] PRJ-11398 — consumo `MemorySearchResult[]` (`memory-search-consumer.ts`, `consumeMemorySearchResults`, testes)
+- [x] PRJ-11399 — correlação critério↔arquivos (`criterion-diff-correlator.ts`, `correlateCriterionWithDiff`, testes)
+- [x] PRJ-11400 — regressão diff negativo (`negative-diff-regression-correlator.ts`, `correlateNegativeDiffRegressions`, testes)
+- [x] PRJ-11401 — mismatch demanda↔diff (`demand-diff-mismatch-detector.ts`, `detectDemandDiffMismatch`, `demand_diff_mismatch`, testes)
+- [x] PRJ-11402 — critérios sem evidência (`uncovered-criterion-detector.ts`, `detectUncoveredCriteria`, testes)
+- [x] PRJ-11403 — score por correlação (`scenario-risk-scorer.ts`, `computeScenarioRiskScore`, testes)
+- [x] PRJ-11404 — artefato `required-scenarios.json` (`required-scenarios-artifact.ts`, `prepareRequiredScenariosArtifact`, testes adapter + helper)
+- [x] PRJ-11405 — artefato `correlation-report.md` (`correlation-report-artifact.ts`, renderer em domain, testes)
+- [x] Schemas `CorrelationItem`, `RiskItem`, `RequiredScenario`, `correlation-result.v1`
+- [x] Artefatos `required-scenarios.json`, `correlation-report.md`, `demand-context.json` no output dir
+- [x] Gate BLOCKED (exit 6) quando entrada incompleta; memória vazia OK com warning
+- [x] `CorrelationArtifactsWriterPort` — adapter prepara JSON + markdown (SRP)
+- [x] Testes unitários correlator + integração use case; `npm run check`
+- [x] Cobertura direta helpers — `correlation-lexical.spec.ts`, `build-memory-search-query.spec.ts` (777 testes)
+- [x] Correlate error handling — BLOCKED vs HARNESS_FATAL; `prNumber` opcional em `blockAndThrow`; 780 testes
+- [x] relatedFiles fallback — rota/schema preservam path de `changedFiles` para risk scorer e relatório; 782 testes
+- [x] readPipelineArtifact spec — 4 casos (sucesso + 3 ConfigError); 786 testes
+- [x] ZodError/BM25 handling — correlator + use case BLOCKED; 790 testes
+- [x] Artifact error detail — `describePipelineArtifactError`; JSON/schema inválido → BLOCKED com cause; 794 testes
+- [x] relatedFiles multi — `collectRelatedFiles` (overlap > 0, dedupe, cap 5); `correlation.file` inalterado
+- [x] Hardening correlate — token redaction MAJOR, staging writer, correlator try/catch, mismatch por critério, route fallback guard/warning; 805 testes
+- [x] Match consistency — applyBestMatch/scoreSchemaMatch; file/rationale alinhados; 808 testes
+- [x] BLOCKED no persist — correlate não escreve `required-scenarios.json`/`correlation-report.md` em BLOCKED; testes use case
+- [x] Fallback criteria warning — critérios ignorados listados no warning de rota fallback
+- [x] Mismatch coverage ratio — proporcional 50%; descrição com `coveredCount/total`
+- [x] Memory boost AND — `criterionHit` obrigatório; boost tiered; teste route-only sem boost; 812 testes
+- [x] Correlate security — token redaction artifact errors; sanitizePath rationales; MAX_SCENARIOS cap test; 822 testes
+- [x] Correlator heuristics — below-threshold warning pós-loop; camelCase tokenize; best memory boost; 828 testes
+- [x] Scenario score ordering — rankedMatches por score desc + dedup; teste cap prioriza critérios fortes; 829 testes
+- [x] blockAndThrow warnings — warnings BM25 preservados quando correlator lança; 830 testes
+- [x] Correlate security tests — redaction URL/base64; BLOCKED blockReason/warnings sanitizados; sanitizePath Windows/homedir; duplicate criteria; lexical/buildMemory/describePipelineArtifactError; 851 testes
+
+## Concluído (Speckit governance)
+
+- [x] `.specify/memory/constitution.md` v1.0.0 — 5 princípios (runtime law, clean arch, Zod, CLI/evidence, scope/quality)
+- [x] Templates `plan-template.md`, `spec-template.md`, `tasks-template.md` — Constitution Check e referências
+
+## Concluído (Speckit 001 — Gherkin bug feedback, planeamento)
+
+- [x] `specs/001-gherkin-bug-feedback/spec.md` + checklist requirements
+- [x] `plan.md`, `research.md`, `data-model.md`, `quickstart.md`, `contracts/`
+- [x] `tasks.md` (30 tasks, MVP US1 = T001–T016)
+- [x] Feature 001 Gherkin bug feedback completa (T001–T030): service, finalize, report, docs, testes
+
+## Em progresso / backlog pipeline V1
+
+- [ ] Seleção de cenários e execution plan para PR (PRJ-11321+)
 - [ ] PR reporter e learning extractor
 
 ## Limitações conhecidas
@@ -54,4 +184,4 @@
 - Providers LLM externos nem sempre validados em todos os ambientes; fallback factory é mitigação
 - `inspect` / `report` requerem `--runs-dir` e `--run-id`
 - Projeto focado em CLI, não SDK pública estável
-- `qa.memory.search` requer `context.metadata.memorySearch` no runtime (DI ainda não wired no RunAgentUseCase)
+- Pipeline correlate implementado (PRJ-11392); run end-to-end e PR reporter ainda pendentes — PRJ-11321+ / PRJ-11324
