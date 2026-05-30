@@ -204,8 +204,11 @@ export class ExecutionPlanPlannerService {
 
   private isThemeAction(step: ExecutionStep, scenarios: QaScenario[]): boolean {
     const task = this.findTask(step, scenarios);
+    if (task?.expectedOutcome?.kind === 'APPEARANCE_CHANGE') return true;
     if (!task) return false;
-    return task.expectedOutcome?.kind === 'APPEARANCE_CHANGE' || false;
+    const targetTexts = step.action.type === 'click' || step.action.type === 'fill' ? this.extractLocatorTexts(step.action.target) : [];
+    const description = (task?.expected ?? task?.title ?? '').toLowerCase();
+    return targetTexts.some((t) => /theme|tema|aparência|appearance|dark|light|modo/i.test(t)) || /theme|tema|aparência|appearance|dark|light|modo/i.test(description);
   }
 
   private hasStateChangePostcondition(step: ExecutionStep): boolean {
@@ -215,7 +218,7 @@ export class ExecutionPlanPlannerService {
   }
 
   private hasVerifiedStatePostcondition(step: ExecutionStep): boolean {
-    return step.postconditions.some((condition) => ['auth_state', 'ui_state', 'attribute_state', 'storage_state'].includes(condition.type));
+    return step.postconditions.some((condition) => ['auth_state', 'ui_state', 'attribute_state', 'storage_state', 'menu_state', 'element_visible', 'text_visible', 'text_any_visible', 'field_value_contains'].includes(condition.type));
   }
 
   private isPassiveAction(step: ExecutionStep): boolean {
@@ -231,8 +234,11 @@ export class ExecutionPlanPlannerService {
   private isLogoutClick(step: ExecutionStep, scenarios: QaScenario[]): boolean {
     if (step.action.type !== 'click') return false;
     const task = this.findTask(step, scenarios);
+    if (task?.expectedOutcome?.kind === 'DEAUTHENTICATION') return true;
     if (!task) return false;
-    return task.expectedOutcome?.kind === 'DEAUTHENTICATION' || false;
+    const targetTexts = this.extractLocatorTexts(step.action.target);
+    const description = (task?.expected ?? task?.title ?? '').toLowerCase();
+    return targetTexts.some((t) => /logout|sair|sign.out|deslogar|encerrar/i.test(t)) || /logout|sair|sign.out|deslogar|encerrar/i.test(description);
   }
 
   private hasLogoutProof(step: ExecutionStep): boolean {

@@ -128,9 +128,10 @@ export class GroqDecisionProvider implements DecisionProviderPort {
     const kind = this.extractOutcomeKind(raw);
     if (!kind) throw new Error('Invalid outcome kind from LLM');
     const record = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+    const target = typeof record.target === 'string' && record.target && record.target !== 'NO_REGRESSION' ? record.target : undefined;
     return ExpectedOutcomeSchema.parse({
       kind,
-      target: typeof record.target === 'string' && record.target ? record.target : undefined,
+      target,
       description: typeof record.description === 'string' && record.description ? record.description : task.title,
     });
   }

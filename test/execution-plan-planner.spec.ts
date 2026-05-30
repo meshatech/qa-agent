@@ -62,12 +62,46 @@ describe('ExecutionPlanPlannerService', () => {
     expect(result.plan?.planId).toBe('llm-plan');
   });
 
-  it('falls back when a click step has no state-changing postcondition', async () => {
+  it('falls back when a click step has no postcondition at all', async () => {
     const provider: DecisionProviderPort = {
       async buildPlan() {
         return {
           schemaVersion: 'execution-plan.v1',
           planId: 'unsafe-click-plan',
+          version: 1,
+          goal: 'Smoke',
+          mode: 'HYBRID_GUARDED',
+          runtime: { maxAttemptsPerStep: 1, maxReplansPerScenario: 1, destructiveActionPolicy: 'BLOCK' },
+          steps: [{
+            id: 'S001',
+            scenarioId: 'scenario-001',
+            taskId: 'T001',
+            description: 'Open menu',
+            preconditions: [],
+            action: { type: 'click', target: { strategy: 'role', role: 'button', name: 'Conta' }, reason: 'open account menu' },
+            postconditions: [{ type: 'route_state', expected: 'matches', expectedUrlPattern: 'https://app.local' }],
+            assertions: [],
+            onFailure: 'RECOVER',
+          }],
+          assertions: [],
+        };
+      },
+      async decide() { throw new Error('not used'); },
+    };
+
+    const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, scenarios);
+
+    expect(result.source).toBe('factory');
+    expect(result.fallbackReason).toContain('has no state-changing postcondition');
+  });
+
+  it('accepts click with text_visible postcondition as verified', async () => {
+    const provider: DecisionProviderPort = {
+      async buildPlan() {
+        return {
+          schemaVersion: 'execution-plan.v1',
+          planId: 'menu-click-plan',
           version: 1,
           goal: 'Smoke',
           mode: 'HYBRID_GUARDED',
@@ -92,8 +126,8 @@ describe('ExecutionPlanPlannerService', () => {
     const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
     const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, scenarios);
 
-    expect(result.source).toBe('factory');
-    expect(result.fallbackReason).toContain('has no state-changing postcondition');
+    expect(result.source).toBe('llm');
+    expect(result.plan?.planId).toBe('menu-click-plan');
   });
 
   it('falls back to factory when LLM persists el_*', async () => {
@@ -365,6 +399,47 @@ describe('ExecutionPlanPlannerService', () => {
 
     await expect(new ExecutionPlanPlannerService(provider, stubFactory).build(factoryOnlyConfig, scenarios))
       .rejects.toThrow(/factory_first produced no steps and no LLM fallback available/);
+  });
+
+  it('falls back when keyword mapping conflicts with expectedOutcome kind', async () => {
+    const logoutScenarios: QaScenario[] = [{
+      id: 'scenario-001',
+      title: 'Smoke',
+      status: 'PLANNED',
+      intent: 'POSITIVE',
+      tasks: [{ id: 'T001', title: 'Navegar para sair', expected: 'Sair do sistema', status: 'PENDING', intent: 'POSITIVE', expectedOutcome: { kind: 'NAVIGATION', description: 'sair' } }],
+    }];
+    const provider: DecisionProviderPort = {
+      async buildPlan() {
+        return {
+          schemaVersion: 'execution-plan.v1',
+          planId: 'keyword-plan',
+          version: 1,
+          goal: 'Smoke',
+          mode: 'HYBRID_GUARDED',
+          runtime: { maxAttemptsPerStep: 1, maxReplansPerScenario: 1, destructiveActionPolicy: 'BLOCK' },
+          steps: [{
+            id: 'S001',
+            scenarioId: 'scenario-001',
+            taskId: 'T001',
+            description: 'Click logout',
+            preconditions: [],
+            action: { type: 'click', target: { strategy: 'role', role: 'button', name: 'Sair' }, reason: 'exit' },
+            postconditions: [{ type: 'text_visible', text: 'Login' }],
+            assertions: [],
+            onFailure: 'RECOVER',
+          }],
+          assertions: [],
+        };
+      },
+      async decide() { throw new Error('not used'); },
+    };
+
+    const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, logoutScenarios);
+
+    expect(result.source).toBe('factory');
+    expect(result.fallbackReason).toContain('logout');
   });
 
   it('generates emergency plan when factory_first fails and allowEmergencyPlan is true', async () => {

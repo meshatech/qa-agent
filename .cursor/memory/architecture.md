@@ -57,8 +57,13 @@ Hub de orquestração: `RunAgentUseCase` (use case, não service — injeta todo
 | `SanitizerService` | Sanitização de dados sensíveis |
 | `TaskMemoryService` | Memória efêmera por task |
 | `PlaywrightSpecExporterService` | Export spec experimental |
+| `DemandDiffMemoryCorrelatorService` | Correlaciona demanda, diff PR e memória BM25 → cenários/riscos |
+| `DemandContextPersistenceService` | Persiste `demand-context.json` via ClickUp |
+| `PrDiffContextPersistenceService` | Persiste `pr-diff-context.json` via git diff |
+| `PipelinePreflightService` | Preflight gate do pipeline PR |
+| `MemorySearchService` | Busca BM25 em `.agent-qa/memory.md` |
 
-Use cases: `RunAgentUseCase`, `ValidateConfigUseCase`, `InspectRunUseCase`, `ReportRunUseCase`, `CaptureAuthUseCase`.
+Use cases: `RunAgentUseCase`, `ValidateConfigUseCase`, `InspectRunUseCase`, `ReportRunUseCase`, `CaptureAuthUseCase`, `RunPipelinePreflightUseCase`, `RunPrDiffContextUseCase`, `RunPipelinePrepareUseCase`, `RunPipelineCorrelateUseCase`.
 
 ## Saídas de uma run
 
