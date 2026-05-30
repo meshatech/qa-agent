@@ -446,7 +446,7 @@ describe('LearningExtractorService', () => {
       expect(callArgs[1].status).toBe('PASSED');
       expect(callArgs[1].totalSteps).toBe(1);
       expect(callArgs[1].candidateCount).toBe(1);
-      expect(callArgs[1].candidates[0]).toEqual({
+      expect((callArgs[1].candidates ?? [])[0]).toEqual({
         id: candidates[0].id,
         type: 'locator',
         title: candidates[0].title,
@@ -468,7 +468,7 @@ describe('LearningExtractorService', () => {
       expect(mockRepository.renameFile).toHaveBeenCalledOnce();
       const callArgs = (mockRepository.appendRunHistory as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(callArgs[1].candidateCount).toBe(0);
-      expect(callArgs[1].candidates).toEqual([]);
+      expect(callArgs[1].candidates ?? []).toEqual([]);
     });
 
     it('does not append run history when writing temp candidates fails', async () => {
@@ -560,7 +560,7 @@ describe('LearningExtractorService', () => {
       const callArgs = (mockRepository.appendRunHistory as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(callArgs[1].candidateCount).toBe(2);
       expect(callArgs[1].totalScenarios).toBe(1);
-      expect(callArgs[1].candidates).toHaveLength(2);
+      expect((callArgs[1].candidates ?? [])).toHaveLength(2);
     });
   });
 });

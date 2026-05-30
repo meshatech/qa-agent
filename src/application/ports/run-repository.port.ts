@@ -9,7 +9,7 @@ export interface RunHistoryEntry {
   totalSteps: number;
   totalScenarios: number;
   candidateCount: number;
-  candidates: Array<Pick<MemoryCandidate, 'id' | 'type' | 'title' | 'confidence'>>;
+  candidates?: Array<Pick<MemoryCandidate, 'id' | 'type' | 'title' | 'confidence'>>;
 }
 
 export interface RunRepositoryPort {
