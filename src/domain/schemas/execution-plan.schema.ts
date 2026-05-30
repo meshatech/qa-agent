@@ -69,6 +69,7 @@ export const ExecutionStepSchema = z.object({
   assertions: z.array(BusinessAssertionSchema).default([]),
   onFailure: StepFailurePolicySchema.default('RECOVER'),
   maxAttempts: z.number().int().positive().optional(),
+  isFallback: z.boolean().optional(),
 }).strict();
 
 export const PlanPatchSchema = z.object({

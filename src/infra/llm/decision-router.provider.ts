@@ -2,8 +2,10 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { DecisionInput, DecisionProviderPort, ReplanInput } from '../../application/ports/decision-provider.port.js';
 import type { QaActionEnvelope } from '../../domain/schemas/action.schema.js';
 import type { QaScenario } from '../../domain/models/run.model.js';
+import type { QaTask } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
 import type { ExecutionPlan, PlanPatch } from '../../domain/schemas/execution-plan.schema.js';
+import type { ExpectedOutcome } from '../../domain/schemas/expected-outcome.schema.js';
 import { FakeDecisionProvider } from './fake-decision.provider.js';
 import { GroqDecisionProvider } from './groq-decision.provider.js';
 import { OpenAiLangChainDecisionProvider } from './openai-langchain-decision.provider.js';
@@ -40,6 +42,18 @@ export class DecisionRouterProvider implements DecisionProviderPort {
     return this.fake.replan(input);
   }
 
+  classifyOutcome(config: RunConfig, task: QaTask): Promise<ExpectedOutcome> {
+    if (config.llm.provider === 'groq') return this.groq.classifyOutcome(config, task);
+    if (config.llm.provider === 'openai') return this.openai.classifyOutcome(config, task);
+    return this.fake.classifyOutcome(config, task);
+  }
+
+  classifyOutcomes(config: RunConfig, tasks: QaTask[]): Promise<ExpectedOutcome[]> {
+    if (config.llm.provider === 'groq') return this.groq.classifyOutcomes(config, tasks);
+    if (config.llm.provider === 'openai') return this.openai.classifyOutcomes(config, tasks);
+    return this.fake.classifyOutcomes(config, tasks);
+  }
+
   stats() {
     const fakeStats = this.fake.stats();
     const groqStats = this.groq.stats();
@@ -48,10 +62,14 @@ export class DecisionRouterProvider implements DecisionProviderPort {
       calls: (fakeStats.calls ?? 0) + (groqStats.calls ?? 0) + (openaiStats.calls ?? 0),
       wrappers: { groq: groqStats.wrappers, openai: openaiStats.wrappers },
       breakdown: {
-        fake: fakeStats.breakdown ?? { plan: 0, buildPlan: 0, replan: 0, decide: 0 },
-        groq: groqStats.breakdown ?? { plan: 0, buildPlan: 0, replan: 0, decide: 0 },
-        openai: openaiStats.breakdown ?? { plan: 0, buildPlan: 0, replan: 0, decide: 0 },
+        fake: fakeStats.breakdown ?? this.emptyBreakdown(),
+        groq: groqStats.breakdown ?? this.emptyBreakdown(),
+        openai: openaiStats.breakdown ?? this.emptyBreakdown(),
       },
     };
+  }
+
+  private emptyBreakdown() {
+    return { plan: 0, classifyOutcome: 0, buildPlan: 0, replan: 0, decide: 0 };
   }
 }

@@ -16,7 +16,7 @@ function makeConfig(overrides?: Partial<RunConfig>): RunConfig {
     llm: { provider: 'fake', model: 'test', apiKeyEnv: 'TEST_KEY', maxSchemaRetries: 1, rateLimitRetries: 1, rateLimitMaxWaitMs: 1000, promptVersion: 'v1', temperature: 0, maxTokens: 100 },
     browser: { engine: 'chromium', headed: false, viewport: { width: 1280, height: 720 }, locale: 'pt-BR', timezone: 'America/Sao_Paulo' },
     timeouts: { quiescenceMs: 1000, actionMs: 5000, navigationMs: 10000, scenarioMs: 60000, runMs: 300000 },
-    runtime: { maxActionsPerTask: 5, mode: 'HYBRID_GUARDED', maxAttemptsPerStep: 2, maxReplansPerScenario: 2, destructiveActionPolicy: 'BLOCK', semanticKeys: {}, elementAvailability: { enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false }, tools: { enabled: false } },
+    runtime: { maxActionsPerTask: 5, mode: 'HYBRID_GUARDED', maxAttemptsPerStep: 2, maxReplansPerScenario: 2, destructiveActionPolicy: 'BLOCK', semanticKeys: {}, semanticAliases: {}, elementAvailability: { enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false, allowedContainers: [] }, tools: { enabled: false } },
     recovery: { maxAttemptsPerTask: 2, maxFallbacksPerStep: 1, maxEmergencyActionsPerScenario: 1 },
     classifier: { knownNoiseRegexes: [], knownTrackingDomains: [], treatThirdPartyNetwork5xxAsBug: false },
     privacy: { maskEmails: true, maskJwt: true, maskCookies: true },
@@ -58,6 +58,9 @@ describe('PRReporterService', () => {
       readJson: vi.fn(),
       exists: vi.fn(),
       listFiles: vi.fn(),
+      appendRunHistory: vi.fn(),
+      deleteFile: vi.fn(),
+      renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
     const service = new PRReporterService(github, repo, new PRReportRenderer());
@@ -111,6 +114,9 @@ describe('PRReporterService', () => {
       readJson: vi.fn(),
       exists: vi.fn(),
       listFiles: vi.fn(),
+      appendRunHistory: vi.fn(),
+      deleteFile: vi.fn(),
+      renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn(() => Promise.resolve()) };
     const service = new PRReporterService(github, repo, new PRReportRenderer());
@@ -159,6 +165,9 @@ describe('PRReporterService', () => {
       readJson: vi.fn(),
       exists: vi.fn(),
       listFiles: vi.fn(),
+      appendRunHistory: vi.fn(),
+      deleteFile: vi.fn(),
+      renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = {
       postComment: vi.fn(() => Promise.reject(new GitHubCommentError('Forbidden', 403))),
@@ -205,6 +214,9 @@ describe('PRReporterService', () => {
     const repo: RunRepositoryPort = {
       createRunDir: vi.fn(), ensureDir: vi.fn(), writeJson: vi.fn(), writeFile: vi.fn(() => Promise.resolve()),
       writeReport: vi.fn(), findRunDir: vi.fn(), readJson: vi.fn(), exists: vi.fn(), listFiles: vi.fn(),
+      appendRunHistory: vi.fn(),
+      deleteFile: vi.fn(),
+      renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = {
       postComment: vi.fn(() => Promise.reject(new GitHubCommentError('Unauthorized', 401))),
@@ -224,6 +236,9 @@ describe('PRReporterService', () => {
     const repo: RunRepositoryPort = {
       createRunDir: vi.fn(), ensureDir: vi.fn(), writeJson: vi.fn(), writeFile: vi.fn(() => Promise.resolve()),
       writeReport: vi.fn(), findRunDir: vi.fn(), readJson: vi.fn(), exists: vi.fn(), listFiles: vi.fn(),
+      appendRunHistory: vi.fn(),
+      deleteFile: vi.fn(),
+      renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = {
       postComment: vi.fn(() => Promise.reject(new GitHubCommentError('Not Found', 404))),
@@ -242,6 +257,9 @@ describe('PRReporterService', () => {
     const repo: RunRepositoryPort = {
       createRunDir: vi.fn(), ensureDir: vi.fn(), writeJson: vi.fn(), writeFile: vi.fn(() => Promise.resolve()),
       writeReport: vi.fn(), findRunDir: vi.fn(), readJson: vi.fn(), exists: vi.fn(), listFiles: vi.fn(),
+      appendRunHistory: vi.fn(),
+      deleteFile: vi.fn(),
+      renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = {
       postComment: vi.fn(() => Promise.reject(new Error('Network timeout'))),
@@ -262,6 +280,9 @@ describe('PRReporterService', () => {
       createRunDir: vi.fn(), ensureDir: vi.fn(), writeJson: vi.fn(),
       writeFile: vi.fn((runDir, name, data) => { written.push({ runDir, name, data: String(data) }); return Promise.resolve(); }),
       writeReport: vi.fn(), findRunDir: vi.fn(), readJson: vi.fn(), exists: vi.fn(), listFiles: vi.fn(),
+      appendRunHistory: vi.fn(),
+      deleteFile: vi.fn(),
+      renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn(() => Promise.resolve()) };
     const service = new PRReporterService(github, repo, new PRReportRenderer());
@@ -292,6 +313,9 @@ describe('PRReporterService', () => {
       readJson: vi.fn(),
       exists: vi.fn(),
       listFiles: vi.fn(),
+      appendRunHistory: vi.fn(),
+      deleteFile: vi.fn(),
+      renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
     const service = new PRReporterService(github, repo, new PRReportRenderer());
@@ -369,6 +393,9 @@ describe('PRReporterService', () => {
       readJson: vi.fn(),
       exists: vi.fn(),
       listFiles: vi.fn(),
+      appendRunHistory: vi.fn(),
+      deleteFile: vi.fn(),
+      renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = {
       postComment: vi.fn(() => Promise.reject(new GitHubCommentError('ghp_secret_123 failed', 418))),
@@ -409,6 +436,9 @@ describe('PRReporterService', () => {
       readJson: vi.fn(),
       exists: vi.fn(),
       listFiles: vi.fn(),
+      appendRunHistory: vi.fn(),
+      deleteFile: vi.fn(),
+      renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = {
       postComment: vi.fn(() => Promise.reject(new GitHubCommentError('pk_test_abc123 failed', 418))),
@@ -452,6 +482,9 @@ describe('PRReporterService', () => {
       readJson: vi.fn(),
       exists: vi.fn(),
       listFiles: vi.fn(),
+      appendRunHistory: vi.fn(),
+      deleteFile: vi.fn(),
+      renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
     const service = new PRReporterService(github, repo, new PRReportRenderer());
@@ -491,6 +524,9 @@ describe('PRReporterService', () => {
       readJson: vi.fn(),
       exists: vi.fn(),
       listFiles: vi.fn(),
+      appendRunHistory: vi.fn(),
+      deleteFile: vi.fn(),
+      renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
     const service = new PRReporterService(github, repo, new PRReportRenderer());
@@ -525,6 +561,9 @@ describe('PRReporterService', () => {
       readJson: vi.fn(),
       exists: vi.fn(),
       listFiles: vi.fn(),
+      appendRunHistory: vi.fn(),
+      deleteFile: vi.fn(),
+      renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
     const service = new PRReporterService(github, repo, new PRReportRenderer());
@@ -565,6 +604,9 @@ describe('PRReporterService', () => {
       readJson: vi.fn(),
       exists: vi.fn(),
       listFiles: vi.fn(),
+      appendRunHistory: vi.fn(),
+      deleteFile: vi.fn(),
+      renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
     const service = new PRReporterService(github, repo, new PRReportRenderer());
@@ -611,6 +653,9 @@ describe('PRReporterService', () => {
         if (path === 'bugs/BUG-001') return Promise.resolve(['screenshot.png', 'console.log', 'unknown.txt']);
         return Promise.resolve([]);
       }),
+      appendRunHistory: vi.fn(),
+      deleteFile: vi.fn(),
+      renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
     const service = new PRReporterService(github, repo, new PRReportRenderer());
@@ -652,6 +697,9 @@ describe('PRReporterService', () => {
       readJson: vi.fn(),
       exists: vi.fn(),
       listFiles: vi.fn().mockRejectedValue(new Error('Disk read error')),
+      appendRunHistory: vi.fn(),
+      deleteFile: vi.fn(),
+      renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
     const service = new PRReporterService(github, repo, new PRReportRenderer());

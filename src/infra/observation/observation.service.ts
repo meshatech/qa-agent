@@ -18,13 +18,14 @@ export class ObservationService {
     @Inject(PageStateDetector) private readonly state: PageStateDetector,
   ) {}
 
-  async observe(page: Page, signals: SignalsBuffer): Promise<ScreenObservation> {
-    const [axResult, domElements, pageState, title, visibleTexts] = await Promise.all([
+  async observe(page: Page, signals: SignalsBuffer, options: ObservationOptions = {}): Promise<ScreenObservation> {
+    const [axResult, domElements, pageState, title, visibleTexts, screenshot] = await Promise.all([
       this.ax.collect(page),
       this.dom.fallbackElements(page).catch(() => [] as ObservableElement[]),
       this.state.detect(page),
       page.title(),
       page.locator('body').innerText().catch(() => '').then((text) => text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean).slice(0, MAX_TEXTS)),
+      options.includeScreenshot ? page.screenshot({ type: 'png', scale: 'css' }).then((b) => b.toString('base64')).catch(() => undefined) : Promise.resolve(undefined),
     ]);
 
     const merged = this.merge(axResult.elements, domElements);
@@ -40,6 +41,7 @@ export class ObservationService {
       pageState,
       consoleSignals: signals.console.slice(-20),
       networkSignals: signals.network.slice(-50),
+      screenshot,
       meta: {
         viewport: page.viewportSize() ?? { width: 1280, height: 720 },
         schemaVersion: 'obs.v1',
@@ -94,4 +96,8 @@ export class ObservationService {
     const order: Record<LocatorDescriptor['strategy'], number> = { testid: 0, label: 1, placeholder: 2, role: 3, text_any: 4, text: 5, semantic: 6, document: 7 };
     return order[a.strategy] <= order[b.strategy] ? a : b;
   }
+}
+
+export interface ObservationOptions {
+  includeScreenshot?: boolean;
 }

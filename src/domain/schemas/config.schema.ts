@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { LocatorDescriptorSchema } from './action.schema.js';
-import { DestructiveActionPolicySchema, RuntimeModeSchema } from './execution-plan.schema.js';
+import { DestructiveActionPolicySchema, PlanActionSchema, PlanConditionSchema, RuntimeModeSchema } from './execution-plan.schema.js';
 
 const AuthSelectorSchema = z.union([z.string(), LocatorDescriptorSchema]);
 
@@ -10,6 +10,12 @@ const SuccessWhenSchema = z.object({
 }).refine((s) => s.urlContains || s.textVisible, {
   message: 'successWhen requires urlContains or textVisible',
 });
+
+const ElementAvailabilityContainerSchema = z.object({
+  semanticKey: z.string().min(1),
+  openAction: PlanActionSchema,
+  expectedState: PlanConditionSchema.optional(),
+}).strict();
 
 export const RunConfigSchema = z.object({
   baseUrl: z.string().url(),
@@ -71,16 +77,25 @@ export const RunConfigSchema = z.object({
     maxReplansPerScenario: z.number().int().nonnegative().default(2),
     destructiveActionPolicy: DestructiveActionPolicySchema.default('BLOCK'),
     semanticKeys: z.record(z.string(), z.object({ description: z.string(), type: z.enum(['action', 'state', 'container']).default('state') })).default({}),
+    semanticAliases: z.record(z.string(), z.array(z.string().min(1)).min(1)).default({}),
     elementAvailability: z.object({
       enabled: z.boolean().default(true),
       maxOpenAttempts: z.number().int().nonnegative().default(1),
       allowGlobalEscape: z.boolean().default(false),
       allowClickOutside: z.boolean().default(false),
-    }).default({ enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false }),
+      allowedContainers: z.array(ElementAvailabilityContainerSchema).default([]),
+    }).default({ enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false, allowedContainers: [] }),
     tools: z.object({
       enabled: z.boolean().default(false),
     }).default({ enabled: false }),
-  }).default({ maxActionsPerTask: 3, mode: 'HYBRID_GUARDED', maxAttemptsPerStep: 2, maxReplansPerScenario: 2, destructiveActionPolicy: 'BLOCK', semanticKeys: {}, elementAvailability: { enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false }, tools: { enabled: false } }),
+    observation: z.object({
+      includeScreenshot: z.boolean().default(false),
+    }).optional(),
+    planning: z.object({
+      executionPlanStrategy: z.enum(['llm_with_factory_fallback', 'factory_first']).default('llm_with_factory_fallback'),
+      allowEmergencyPlan: z.boolean().default(false).optional(),
+    }).optional(),
+  }).default({ maxActionsPerTask: 3, mode: 'HYBRID_GUARDED', maxAttemptsPerStep: 2, maxReplansPerScenario: 2, destructiveActionPolicy: 'BLOCK', semanticKeys: {}, semanticAliases: {}, elementAvailability: { enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false, allowedContainers: [] }, tools: { enabled: false } }),
   recovery: z.object({
     maxAttemptsPerTask: z.number().int().positive().default(3),
     maxFallbacksPerStep: z.number().int().positive().default(1),

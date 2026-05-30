@@ -3,6 +3,7 @@ import type { BrowserHarnessPort } from '../ports/browser-harness.port.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
 import type { AssertionResult, AttemptRecord, QaStep, QuiescenceResult } from '../../domain/models/run.model.js';
 import type { BoundExpectedAfterAction, QaAction } from '../../domain/schemas/action.schema.js';
+import type { DecisionProviderPort } from '../ports/decision-provider.port.js';
 import type { ExecutionPlan, ExecutionStep, PlanCondition, ReplanReason, RuntimeStateSnapshot } from '../../domain/schemas/execution-plan.schema.js';
 import type { ScreenObservation } from '../../domain/schemas/observation.schema.js';
 import { DomainError } from '../../domain/shared/result.js';
@@ -52,6 +53,7 @@ export class PlanExecutorService {
     @Inject(RecoveryPolicyService) private readonly recovery: RecoveryPolicyService,
     @Inject(TaskMemoryService) private readonly memory: TaskMemoryService,
     @Inject(PlanReplannerService) private readonly replanner: PlanReplannerService,
+    @Inject('DecisionProviderPort') private readonly decision: DecisionProviderPort,
   ) {}
 
   async execute(plan: ExecutionPlan, config: RunConfig): Promise<PlanExecutionResult> {
@@ -98,17 +100,22 @@ export class PlanExecutorService {
             before = available.observation;
             action = this.resolveAction(step, before);
           } else {
-          const message = error instanceof Error ? error.message : String(error);
-          const patched = await this.tryReplan({ result, config, currentPlan, step, before, reason: 'LOCATOR_NOT_FOUND', message, replans });
-          if (patched) {
-            currentPlan = patched;
-            result.finalPlan = currentPlan;
-            replans++;
-            patchedStep = true;
-            passed = true;
-            break;
-          }
-          throw error;
+            const message = error instanceof Error ? error.message : String(error);
+            const patched = await this.tryReplan({ result, config, currentPlan, step, before, reason: 'LOCATOR_NOT_FOUND', message, replans });
+            if (patched) {
+              currentPlan = patched;
+              result.finalPlan = currentPlan;
+              replans++;
+              patchedStep = true;
+              passed = true;
+              break;
+            }
+            // Fallback: ask LLM to resolve the concrete action from current observation
+            try {
+              action = await this.resolveViaLlm(step, before, config);
+            } catch {
+              throw error;
+            }
           }
         }
         const policy = this.actionPolicy.validate(action, config, result.attempts);
@@ -281,6 +288,19 @@ export class PlanExecutorService {
     return action;
   }
 
+  private async resolveViaLlm(step: ExecutionStep, obs: ScreenObservation, config: RunConfig): Promise<QaAction> {
+    const envelope = await this.decision.decide({
+      config,
+      observation: obs,
+      runData: {
+        stepDescription: step.description,
+        stepIntent: (step.action as { target?: { intent?: string } }).target?.intent ?? step.description,
+        stepActionType: (step.action as { type: string }).type,
+      },
+    });
+    return envelope.action;
+  }
+
   private boundCondition(condition: PlanCondition, obs: ScreenObservation): BoundExpectedAfterAction {
     const current = this.data.resolveObject(condition, 'assertion');
     if (current.type === 'field_value_contains') return { type: 'field_value_contains', target: this.target(obs, current.target), value: current.value };
@@ -296,7 +316,7 @@ export class PlanExecutorService {
   }
 
   private hasText(obs: ScreenObservation, text: string): boolean {
-    return [...obs.visibleTexts, ...obs.elements.flatMap((e) => [e.name, e.text ?? ''])].some((value) => value.toLowerCase().includes(text.toLowerCase()));
+    return [...obs.visibleTexts, ...obs.elements.flatMap((e) => [e.name, e.text ?? '', e.ariaLabel ?? '', e.title ?? '', e.alt ?? '', e.className ?? ''])].some((value) => value.toLowerCase().includes(text.toLowerCase()));
   }
 
   private async runtimeState(obs: ScreenObservation, conditions: PlanCondition[]): Promise<RuntimeStateSnapshot> {
@@ -314,10 +334,12 @@ export class PlanExecutorService {
     const text = [...obs.visibleTexts, ...obs.elements.flatMap((e) => [e.name, e.text ?? ''])].join(' | ');
     const loginRoute = /\/(login|signin|sign-in|auth)\b/i.test(obs.url);
     const loginFormText = /\b(entrar|login|senha|password|sign in|acessar)\b/i.test(text) && /\b(senha|password)\b/i.test(text);
-    const appSurface = /\b(caixa de entrada|inbox|escrever|arquivados|rascunhos|lixeira|configura[cç][õo]es|settings)\b/i.test(text);
+    const interactiveSurface = obs.elements.some((element) =>
+      element.inViewport && ['button', 'link', 'textbox', 'searchbox', 'combobox', 'menuitem'].includes(element.role),
+    );
     return {
-      auth: loginRoute || (loginFormText && !appSurface) ? 'anonymous' : 'authenticated',
-      menuOpen: /\b(sair|logout|sign out|tema|theme|configura[cç][õo]es|settings)\b/i.test(text),
+      auth: loginRoute || (loginFormText && !interactiveSurface) ? 'anonymous' : 'authenticated',
+      menuOpen: obs.elements.some((element) => element.inViewport && (element.expanded === true || element.role === 'menuitem')),
       appearance_mode: text.slice(0, 4000),
       visibleTextSignature: text.slice(0, 500),
     };
@@ -375,28 +397,13 @@ export class PlanExecutorService {
   }
 
   private elementAvailabilityPolicy(step: ExecutionStep, config: RunConfig): EnsureElementAvailablePolicy {
+    const elementAvailability = config.runtime.elementAvailability;
     return {
-      enabled: config.runtime.elementAvailability.enabled,
-      maxOpenAttempts: config.runtime.elementAvailability.maxOpenAttempts,
-      allowClickOutside: config.runtime.elementAvailability.allowClickOutside,
-      allowGlobalEscape: config.runtime.elementAvailability.allowGlobalEscape,
-      allowedContainers: [{
-        semanticKey: 'account_menu',
-        openAction: {
-          type: 'click',
-          target: {
-            strategy: 'semantic',
-            semanticKey: 'account_menu_trigger',
-            intent: 'open account or settings menu',
-            candidates: [
-              { strategy: 'role', role: 'button', name: 'Conta e opções' },
-              { strategy: 'role', role: 'button', name: 'Account' },
-              { strategy: 'text_any', texts: ['Conta', 'Opções', 'Account', 'Perfil', 'Profile', 'JN'] },
-            ],
-          },
-          reason: `open related container for ${step.id}`,
-        },
-      }],
+      enabled: elementAvailability.enabled,
+      maxOpenAttempts: elementAvailability.maxOpenAttempts,
+      allowClickOutside: elementAvailability.allowClickOutside,
+      allowGlobalEscape: elementAvailability.allowGlobalEscape,
+      allowedContainers: elementAvailability.allowedContainers,
     };
   }
 

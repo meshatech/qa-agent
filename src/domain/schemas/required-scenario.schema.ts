@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { ScenarioIntentSchema, type ScenarioIntent } from './scenario-intent.schema.js';
+import { ExpectedOutcomeSchema, type ExpectedOutcome } from './expected-outcome.schema.js';
 
 export const RequiredScenarioSchema = z
   .object({
@@ -10,6 +11,7 @@ export const RequiredScenarioSchema = z
     rationale: z.string().min(1),
     relatedFiles: z.array(z.string()),
     riskScore: z.number().min(0).max(1),
+    expectedOutcome: ExpectedOutcomeSchema.optional(),
   })
   .strict();
 
@@ -22,6 +24,7 @@ export function createRequiredScenario(input: {
   rationale: string;
   relatedFiles: string[];
   riskScore: number;
+  expectedOutcome?: ExpectedOutcome;
 }): RequiredScenario {
   return RequiredScenarioSchema.parse(input);
 }

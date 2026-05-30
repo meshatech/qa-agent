@@ -20,12 +20,43 @@ export const DECISION_SYSTEM_PROMPT = [
   'Allowed expected_after_action types: field_value_contains, element_visible, text_visible, url_contains, no_console_errors.',
   'Weak validation is invalid: after clicking an element, do not set expected_after_action to element_visible for the same target. Prove the actual state change instead.',
   'no_console_errors is not enough to complete functional tasks like logout, theme change, navigation, create/edit/delete, or opening menus. Use it only for tasks explicitly about console/errors.',
-  'For logout/sign-out tasks, expected_after_action must prove a non-authenticated state after the click: URL clearly containing /login, /signin, or /auth; or visible login screen text/form such as "Entrar", "Login", "E-mail", "Senha", or "Acessar". Never use no_console_errors for logout proof.',
+  'For logout/sign-out tasks, expected_after_action must prove a non-authenticated state after the click: URL clearly containing /login, /signin, or /auth; or visible login screen text/form. Never use no_console_errors for logout proof.',
   'For menu workflows, first click the menu trigger and expect a menu item/panel text to become visible; then use the next cycle to click the specific menu item.',
   'If the user asks to open a menu, theme, settings, or logout, expected_after_action must mention the resulting visible menu item/text or final state. Do not answer with no_console_errors.',
+  'When no element id matches the target you need (e.g. icon-only buttons, avatars, images without text), use clickAtCoordinates with x,y from the element\'s bounds. Every element in the observation has bounds: {x, y, width, height}. Use the center point: x + width/2, y + height/2. Set risk to "HIGH".',
   'JSON shape:',
   '{"schemaVersion":"action.v1","observationId":"<same>","thought_summary":"short 1-2 sentences","action":{...},"expected_after_action":{...},"fallback_action":{"type":"press","key":"Escape","reason":"close popup"},"confidence":0.0..1.0}',
 ].join('\n');
+
+export const CLASSIFY_OUTCOME_SYSTEM_PROMPT = [
+  'You are Agent QA Outcome Classifier.',
+  'Given a task title and expected result, translate it into the most specific ExpectedOutcome kind that describes the intended state change.',
+  'Return ONLY JSON. No markdown.',
+  'Single-task schema: {"kind":"AUTHENTICATION|DEAUTHENTICATION|NAVIGATION|APPEARANCE_CHANGE|DISCLOSURE|CONTENT_PRESENCE|DATA_ENTRY|NO_REGRESSION","target":"optional 1-3 word label likely to appear on the actual page button/link/field","description":"rationale in the same language as the input"}',
+  'Batch schema when input contains tasks[]: {"outcomes":[{"kind":"AUTHENTICATION|DEAUTHENTICATION|NAVIGATION|APPEARANCE_CHANGE|DISCLOSURE|CONTENT_PRESENCE|DATA_ENTRY|NO_REGRESSION","target":"optional 1-3 word label likely to appear on the actual page button/link/field","description":"rationale in the same language as the input"}]}. Return exactly one outcome per input task, in the same order.',
+  'Rules:',
+  '- AUTHENTICATION   = prove user is logged in (any wording: login, sign in, enter credentials).',
+  '- DEAUTHENTICATION = prove user is logged out (any wording: logout, sign out, end session, exit).',
+  '- NAVIGATION       = navigate to a route/screen/section.',
+  '- APPEARANCE_CHANGE= change visual theme, dark/light mode, color scheme.',
+  '- DISCLOSURE       = open a menu, panel, accordion, dropdown, or settings.',
+  '- CONTENT_PRESENCE = prove a specific content, text, or value is visible.',
+  '- DATA_ENTRY       = fill, type, or input data into a form field.',
+  '- NO_REGRESSION    = generic smoke check when none of the above apply or intent is unclear.',
+  '- target MUST be a short label (1-3 words) that a real user would click or see on the page. Never return a full sentence or description as target.',
+  '- For DISCLOSURE/DEAUTHENTICATION/APPEARANCE_CHANGE, include multiple likely labels separated by | (e.g. "Conta|Perfil|Avatar|Menu" or "Sair|Logout|Sign out"). The matcher will try all alternatives.',
+  '- Apply the same rules to every item in batch mode. Do not degrade batch results to generic navigation or full-sentence targets.',
+  '- If the expected state is logged out, anonymous, signed out, or back to a login/start screen after ending a session, classify as DEAUTHENTICATION, not NAVIGATION.',
+  '- If the expected state is a changed visual mode, theme, appearance, color scheme, dark mode, or light mode, classify as APPEARANCE_CHANGE and return actionable alternatives separated by |.',
+].join('\n');
+
+export function buildClassifyOutcomeUserMessage(title: string, expected: string): string {
+  return JSON.stringify({ task: { title, expected } });
+}
+
+export function buildClassifyOutcomesUserMessage(tasks: Array<{ id: string; title: string; expected: string }>): string {
+  return JSON.stringify({ tasks });
+}
 
 export const PLAN_SYSTEM_PROMPT = [
   'You are Agent QA Planner.',
@@ -36,7 +67,7 @@ export const PLAN_SYSTEM_PROMPT = [
   'Do not duplicate equivalent tasks. Put logout/sign-out as the final task when requested.',
   'If authPrecondition.alreadyHandled is true, DO NOT create login/email/password/submit-login tasks. Start from the authenticated area.',
   'Schema:',
-  '{"scenarios":[{"id":"scenario-001","title":"...","intent":"POSITIVE|NEGATIVE|EDGE","tasks":[{"id":"T001","title":"...","expected":"...","intent":"POSITIVE|NEGATIVE|EDGE","dependsOn":["T0..."]}]}]}',
+  '{"scenarios":[{"id":"scenario-001","title":"...","intent":"POSITIVE|NEGATIVE|EDGE","tasks":[{"id":"T001","title":"...","expected":"...","intent":"POSITIVE|NEGATIVE|EDGE","dependsOn":["T0..."],"expectedOutcome":{"kind":"AUTHENTICATION|DEAUTHENTICATION|NAVIGATION|APPEARANCE_CHANGE|DISCLOSURE|CONTENT_PRESENCE|DATA_ENTRY|NO_REGRESSION","target":"optional semantic key or route","description":"rationale"}}]}]}',
 ].join('\n');
 
 export const EXECUTION_PLAN_SYSTEM_PROMPT = [
@@ -76,11 +107,12 @@ export const EXECUTION_PLAN_SYSTEM_PROMPT = [
   'For logout/sign-out clicks, the postcondition must prove auth_state anonymous, a route_state matching /login, or login-screen text. Merely seeing "Sair" is only proof that the menu opened, not proof of logout.',
   'For logout in authenticated web apps, ALWAYS create two steps unless scenarioCatalog explicitly says logout is already visible: (1) open account/menu trigger and prove Sair/Logout visible, (2) click Sair/Logout menu item and prove auth_state anonymous or route_state /login.',
   'Do not create a single logout step with {"strategy":"role","role":"button","name":"Sair"} and empty preconditions. That is invalid because Sair is usually hidden inside a menu.',
+  'For logout/menu actions, target MUST use strategy "semantic" with candidates. Never use strategy "role" with a single hardcoded name for logout or menu items.',
   'For the first logout preparation step, do not put "logout", "Sair", or "sign out" in the step id/description/reason. Name it as account menu opening, e.g. id "T004-account-menu", description "Open account menu", reason "open account menu". Reserve logout/sign-out words for the final click step only.',
   'Allowed actions: click, fill, select, press, clickOutside, clickAtCoordinates, waitForStable, navigate, assertVisible, abortScenario.',
   'Use placeholders {{uniqueName:key:prefix}}, {{uniqueEmail:key}} only in action values and {{ref:key}} in postconditions/assertions.',
   'Before returning JSON, silently check: no el_*, no CSS, every step has scenarioId/taskId, no passive step expects changed, logout proves anonymous/login, theme proves changed.',
-  'Step shape example with required catalog ids: {"id":"T002-menu","scenarioId":"scenario-001","taskId":"T002","description":"Open account menu","preconditions":[],"action":{"type":"click","target":{"strategy":"role","role":"button","name":"Conta e opções"},"reason":"open account menu"},"postconditions":[{"type":"text_any_visible","texts":["Sair","Logout"]}],"assertions":[],"onFailure":"RECOVER"}',
+  'Step shape example with required catalog ids: {"id":"T002-menu","scenarioId":"scenario-001","taskId":"T002","description":"Open account menu","preconditions":[],"action":{"type":"click","target":{"strategy":"semantic","semanticKey":"menu_trigger","intent":"open account menu","candidates":[{"strategy":"role","role":"button","name":"Conta e opções"},{"strategy":"text_any","texts":["Conta","Account","Menu"]}]},"reason":"open account menu"},"postconditions":[{"type":"menu_state","expected":"open"}],"assertions":[],"onFailure":"RECOVER"}',
   'Full schema shape: {"schemaVersion":"execution-plan.v1","planId":"...","version":1,"goal":"...","mode":"HYBRID_GUARDED","runtime":{"maxAttemptsPerStep":2,"maxReplansPerScenario":2,"destructiveActionPolicy":"BLOCK"},"steps":[...],"assertions":[]}',
 ].join('\n');
 
@@ -103,11 +135,14 @@ export function buildDecisionUserMessage(observation: ScreenObservation, runData
     title: observation.title,
     pageState: observation.pageState,
     visibleTexts: observation.visibleTexts,
-    elements: observation.elements.map(({ locator: _l, axRef: _r, source: _s, ...e }) => {
+    elements: observation.elements.map(({ locator: _l, axRef: _r, source: _s, ariaLabel, title, alt, className, ...e }) => {
       void _l;
       void _r;
       void _s;
-      return e;
+      return {
+        ...e,
+        extra: { ariaLabel, title, alt, className },
+      };
     }),
     recentConsoleErrors: observation.consoleSignals.filter((c) => c.level === 'error').slice(-5),
     recentNetworkFailures: observation.networkSignals.filter((n) => n.failure || (n.status >= 400)).slice(-5),
@@ -135,6 +170,7 @@ export function buildExecutionPlanUserMessage(config: RunConfig, scenarios: QaSc
         expected: task.expected,
         dependsOn: task.dependsOn,
         intent: task.intent,
+        expectedOutcome: task.expectedOutcome,
       })),
     })),
     executionPlanTemplate: scenarios.flatMap((scenario) => scenario.tasks.map((task) => taskTemplateHint(scenario.id, task))),
@@ -149,6 +185,8 @@ export function buildExecutionPlanUserMessage(config: RunConfig, scenarios: QaSc
       'REJECTED if any step uses scenarioId/taskId not present in scenarioCatalog.',
       'REJECTED if waitForStable/assertVisible expects any runtime state changed.',
       'REJECTED if logout does not prove auth_state anonymous or route_state /login.',
+      'REJECTED if any AUTHENTICATION task uses text_visible or text_any_visible as postcondition; must use auth_state expected authenticated.',
+      'REJECTED if any postcondition copies the task title or acceptance criterion verbatim into text_visible/text_any_visible.',
     ],
     providerAgnosticRules: [
       'Every generated step must map to an existing scenarioCatalog taskId unless it is a deterministic substep for that same task.',
@@ -164,86 +202,78 @@ export function buildExecutionPlanUserMessage(config: RunConfig, scenarios: QaSc
 }
 
 function taskTemplateHint(scenarioId: string, task: QaScenario['tasks'][number]): Record<string, unknown> {
-  const text = `${task.title} ${task.expected}`.toLowerCase();
+  const kind = task.expectedOutcome?.kind;
   const base = {
     scenarioId,
     taskId: task.id,
     taskTitle: task.title,
     taskExpected: task.expected,
+    expectedOutcomeKind: kind ?? 'NO_REGRESSION',
     required: ['copy scenarioId exactly', 'copy taskId exactly', 'include preconditions array', 'include postconditions array', 'include assertions array', 'include onFailure'],
   };
-  if (/\b(logout|sair|sign out|encerrar sess[aã]o)\b/i.test(text)) {
-    return {
-      ...base,
-      recommendedShape: 'MUST use two steps by default: first open account/menu trigger and prove logout item visible; second click logout menu item and prove auth_state anonymous or route_state matches /login',
-      recommendedSteps: [{
-        idSuffix: 'account-menu',
-        description: 'Open account menu',
-        action: { type: 'click', target: { strategy: 'role', role: 'button', name: 'Conta e opções' }, reason: 'open account menu' },
-        postconditions: [{ type: 'text_any_visible', texts: ['Sair', 'Logout', 'Sign out'] }],
-      }, {
-        idSuffix: 'logout-click',
-        preconditions: [{ type: 'text_any_visible', texts: ['Sair', 'Logout', 'Sign out'] }],
-        action: {
+  switch (kind) {
+    case 'DEAUTHENTICATION':
+      return {
+        ...base,
+        recommendedShape: 'MUST use two steps by default: first open account/menu trigger and prove logout item visible; second click logout menu item and prove auth_state anonymous or route_state matches /login',
+        recommendedSteps: [{
+          idSuffix: 'account-menu',
+          description: 'Open account menu',
+          action: { type: 'click', target: { strategy: 'semantic', semanticKey: 'menu_trigger', intent: 'open account menu', candidates: [{ strategy: 'text_any', texts: [task.title] }] }, reason: 'open account menu' },
+          postconditions: [{ type: 'menu_state', expected: 'open' }],
+        }, {
+          idSuffix: 'logout-click',
+          preconditions: [{ type: 'menu_state', expected: 'open' }],
+          action: {
+            type: 'click',
+            target: {
+              strategy: 'semantic',
+              semanticKey: 'logout_action',
+              intent: 'sign out from the application',
+              candidates: [{ strategy: 'text_any', texts: [task.title] }],
+            },
+            reason: 'click logout menu item',
+          },
+          postconditions: [{ type: 'auth_state', expected: 'anonymous' }],
+        }],
+        forbidden: ['do not finish logout by only seeing menu item text', 'do not use no_console_errors as logout proof', 'do not use a single logout click step with empty preconditions'],
+      };
+    case 'APPEARANCE_CHANGE':
+      return {
+        ...base,
+        recommendedShape: 'click appearance/theme semantic locator with candidates, then postcondition ui_state appearance_mode expected changed',
+        recommendedAction: {
           type: 'click',
           target: {
             strategy: 'semantic',
-            semanticKey: 'logout_action',
-            intent: 'sign out from the application',
-            candidates: [
-              { strategy: 'role', role: 'menuitem', name: 'Sair' },
-              { strategy: 'role', role: 'button', name: 'Sair' },
-              { strategy: 'text_any', texts: ['Sair', 'Logout', 'Sign out', 'Encerrar sessão'] },
-            ],
+            semanticKey: 'appearance_toggle',
+            intent: 'toggle application appearance mode',
+            candidates: [{ strategy: 'text_any', texts: [task.title] }],
           },
-          reason: 'click logout menu item',
+          reason: 'toggle application appearance mode',
         },
-        postconditions: [{ type: 'auth_state', expected: 'anonymous' }],
-      }],
-      forbidden: ['do not finish logout by only seeing Sair', 'do not use no_console_errors as logout proof', 'do not use a single logout click step with empty preconditions'],
-    };
+        forbidden: ['do not use waitForStable as the action for a changed appearance state', 'do not expect changed without a click/select/press action'],
+      };
+    case 'DISCLOSURE':
+      return {
+        ...base,
+        recommendedShape: 'click menu/account/settings trigger, then postcondition menu_state open',
+        forbidden: ['do not use no_console_errors as menu proof'],
+      };
+    case 'AUTHENTICATION':
+      return {
+        ...base,
+        recommendedShape: 'if authPrecondition.alreadyHandled is true, waitForStable and prove authenticated UI with auth_state expected authenticated ONLY; never use text_visible or text_any_visible',
+        recommendedPostconditions: [{ type: 'auth_state', expected: 'authenticated' }],
+        forbidden: ['do not create login/email/password/submit steps when auth is already handled', 'do not expect changed after waitForStable', 'do not use text_visible or text_any_visible for authentication tasks', 'do not use abstract phrases like "Área autenticada" or "Authenticated area" as visible text'],
+      };
+    default:
+      return {
+        ...base,
+        recommendedShape: 'perform one concrete action and prove its result with a postcondition caused by that action',
+        forbidden: ['do not use no_console_errors as the only proof for a functional task'],
+      };
   }
-  if (/\b(tema|theme|apar[eê]ncia|appearance|modo visual|escuro|claro)\b/i.test(text)) {
-    return {
-      ...base,
-      recommendedShape: 'click appearance/theme semantic locator with candidates, then postcondition ui_state appearance_mode expected changed',
-      recommendedAction: {
-        type: 'click',
-        target: {
-          strategy: 'semantic',
-          semanticKey: 'appearance_toggle',
-          intent: 'toggle application appearance mode',
-          candidates: [
-            { strategy: 'text_any', texts: ['Tema escuro', 'Tema claro', 'Dark theme', 'Light theme', 'Escuro', 'Claro'] },
-            { strategy: 'role', role: 'menuitem', name: 'Tema escuro' },
-            { strategy: 'role', role: 'menuitem', name: 'Tema claro' },
-          ],
-        },
-        reason: 'toggle application appearance mode',
-      },
-      forbidden: ['do not use waitForStable as the action for a changed appearance state', 'do not expect changed without a click/select/press action'],
-    };
-  }
-  if (/\b(menu|conta|op[cç][oõ]es|settings|configura[cç][oõ]es)\b/i.test(text)) {
-    return {
-      ...base,
-      recommendedShape: 'click menu/account/settings trigger, then postcondition text_any_visible with expected menu items',
-      forbidden: ['do not use no_console_errors as menu proof'],
-    };
-  }
-  if (/\b(autenticad|authenticated|login)\b/i.test(text)) {
-    return {
-      ...base,
-      recommendedShape: 'if authPrecondition.alreadyHandled is true, waitForStable and prove authenticated UI with concrete labels using text_any_visible',
-      recommendedPostconditions: [{ type: 'text_any_visible', texts: ['Caixa de entrada', 'Inbox', 'Configurações', 'Settings'] }],
-      forbidden: ['do not create login/email/password/submit steps when auth is already handled', 'do not expect changed after waitForStable', 'do not use "Área autenticada" or "Authenticated area" as visible text'],
-    };
-  }
-  return {
-    ...base,
-    recommendedShape: 'perform one concrete action and prove its result with a postcondition caused by that action',
-    forbidden: ['do not use no_console_errors as the only proof for a functional task'],
-  };
 }
 
 export function buildReplanUserMessage(input: ReplanInput): string {

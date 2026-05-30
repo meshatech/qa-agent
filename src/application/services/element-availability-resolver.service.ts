@@ -67,11 +67,45 @@ export class ElementAvailabilityResolver {
   }
 
   private pickContainer(target: LocatorDescriptor, containers: SemanticContainerDescriptor[]): SemanticContainerDescriptor | undefined {
-    const text = JSON.stringify(target).toLowerCase();
-    if (/(sair|logout|sign out|tema|theme|escuro|claro|account|conta|perfil)/i.test(text)) {
-      return containers.find((container) => /account|conta|perfil|menu/i.test(container.semanticKey)) ?? containers[0];
+    const targetTexts = this.extractLocatorTexts(target).map((t) => t.toLowerCase());
+    const keywordMappings: { keywords: string[]; containerKeys: string[] }[] = [
+      { keywords: ['sair', 'logout', 'sign out', 'deslogar'], containerKeys: ['account_menu', 'user_menu', 'profile_menu'] },
+      { keywords: ['tema', 'theme', 'aparência', 'appearance'], containerKeys: ['settings_menu', 'theme_menu', 'appearance_menu'] },
+      { keywords: ['conta', 'account', 'perfil', 'profile'], containerKeys: ['account_menu', 'user_menu', 'profile_menu'] },
+      { keywords: ['menu', 'opções', 'options'], containerKeys: ['main_menu', 'options_menu'] },
+    ];
+    for (const mapping of keywordMappings) {
+      if (targetTexts.some((t) => mapping.keywords.some((k) => t.includes(k)))) {
+        const match = containers.find((c) => mapping.containerKeys.includes(c.semanticKey));
+        if (match) return match;
+      }
     }
     return containers[0];
+  }
+
+  private extractLocatorTexts(target: LocatorDescriptor): string[] {
+    const texts: string[] = [];
+    if ('texts' in target && Array.isArray(target.texts)) {
+      texts.push(...target.texts);
+    }
+    if ('text' in target && typeof target.text === 'string') {
+      texts.push(target.text);
+    }
+    if ('name' in target && typeof target.name === 'string') {
+      texts.push(target.name);
+    }
+    if ('semanticKey' in target && typeof target.semanticKey === 'string') {
+      texts.push(target.semanticKey);
+    }
+    if ('intent' in target && typeof target.intent === 'string') {
+      texts.push(target.intent);
+    }
+    if ('candidates' in target && Array.isArray(target.candidates)) {
+      for (const candidate of target.candidates) {
+        texts.push(...this.extractLocatorTexts(candidate));
+      }
+    }
+    return texts;
   }
 
   private resolvePlanAction(action: PlanAction, obs: ScreenObservation): QaAction | undefined {

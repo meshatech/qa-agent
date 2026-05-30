@@ -149,7 +149,8 @@ describe('qa.plan.build', () => {
       }) as never),
       async decide() { throw new Error('not used'); },
     };
-    const planner = new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService());
+    const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
+    const planner = new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver));
     const registry = new QaToolRegistry([PlanBuildTool]);
 
     await expect(registry.execute('qa.plan.build', { config, scenarios }, {

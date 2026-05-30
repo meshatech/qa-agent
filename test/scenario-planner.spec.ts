@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ScenarioPlannerService } from '../src/application/services/scenario-planner.service.js';
+import { ExpectedOutcomeResolverService } from '../src/application/services/expected-outcome-resolver.service.js';
 import { RunConfigSchema } from '../src/domain/schemas/config.schema.js';
 import type { DecisionProviderPort } from '../src/application/ports/decision-provider.port.js';
 
@@ -10,6 +11,18 @@ const config = RunConfigSchema.parse({
 });
 
 describe('ScenarioPlannerService', () => {
+  const resolver = {
+    async resolve(_cfg: unknown, task: { title: string }) {
+      const t = task.title.toLowerCase();
+      if (t.includes('login') || t.includes('logar') || t.includes('entrar') || t.includes('auth')) return { kind: 'AUTHENTICATION' as const, description: 'login' };
+      if (t.includes('logout') || t.includes('sair') || t.includes('sign out') || t.includes('deslogar')) return { kind: 'DEAUTHENTICATION' as const, description: 'logout' };
+      if (t.includes('tema') || t.includes('theme') || t.includes('apar')) return { kind: 'APPEARANCE_CHANGE' as const, description: 'theme' };
+      if (t.includes('menu') || t.includes('config') || t.includes('opções') || t.includes('conta')) return { kind: 'DISCLOSURE' as const, description: 'menu' };
+      if (t.includes('navegar') || t.includes('navigate') || t.includes('acessar') || t.includes('access')) return { kind: 'NAVIGATION' as const, description: 'navigate' };
+      return { kind: 'NO_REGRESSION' as const, description: 'safe' };
+    },
+  } as unknown as ExpectedOutcomeResolverService;
+
   it('uses provider plan when available', async () => {
     const provider: DecisionProviderPort = {
       async plan() {
@@ -19,7 +32,7 @@ describe('ScenarioPlannerService', () => {
         throw new Error('not used');
       },
     };
-    const scenarios = await new ScenarioPlannerService(provider).plan(config);
+    const scenarios = await new ScenarioPlannerService(provider, resolver).plan(config);
     expect(scenarios[0]?.tasks[0]?.title).toBe('from llm');
   });
 
@@ -32,7 +45,7 @@ describe('ScenarioPlannerService', () => {
         throw new Error('not used');
       },
     };
-    const scenarios = await new ScenarioPlannerService(provider).plan(config);
+    const scenarios = await new ScenarioPlannerService(provider, resolver).plan(config);
     expect(scenarios[0]?.tasks).toHaveLength(2);
   });
 
@@ -44,8 +57,8 @@ describe('ScenarioPlannerService', () => {
           title: 'S',
           status: 'PLANNED',
           tasks: [
-            { id: 'T001', title: 'Preencher email e senha de login', expected: 'Login enviado', status: 'PENDING' },
-            { id: 'T002', title: 'Abrir caixa de entrada', expected: 'Inbox visivel', status: 'PENDING', dependsOn: ['T001'] },
+            { id: 'T001', title: 'Preencher email e senha de login', expected: 'Login enviado', status: 'PENDING', expectedOutcome: { kind: 'AUTHENTICATION', description: 'login' } },
+            { id: 'T002', title: 'Abrir caixa de entrada', expected: 'Inbox visivel', status: 'PENDING', dependsOn: ['T001'], expectedOutcome: { kind: 'DISCLOSURE', description: 'menu' } },
           ],
         }];
       },
@@ -68,7 +81,7 @@ describe('ScenarioPlannerService', () => {
       },
     });
 
-    const scenarios = await new ScenarioPlannerService(provider).plan(authConfig);
+    const scenarios = await new ScenarioPlannerService(provider, resolver).plan(authConfig);
 
     expect(scenarios[0]?.tasks.map((t) => t.title)).toEqual(['Abrir caixa de entrada']);
     expect(scenarios[0]?.tasks[0]?.dependsOn).toBeUndefined();
@@ -83,8 +96,8 @@ describe('ScenarioPlannerService', () => {
             title: 'Auth',
             status: 'PLANNED',
             tasks: [
-              { id: 'T001', title: 'Verificar área autenticada', expected: 'Área visível', status: 'PENDING' },
-              { id: 'T002', title: 'Deslogar', expected: 'Login visível', status: 'PENDING' },
+              { id: 'T001', title: 'Verificar área autenticada', expected: 'Área visível', status: 'PENDING', expectedOutcome: { kind: 'AUTHENTICATION', description: 'auth' } },
+              { id: 'T002', title: 'Deslogar', expected: 'Login visível', status: 'PENDING', expectedOutcome: { kind: 'DEAUTHENTICATION', description: 'logout' } },
             ],
           },
           {
@@ -92,7 +105,7 @@ describe('ScenarioPlannerService', () => {
             title: 'Depois',
             status: 'PLANNED',
             tasks: [
-              { id: 'T003', title: 'Verificar telas acessadas', expected: 'Sem 5xx', status: 'PENDING' },
+              { id: 'T003', title: 'Verificar telas acessadas', expected: 'Sem 5xx', status: 'PENDING', expectedOutcome: { kind: 'CONTENT_PRESENCE', description: 'screens ok' } },
             ],
           },
         ];
@@ -116,16 +129,15 @@ describe('ScenarioPlannerService', () => {
       },
     });
 
-    const scenarios = await new ScenarioPlannerService(provider).plan(authConfig);
+    const scenarios = await new ScenarioPlannerService(provider, resolver).plan(authConfig);
 
     expect(scenarios).toHaveLength(1);
     expect(scenarios[0]?.tasks.map((t) => t.title)).toEqual([
-      'Verificar área autenticada',
       'Verificar telas acessadas',
       'Deslogar',
     ]);
-    expect(scenarios[0]?.tasks.map((t) => t.id)).toEqual(['T001', 'T002', 'T003']);
-    expect(scenarios[0]?.tasks[2]?.dependsOn).toEqual(['T002']);
+    expect(scenarios[0]?.tasks.map((t) => t.id)).toEqual(['T001', 'T002']);
+    expect(scenarios[0]?.tasks[1]?.dependsOn).toEqual(['T001']);
   });
 
   it('keeps fallback smoke plan compact by removing global safety checks from task chain', async () => {
@@ -153,15 +165,17 @@ describe('ScenarioPlannerService', () => {
       },
     });
 
-    const scenarios = await new ScenarioPlannerService(provider).plan(cfg);
+    const scenarios = await new ScenarioPlannerService(provider, resolver).plan(cfg);
 
     expect(scenarios[0]?.tasks.map((t) => t.title)).toEqual([
       'Uma área autenticada fica visível',
       'O tema visual da aplicação é alterado sem erro crítico',
+      'Não há erro crítico de console originado pelo domínio da aplicação',
+      'Nenhuma ação destrutiva ou envio real é executado',
     ]);
   });
 
-  it('filters global safety tasks returned by provider in authenticated plans', async () => {
+  it('keeps functional tasks and logout in authenticated plans, removes only login tasks', async () => {
     const provider: DecisionProviderPort = {
       async plan() {
         return [{
@@ -169,9 +183,9 @@ describe('ScenarioPlannerService', () => {
           title: 'S',
           status: 'PLANNED',
           tasks: [
-            { id: 'T001', title: 'Verificar área autenticada', expected: 'Área autenticada visível', status: 'PENDING' },
-            { id: 'T002', title: 'Verificar não execução de ações destrutivas', expected: 'Nenhuma ação destrutiva executada', status: 'PENDING' },
-            { id: 'T003', title: 'Verificar logout', expected: 'Logout retorna para login', status: 'PENDING' },
+            { id: 'T001', title: 'Verificar área autenticada', expected: 'Área autenticada visível', status: 'PENDING', expectedOutcome: { kind: 'AUTHENTICATION', description: 'auth' } },
+            { id: 'T002', title: 'Verificar não execução de ações destrutivas', expected: 'Nenhuma ação destrutiva executada', status: 'PENDING', expectedOutcome: { kind: 'NO_REGRESSION', description: 'safety' } },
+            { id: 'T003', title: 'Verificar logout', expected: 'Logout retorna para login', status: 'PENDING', expectedOutcome: { kind: 'DEAUTHENTICATION', description: 'logout' } },
           ],
         }];
       },
@@ -194,9 +208,12 @@ describe('ScenarioPlannerService', () => {
       },
     });
 
-    const scenarios = await new ScenarioPlannerService(provider).plan(cfg);
+    const scenarios = await new ScenarioPlannerService(provider, resolver).plan(cfg);
 
-    expect(scenarios[0]?.tasks.map((t) => t.title)).toEqual(['Verificar área autenticada', 'Verificar logout']);
+    expect(scenarios[0]?.tasks.map((t) => t.title)).toEqual([
+      'Verificar não execução de ações destrutivas',
+      'Verificar logout',
+    ]);
   });
 
   it('dedupes verbose provider plans, removes low-value steps, and keeps logout last', async () => {
@@ -207,11 +224,11 @@ describe('ScenarioPlannerService', () => {
           title: 'S',
           status: 'PLANNED',
           tasks: [
-            { id: 'A', title: 'Clicar botão', expected: 'Avançar', status: 'PENDING' },
-            { id: 'B', title: 'Verificar área autenticada', expected: 'Área autenticada visível', status: 'PENDING' },
-            { id: 'C', title: 'Verificar área autenticada', expected: 'Área autenticada visível', status: 'PENDING' },
-            { id: 'D', title: 'Deslogar', expected: 'Tela de login visível', status: 'PENDING' },
-            { id: 'E', title: 'Abrir configurações', expected: 'Configurações visíveis', status: 'PENDING' },
+            { id: 'A', title: 'Clicar botão', expected: 'Avançar', status: 'PENDING', expectedOutcome: { kind: 'DISCLOSURE', description: 'click' } },
+            { id: 'B', title: 'Verificar área autenticada', expected: 'Área autenticada visível', status: 'PENDING', expectedOutcome: { kind: 'AUTHENTICATION', description: 'auth' } },
+            { id: 'C', title: 'Verificar área autenticada', expected: 'Área autenticada visível', status: 'PENDING', expectedOutcome: { kind: 'AUTHENTICATION', description: 'auth' } },
+            { id: 'D', title: 'Deslogar', expected: 'Tela de login visível', status: 'PENDING', expectedOutcome: { kind: 'DEAUTHENTICATION', description: 'logout' } },
+            { id: 'E', title: 'Abrir configurações', expected: 'Configurações visíveis', status: 'PENDING', expectedOutcome: { kind: 'DISCLOSURE', description: 'menu' } },
           ],
         }];
       },
@@ -220,7 +237,7 @@ describe('ScenarioPlannerService', () => {
       },
     };
 
-    const scenarios = await new ScenarioPlannerService(provider).plan(RunConfigSchema.parse({
+    const scenarios = await new ScenarioPlannerService(provider, resolver).plan(RunConfigSchema.parse({
       baseUrl: 'http://127.0.0.1',
       appDomains: ['127.0.0.1'],
       demand: { id: 'D', title: 'Smoke', description: 'Smoke' },
@@ -236,7 +253,7 @@ describe('ScenarioPlannerService', () => {
     }));
 
     expect(scenarios[0]?.tasks.map((t) => t.title)).toEqual([
-      'Verificar área autenticada',
+      'Clicar botão',
       'Abrir configurações',
       'Deslogar',
     ]);
@@ -251,8 +268,8 @@ describe('ScenarioPlannerService', () => {
           title: 'S',
           status: 'PLANNED',
           tasks: [
-            { id: 'T001', title: 'Alterar tema visual', expected: 'Tema alterado', status: 'PENDING' },
-            { id: 'T002', title: 'Verificar logout', expected: 'Logout feito', status: 'PENDING' },
+            { id: 'T001', title: 'Alterar tema visual', expected: 'Tema alterado', status: 'PENDING', expectedOutcome: { kind: 'APPEARANCE_CHANGE', description: 'theme' } },
+            { id: 'T002', title: 'Verificar logout', expected: 'Logout feito', status: 'PENDING', expectedOutcome: { kind: 'DEAUTHENTICATION', description: 'logout' } },
           ],
         }];
       },
@@ -261,10 +278,10 @@ describe('ScenarioPlannerService', () => {
       },
     };
 
-    const scenarios = await new ScenarioPlannerService(provider).plan(config);
+    const scenarios = await new ScenarioPlannerService(provider, resolver).plan(config);
 
-    expect(scenarios[0]?.tasks[0]?.expected).toContain('opção/estado visual');
-    expect(scenarios[0]?.tasks[1]?.expected).toContain('tela de login');
+    expect(scenarios[0]?.tasks[0]?.expected).toContain('appearance state');
+    expect(scenarios[0]?.tasks[1]?.expected).toContain('deauthentication state');
   });
 
   it('topologically sorts tasks when provider returns inverted dependency order', async () => {
@@ -285,7 +302,7 @@ describe('ScenarioPlannerService', () => {
       },
     };
 
-    const scenarios = await new ScenarioPlannerService(provider).plan(config);
+    const scenarios = await new ScenarioPlannerService(provider, resolver).plan(config);
 
     expect(scenarios[0]?.tasks.map((t) => t.id)).toEqual(['T001', 'T002']);
     expect(scenarios[0]?.tasks[1]?.dependsOn).toEqual(['T001']);
@@ -304,7 +321,7 @@ describe('ScenarioPlannerService', () => {
       },
     };
 
-    const scenarios = await new ScenarioPlannerService(provider).plan(config);
+    const scenarios = await new ScenarioPlannerService(provider, resolver).plan(config);
 
     expect(scenarios).toHaveLength(2);
     expect(scenarios[0]?.id).toBe('s1');

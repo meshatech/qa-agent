@@ -2,14 +2,19 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { DecisionProviderPort } from '../ports/decision-provider.port.js';
 import type { QaScenario, QaTask, ScenarioIntent } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
+import type { ExpectedOutcome } from '../../domain/schemas/expected-outcome.schema.js';
+import { ExpectedOutcomeResolverService } from './expected-outcome-resolver.service.js';
 
 @Injectable()
 export class ScenarioPlannerService {
-  constructor(@Inject('DecisionProviderPort') private readonly decision: DecisionProviderPort) {}
+  constructor(
+    @Inject('DecisionProviderPort') private readonly decision: DecisionProviderPort,
+    @Inject(ExpectedOutcomeResolverService) private readonly outcomeResolver: ExpectedOutcomeResolverService,
+  ) {}
 
   async plan(config: RunConfig): Promise<QaScenario[]> {
     const scenarios = await this.buildScenarios(config);
-    const normalized = this.normalizeScenarioTasks(scenarios, config);
+    const normalized = await this.normalizeScenarioTasks(scenarios, config);
     const withAuth = this.applyAuthPolicy(normalized, config);
     return this.enforcePlanPolicy(withAuth, config);
   }
@@ -25,22 +30,40 @@ export class ScenarioPlannerService {
       scenarios = undefined;
     }
     if (!scenarios?.length) {
-      scenarios = this.fallback(config);
+      scenarios = await this.fallback(config);
     }
     return scenarios;
   }
 
   /**
-   * Canonicalizes each task, topologically sorts dependencies, then applies auth awareness.
+   * Canonicalizes each task, resolves expectedOutcome when missing,
+   * topologically sorts dependencies, then applies auth awareness.
    */
-  private normalizeScenarioTasks(scenarios: QaScenario[], config: RunConfig): QaScenario[] {
-    return scenarios.map((scenario) => ({
+  private async normalizeScenarioTasks(scenarios: QaScenario[], config: RunConfig): Promise<QaScenario[]> {
+    const resolved = await Promise.all(
+      scenarios.map(async (scenario) => {
+        const canonicalTasks = scenario.tasks.map((task) => this.canonicalTask(task));
+        const outcomes = await this.resolveOutcomes(config, canonicalTasks);
+        return {
+          ...scenario,
+          tasks: canonicalTasks.map((task, index) => ({
+            ...task,
+            expectedOutcome: task.expectedOutcome ?? outcomes[index],
+          })),
+        };
+      }),
+    );
+    return resolved.map((scenario) => ({
       ...scenario,
-      tasks: this.authAwareTasks(
-        this.topoSort(scenario.tasks.map((task) => this.canonicalTask(task))),
-        config,
-      ),
+      tasks: this.authAwareTasks(this.topoSort(scenario.tasks), config),
     }));
+  }
+
+  private async resolveOutcomes(config: RunConfig, tasks: QaTask[]): Promise<ExpectedOutcome[]> {
+    if (typeof this.outcomeResolver.resolveMany === 'function') {
+      return this.outcomeResolver.resolveMany(config, tasks);
+    }
+    return Promise.all(tasks.map((task) => this.outcomeResolver.resolve(config, task)));
   }
 
   /**
@@ -78,16 +101,20 @@ export class ScenarioPlannerService {
     return result;
   }
 
-  private fallback(config: RunConfig): QaScenario[] {
+  private async fallback(config: RunConfig): Promise<QaScenario[]> {
     const lines = this.compactCriteria(config);
     const items = lines.length ? lines : [config.demand.description];
-    const tasks: QaTask[] = items.map((line, index) => ({
-      id: `T${String(index + 1).padStart(3, '0')}`,
-      title: line,
-      expected: line,
-      status: 'PENDING',
-      dependsOn: index === 0 ? undefined : [`T${String(index).padStart(3, '0')}`],
-      intent: this.detectIntent(line),
+    const tasks: QaTask[] = await Promise.all(items.map(async (line, index) => {
+      const t: QaTask = {
+        id: `T${String(index + 1).padStart(3, '0')}`,
+        title: line,
+        expected: line,
+        status: 'PENDING',
+        dependsOn: index === 0 ? undefined : [`T${String(index).padStart(3, '0')}`],
+        intent: this.detectIntent(line),
+      };
+      t.expectedOutcome = await this.outcomeResolver.resolve(config, t);
+      return t;
     }));
     return [{
       id: 'scenario-001',
@@ -101,18 +128,18 @@ export class ScenarioPlannerService {
   private compactCriteria(config: RunConfig): string[] {
     const criteria = config.demand.acceptanceCriteria ?? config.demand.description.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
     if (!criteria.length) return [config.demand.description];
-    return criteria.filter((line) => !this.isGlobalSafetyText(line)).slice(0, 4);
+    return criteria.slice(0, 4);
   }
 
   private authAwareTasks(tasks: QaTask[], config: RunConfig): QaTask[] {
     if (config.auth.kind === 'none') return tasks;
-    const kept = tasks.filter((task) => !this.isLoginTask(task) && !this.isGlobalSafetyTask(task));
+    const kept = tasks.filter((task) => !this.isLoginTask(task));
     if (kept.length) return this.relinkDependencies(kept);
     return [this.fallbackAuthTask(config)];
   }
 
   private authenticatedPlan(scenarios: QaScenario[], config: RunConfig): QaScenario[] {
-    const tasks = scenarios.flatMap((scenario) => scenario.tasks).filter((task) => !this.isLoginTask(task) && !this.isGlobalSafetyTask(task));
+    const tasks = scenarios.flatMap((scenario) => scenario.tasks).filter((task) => !this.isLoginTask(task));
     const logout = tasks.find((task) => this.isLogoutTask(task));
     const beforeLogout = tasks.filter((task) => !this.isLogoutTask(task));
     const ordered = logout ? [...beforeLogout, logout] : beforeLogout;
@@ -139,18 +166,27 @@ export class ScenarioPlannerService {
   }
 
   private canonicalTask(task: QaTask): QaTask {
-    const text = `${task.title} ${task.expected}`.toLowerCase();
-    if (this.isLogoutTask(task)) return { ...task, expected: 'Logout retorna para tela de login ou estado não autenticado visível' };
-    if (/\b(tema|theme|apar[eê]ncia|appearance|modo escuro|dark mode|light mode)\b/i.test(text)) {
-      return { ...task, expected: 'Tema visual alterna e a opção/estado visual alterado fica visível' };
-    }
-    if (/\b(menu|conta|opções|opcoes|settings|configurações|configuracoes)\b/i.test(text)) {
-      return { ...task, expected: 'Menu ou painel solicitado fica visível com itens acionáveis' };
-    }
-    if (/(área autenticada|area autenticada|authenticated area)/i.test(text)) {
-      return { ...task, expected: 'Área autenticada está visível e não está na tela de login' };
+    const kind = task.expectedOutcome?.kind;
+    if (kind) {
+      const normalized = this.expectedTextForOutcome(kind);
+      if (normalized) return { ...task, expected: normalized };
     }
     return task;
+  }
+
+  private expectedTextForOutcome(kind: ExpectedOutcome['kind']): string | undefined {
+    switch (kind) {
+      case 'DEAUTHENTICATION':
+        return 'Expected deauthentication state is visible';
+      case 'APPEARANCE_CHANGE':
+        return 'Expected appearance state changes visibly';
+      case 'DISCLOSURE':
+        return 'Expected disclosure surface is visible';
+      case 'AUTHENTICATION':
+        return 'Expected authenticated state is visible';
+      default:
+        return undefined;
+    }
   }
 
   private fallbackAuthTask(config: RunConfig): QaTask {
@@ -165,29 +201,21 @@ export class ScenarioPlannerService {
     };
   }
 
-  private isLoginTask(task: QaTask): boolean {
-    if (this.isLogoutTask(task)) return false;
-    const text = `${task.title} ${task.expected}`.toLowerCase();
-    if (/(área autenticada|area autenticada|authenticated area|não está na tela de login|nao esta na tela de login)/i.test(text)) return false;
-    return /\b(login|logar|entrar|senha|password|e-?mail|email|submit|credenciais?)\b/i.test(text);
+  private isLogoutTask(task: QaTask): boolean {
+    return task.expectedOutcome?.kind === 'DEAUTHENTICATION';
   }
 
-  private isLogoutTask(task: QaTask): boolean {
-    const text = `${task.title} ${task.expected}`.toLowerCase();
-    return /\b(logout|deslogar|sair|encerrar sessão|sign out)\b/i.test(text);
+  private isLoginTask(task: QaTask): boolean {
+    if (this.isLogoutTask(task)) return false;
+    return task.expectedOutcome?.kind === 'AUTHENTICATION';
   }
 
   private isGlobalSafetyTask(task: QaTask): boolean {
-    return this.isGlobalSafetyText(`${task.title} ${task.expected}`);
+    return task.expectedOutcome?.kind === 'NO_REGRESSION';
   }
 
-  private isGlobalSafetyText(text: string): boolean {
-    return /Nenhuma ação destrutiva|não execução de ações destrutivas|sem erro HTTP 5xx|erro crítico de console|falhas de rede|envio real/i.test(text);
-  }
-
-  private isLowValueTask(task: QaTask): boolean {
-    const text = `${task.title} ${task.expected}`.toLowerCase();
-    return /^(clicar|click|avançar|advance|interagir|verificar tela|validar tela)\b/.test(text.trim());
+  private isLowValueTask(_task: QaTask): boolean {
+    return false;
   }
 
   private dedupe(tasks: QaTask[]): QaTask[] {
@@ -214,10 +242,7 @@ export class ScenarioPlannerService {
     return tasks.map((task) => ({ ...task, dependsOn: task.dependsOn?.filter((id) => ids.has(id)) }));
   }
 
-  private detectIntent(line: string): ScenarioIntent {
-    const lower = line.toLowerCase();
-    if (/(invalid|inválid|erro|fail|negativ)/.test(lower)) return 'NEGATIVE';
-    if (/(borda|edge|limit|máximo|maxim)/.test(lower)) return 'EDGE';
+  private detectIntent(_line: string): ScenarioIntent {
     return 'POSITIVE';
   }
 }

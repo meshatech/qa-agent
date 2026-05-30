@@ -1,7 +1,8 @@
 import type { QaActionEnvelope } from '../../domain/schemas/action.schema.js';
 import type { ScreenObservation } from '../../domain/schemas/observation.schema.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
-import type { QaScenario } from '../../domain/models/run.model.js';
+import type { QaScenario, QaTask } from '../../domain/models/run.model.js';
+import type { ExpectedOutcome } from '../../domain/schemas/expected-outcome.schema.js';
 import type { ExecutionPlan, ExecutionStep, PlanPatch, ReplanReason } from '../../domain/schemas/execution-plan.schema.js';
 
 export interface DecisionInput {
@@ -23,6 +24,7 @@ export interface ReplanInput {
 
 export interface LlmCallBreakdown {
   plan: number;
+  classifyOutcome: number;
   buildPlan: number;
   replan: number;
   decide: number;
@@ -42,4 +44,6 @@ export interface DecisionProviderPort {
   replan?(input: ReplanInput): Promise<PlanPatch>;
   decide(input: DecisionInput): Promise<QaActionEnvelope>;
   stats?(): LlmStats;
+  classifyOutcome?(config: RunConfig, task: QaTask): Promise<ExpectedOutcome>;
+  classifyOutcomes?(config: RunConfig, tasks: QaTask[]): Promise<ExpectedOutcome[]>;
 }

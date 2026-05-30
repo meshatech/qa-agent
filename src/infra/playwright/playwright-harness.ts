@@ -266,11 +266,13 @@ export class PlaywrightHarness implements BrowserHarnessPort {
     const text = [...observation.visibleTexts, ...observation.elements.flatMap((e) => [e.name, e.text ?? '', String(e.checked ?? ''), String(e.expanded ?? '')])].join(' | ');
     const loginRoute = /\/(login|signin|sign-in|auth)\b/i.test(observation.url);
     const loginFormText = /\b(entrar|login|senha|password|sign in|acessar)\b/i.test(text) && /\b(senha|password)\b/i.test(text);
-    const appSurface = /\b(caixa de entrada|inbox|escrever|arquivados|rascunhos|lixeira|configura[cç][õo]es|settings)\b/i.test(text);
+    const interactiveSurface = observation.elements.some((element) =>
+      element.inViewport && ['button', 'link', 'textbox', 'searchbox', 'combobox', 'menuitem'].includes(element.role),
+    );
     return {
       url: observation.url,
-      auth: loginRoute || (loginFormText && !appSurface) ? 'anonymous' : 'authenticated',
-      menuOpen: /\b(sair|logout|sign out|tema|theme|configura[cç][õo]es|settings)\b/i.test(text),
+      auth: loginRoute || (loginFormText && !interactiveSurface) ? 'anonymous' : 'authenticated',
+      menuOpen: observation.elements.some((element) => element.inViewport && (element.expanded === true || element.role === 'menuitem')),
       appearance_mode: JSON.stringify(domState),
       visibleTextSignature: text.slice(0, 800),
     };
@@ -332,12 +334,12 @@ export class PlaywrightHarness implements BrowserHarnessPort {
   private async stableObservation(page: Page): Promise<ScreenObservation> {
     const config = this.config;
     if (config) await this.quiescence.wait(page, config.timeouts.quiescenceMs).catch(() => undefined);
-    let obs = await this.observation.observe(page, this.signals);
+    let obs = await this.observation.observe(page, this.signals, { includeScreenshot: this.config?.runtime.observation?.includeScreenshot ?? false });
     const maxRetries = config ? 2 : 0;
     for (let i = 0; i < maxRetries && obs.pageState.isLoading; i++) {
       await page.waitForTimeout(Math.min(1000, Math.floor(config!.timeouts.quiescenceMs / 2))).catch(() => undefined);
       await this.quiescence.wait(page, config!.timeouts.quiescenceMs).catch(() => undefined);
-      obs = await this.observation.observe(page, this.signals);
+      obs = await this.observation.observe(page, this.signals, { includeScreenshot: this.config?.runtime.observation?.includeScreenshot ?? false });
     }
     return obs;
   }

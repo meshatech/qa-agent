@@ -1,9 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { access, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { access, appendFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { realpath as realpathCallback } from 'node:fs';
 import { promisify } from 'node:util';
-import { dirname, join, resolve } from 'node:path';
-import type { RunRepositoryPort } from '../../application/ports/run-repository.port.js';
+import { dirname, join, resolve, sep } from 'node:path';
+import type { RunRepositoryPort, RunHistoryEntry } from '../../application/ports/run-repository.port.js';
 import type { QaRunResult } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
 import { RunDirectoryManager } from './run-directory.manager.js';
@@ -77,10 +77,33 @@ export class FileRunRepository implements RunRepositoryPort {
     }
   }
 
+  async appendRunHistory(runDir: string, entry: RunHistoryEntry): Promise<void> {
+    const target = await this.resolveInsideRunDir(runDir, 'run-history.jsonl');
+    await mkdir(dirname(target), { recursive: true }).catch(() => undefined);
+    const line = JSON.stringify(entry);
+    await appendFile(target, `${line}\n`);
+  }
+
+  async deleteFile(runDir: string, name: string): Promise<void> {
+    try {
+      const target = await this.resolveInsideRunDir(runDir, name);
+      await rm(target);
+    } catch {
+      // ignore if file does not exist
+    }
+  }
+
+  async renameFile(runDir: string, oldName: string, newName: string): Promise<void> {
+    const oldPath = await this.resolveInsideRunDir(runDir, oldName);
+    const newPath = await this.resolveInsideRunDir(runDir, newName);
+    await rename(oldPath, newPath);
+  }
+
   private async resolveInsideRunDir(runDir: string, relativePath: string): Promise<string> {
     const resolved = await realpathNative(resolve(runDir, relativePath));
     const normalizedRunDir = await realpathNative(resolve(runDir));
-    const prefix = normalizedRunDir.endsWith('/') ? normalizedRunDir : `${normalizedRunDir}/`;
+    if (resolved === normalizedRunDir) return resolved;
+    const prefix = normalizedRunDir.endsWith(sep) ? normalizedRunDir : `${normalizedRunDir}${sep}`;
     if (!resolved.startsWith(prefix)) {
       throw new Error(`Path traversal blocked: ${relativePath}`);
     }

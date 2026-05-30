@@ -24,6 +24,9 @@ function makeRepo(): RunRepositoryPort {
     readJson: vi.fn(),
     exists: vi.fn(),
     listFiles: vi.fn(),
+    appendRunHistory: vi.fn(),
+    deleteFile: vi.fn(),
+    renameFile: vi.fn(),
   };
 }
 

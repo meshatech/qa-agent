@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { Logger } from '@nestjs/common';
 import { ExecutionPlanPlannerService } from '../src/application/services/execution-plan-planner.service.js';
 import { ExecutionPlanFactoryService } from '../src/application/services/execution-plan-factory.service.js';
 import { RunConfigSchema } from '../src/domain/schemas/config.schema.js';
@@ -44,6 +45,74 @@ describe('ExecutionPlanPlannerService', () => {
             description: 'Open menu',
             preconditions: [],
             action: { type: 'click', target: { strategy: 'role', role: 'button', name: 'Conta' }, reason: 'open account menu' },
+            postconditions: [{ type: 'ui_state', semanticKey: 'account_menu', expected: 'exists', source: 'dom' }],
+            assertions: [],
+            onFailure: 'RECOVER',
+          }],
+          assertions: [],
+        };
+      },
+      async decide() { throw new Error('not used'); },
+    };
+
+    const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, scenarios);
+
+    expect(result.source).toBe('llm');
+    expect(result.plan?.planId).toBe('llm-plan');
+  });
+
+  it('falls back when a click step has no postcondition at all', async () => {
+    const provider: DecisionProviderPort = {
+      async buildPlan() {
+        return {
+          schemaVersion: 'execution-plan.v1',
+          planId: 'unsafe-click-plan',
+          version: 1,
+          goal: 'Smoke',
+          mode: 'HYBRID_GUARDED',
+          runtime: { maxAttemptsPerStep: 1, maxReplansPerScenario: 1, destructiveActionPolicy: 'BLOCK' },
+          steps: [{
+            id: 'S001',
+            scenarioId: 'scenario-001',
+            taskId: 'T001',
+            description: 'Open menu',
+            preconditions: [],
+            action: { type: 'click', target: { strategy: 'role', role: 'button', name: 'Conta' }, reason: 'open account menu' },
+            postconditions: [{ type: 'route_state', expected: 'matches', expectedUrlPattern: 'https://app.local' }],
+            assertions: [],
+            onFailure: 'RECOVER',
+          }],
+          assertions: [],
+        };
+      },
+      async decide() { throw new Error('not used'); },
+    };
+
+    const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, scenarios);
+
+    expect(result.source).toBe('factory');
+    expect(result.fallbackReason).toContain('has no state-changing postcondition');
+  });
+
+  it('accepts click with text_visible postcondition as verified', async () => {
+    const provider: DecisionProviderPort = {
+      async buildPlan() {
+        return {
+          schemaVersion: 'execution-plan.v1',
+          planId: 'menu-click-plan',
+          version: 1,
+          goal: 'Smoke',
+          mode: 'HYBRID_GUARDED',
+          runtime: { maxAttemptsPerStep: 1, maxReplansPerScenario: 1, destructiveActionPolicy: 'BLOCK' },
+          steps: [{
+            id: 'S001',
+            scenarioId: 'scenario-001',
+            taskId: 'T001',
+            description: 'Open menu',
+            preconditions: [],
+            action: { type: 'click', target: { strategy: 'role', role: 'button', name: 'Conta' }, reason: 'open account menu' },
             postconditions: [{ type: 'text_visible', text: 'Sair' }],
             assertions: [],
             onFailure: 'RECOVER',
@@ -54,10 +123,11 @@ describe('ExecutionPlanPlannerService', () => {
       async decide() { throw new Error('not used'); },
     };
 
-    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService()).build(config, scenarios);
+    const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, scenarios);
 
     expect(result.source).toBe('llm');
-    expect(result.plan?.planId).toBe('llm-plan');
+    expect(result.plan?.planId).toBe('menu-click-plan');
   });
 
   it('falls back to factory when LLM persists el_*', async () => {
@@ -72,7 +142,8 @@ describe('ExecutionPlanPlannerService', () => {
       async decide() { throw new Error('not used'); },
     };
 
-    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService()).build(config, scenarios);
+    const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, scenarios);
 
     expect(result.source).toBe('factory');
     expect(result.fallbackReason).toContain('targetElementId');
@@ -91,9 +162,11 @@ describe('ExecutionPlanPlannerService', () => {
           runtime: { maxAttemptsPerStep: 1, maxReplansPerScenario: 1, destructiveActionPolicy: 'BLOCK' },
           steps: [{
             id: 'S001',
+            scenarioId: 'scenario-001',
+            taskId: 'T001',
             description: 'Fill login form',
             preconditions: [],
-            action: { type: 'fill', target: { strategy: 'label', text: 'E-mail' }, value: 'qa@example.com', reason: 'fill login email' },
+            action: { type: 'navigate', to: 'https://app.local/login', reason: 'go to login page' },
             postconditions: [{ type: 'text_visible', text: 'Entrar' }],
             assertions: [],
             onFailure: 'RECOVER',
@@ -104,28 +177,31 @@ describe('ExecutionPlanPlannerService', () => {
       async decide() { throw new Error('not used'); },
     };
 
-    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService()).build(authenticatedConfig, scenarios);
+    const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(authenticatedConfig, scenarios);
 
     expect(result.source).toBe('factory');
     expect(result.fallbackReason).toContain('auth is already handled');
   });
 
-  it('falls back to factory when LLM invents generic placeholder labels', async () => {
+  it('falls back to factory when LLM tries to navigate to login after runtime auth', async () => {
     const provider: DecisionProviderPort = {
       async buildPlan() {
         return {
           schemaVersion: 'execution-plan.v1',
-          planId: 'placeholder-plan',
+          planId: 'login-nav-plan',
           version: 1,
           goal: 'Smoke',
           mode: 'HYBRID_GUARDED',
           runtime: { maxAttemptsPerStep: 1, maxReplansPerScenario: 1, destructiveActionPolicy: 'BLOCK' },
           steps: [{
             id: 'S001',
-            description: 'Verify authenticated area',
+            scenarioId: 'scenario-001',
+            taskId: 'T001',
+            description: 'Navigate to login',
             preconditions: [],
-            action: { type: 'waitForStable', timeoutMs: 1000, reason: 'wait for authenticated area' },
-            postconditions: [{ type: 'text_visible', text: 'Authenticated area' }],
+            action: { type: 'navigate', to: 'https://app.local/login', reason: 'go to login page' },
+            postconditions: [{ type: 'text_visible', text: 'Login' }],
             assertions: [],
             onFailure: 'RECOVER',
           }],
@@ -135,10 +211,11 @@ describe('ExecutionPlanPlannerService', () => {
       async decide() { throw new Error('not used'); },
     };
 
-    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService()).build(config, scenarios);
+    const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(authenticatedConfig, scenarios);
 
     expect(result.source).toBe('factory');
-    expect(result.fallbackReason).toContain('generic placeholder UI labels');
+    expect(result.fallbackReason).toContain('auth is already handled');
   });
 
   it('does not reject generic words when they appear only in action reasons', async () => {
@@ -156,7 +233,7 @@ describe('ExecutionPlanPlannerService', () => {
             description: 'Toggle appearance',
             preconditions: [],
             action: { type: 'click', target: { strategy: 'role', role: 'button', name: 'Tema escuro' }, reason: 'change theme' },
-            postconditions: [{ type: 'ui_state', semanticKey: 'appearance_mode', expected: 'changed', source: 'dom' }],
+            postconditions: [{ type: 'ui_state', semanticKey: 'appearance_mode', expected: 'exists', source: 'dom' }],
             assertions: [],
             onFailure: 'RECOVER',
           }],
@@ -166,7 +243,8 @@ describe('ExecutionPlanPlannerService', () => {
       async decide() { throw new Error('not used'); },
     };
 
-    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService()).build(config, []);
+    const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, []);
 
     expect(result.source).toBe('llm');
   });
@@ -196,10 +274,48 @@ describe('ExecutionPlanPlannerService', () => {
       async decide() { throw new Error('not used'); },
     };
 
-    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService()).build(config, scenarios);
+    const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, scenarios);
 
     expect(result.source).toBe('factory');
     expect(result.fallbackReason).toContain('scenarioId/taskId');
+  });
+
+  it('warns for orphan steps and treats them as non-theme/non-logout for safety', async () => {
+    const warnSpy = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
+    const provider: DecisionProviderPort = {
+      async buildPlan() {
+        return {
+          schemaVersion: 'execution-plan.v1',
+          planId: 'orphan-plan',
+          version: 1,
+          goal: 'Smoke',
+          mode: 'HYBRID_GUARDED',
+          runtime: { maxAttemptsPerStep: 1, maxReplansPerScenario: 1, destructiveActionPolicy: 'BLOCK' },
+          steps: [{
+            id: 'S001',
+            scenarioId: 'nonexistent-scenario',
+            taskId: 'T999',
+            description: 'Orphan click',
+            preconditions: [],
+            action: { type: 'click', target: { strategy: 'role', role: 'button', name: 'Tema' }, reason: 'toggle theme' },
+            postconditions: [{ type: 'ui_state', semanticKey: 'appearance_mode', expected: 'exists', source: 'dom' }],
+            assertions: [],
+            onFailure: 'RECOVER',
+          }],
+          assertions: [],
+        };
+      },
+      async decide() { throw new Error('not used'); },
+    };
+
+    const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, scenarios);
+
+    expect(result.source).toBe('factory');
+    expect(result.fallbackReason).toContain('scenarioId/taskId');
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('unknown scenarioId'));
+    warnSpy.mockRestore();
   });
 
   it('falls back when a passive step expects runtime state changed', async () => {
@@ -229,7 +345,8 @@ describe('ExecutionPlanPlannerService', () => {
       async decide() { throw new Error('not used'); },
     };
 
-    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService()).build(config, scenarios);
+    const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, scenarios);
 
     expect(result.source).toBe('factory');
     expect(result.fallbackReason).toContain('cannot expect runtime state changed');
@@ -261,9 +378,88 @@ describe('ExecutionPlanPlannerService', () => {
       async decide() { throw new Error('not used'); },
     };
 
-    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService()).build(config, scenarios);
+    const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, scenarios);
 
     expect(result.source).toBe('factory');
     expect(result.fallbackReason).toContain('appearance ui_state uses invalid expected value');
+  });
+
+  it('throws when factory_first has no steps and no LLM fallback by default', async () => {
+    const factoryOnlyConfig = {
+      ...config,
+      runtime: { ...config.runtime, planning: { executionPlanStrategy: 'factory_first' as const } },
+    };
+    const provider: DecisionProviderPort = {
+      async decide() { throw new Error('not used'); },
+    };
+    const stubFactory = {
+      async fromScenarios() { return undefined; },
+    } as unknown as ExecutionPlanFactoryService;
+
+    await expect(new ExecutionPlanPlannerService(provider, stubFactory).build(factoryOnlyConfig, scenarios))
+      .rejects.toThrow(/factory_first produced no steps and no LLM fallback available/);
+  });
+
+  it('falls back when keyword mapping conflicts with expectedOutcome kind', async () => {
+    const logoutScenarios: QaScenario[] = [{
+      id: 'scenario-001',
+      title: 'Smoke',
+      status: 'PLANNED',
+      intent: 'POSITIVE',
+      tasks: [{ id: 'T001', title: 'Navegar para sair', expected: 'Sair do sistema', status: 'PENDING', intent: 'POSITIVE', expectedOutcome: { kind: 'NAVIGATION', description: 'sair' } }],
+    }];
+    const provider: DecisionProviderPort = {
+      async buildPlan() {
+        return {
+          schemaVersion: 'execution-plan.v1',
+          planId: 'keyword-plan',
+          version: 1,
+          goal: 'Smoke',
+          mode: 'HYBRID_GUARDED',
+          runtime: { maxAttemptsPerStep: 1, maxReplansPerScenario: 1, destructiveActionPolicy: 'BLOCK' },
+          steps: [{
+            id: 'S001',
+            scenarioId: 'scenario-001',
+            taskId: 'T001',
+            description: 'Click logout',
+            preconditions: [],
+            action: { type: 'click', target: { strategy: 'role', role: 'button', name: 'Sair' }, reason: 'exit' },
+            postconditions: [{ type: 'text_visible', text: 'Login' }],
+            assertions: [],
+            onFailure: 'RECOVER',
+          }],
+          assertions: [],
+        };
+      },
+      async decide() { throw new Error('not used'); },
+    };
+
+    const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, logoutScenarios);
+
+    expect(result.source).toBe('factory');
+    expect(result.fallbackReason).toContain('logout');
+  });
+
+  it('generates emergency plan when factory_first fails and allowEmergencyPlan is true', async () => {
+    const emergencyConfig = {
+      ...config,
+      runtime: { ...config.runtime, planning: { executionPlanStrategy: 'factory_first' as const, allowEmergencyPlan: true } },
+    };
+    const provider: DecisionProviderPort = {
+      async decide() { throw new Error('not used'); },
+    };
+    const stubFactory = {
+      async fromScenarios() { return undefined; },
+    } as unknown as ExecutionPlanFactoryService;
+
+    const result = await new ExecutionPlanPlannerService(provider, stubFactory).build(emergencyConfig, scenarios);
+
+    expect(result.plan).toBeDefined();
+    expect(result.source).toBe('factory');
+    expect(result.fallbackReason).toContain('emergency');
+    expect(result.plan!.steps[0].action.type).toBe('navigate');
+    expect((result.plan!.steps[0].action as { to: string }).to).toBe(emergencyConfig.baseUrl);
   });
 });

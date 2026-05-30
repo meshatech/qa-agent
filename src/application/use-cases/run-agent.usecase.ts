@@ -569,9 +569,8 @@ export class RunAgentUseCase {
   private intentAutocorrectEnvelope(task: QaTask, obs: import('../../domain/schemas/observation.schema.js').ScreenObservation, issue: string): QaActionEnvelope | undefined {
     const target = this.intentTarget(task, obs);
     if (!target) return undefined;
-    const expected = this.isLogoutTask(task)
-      ? { type: 'text_visible' as const, text: this.isLogoutIntentTarget(target) ? 'Entrar' : 'Sair' }
-      : { type: 'text_visible' as const, text: this.isThemeIntentTarget(target) ? this.themeExpectedAfterClick(target) : 'Tema' };
+    const expected = this.autocorrectExpected(task, target);
+    if (!expected) return undefined;
     return {
       schemaVersion: 'action.v1',
       observationId: obs.observationId,
@@ -584,57 +583,54 @@ export class RunAgentUseCase {
   }
 
   private intentTarget(task: QaTask, obs: import('../../domain/schemas/observation.schema.js').ScreenObservation): { id: string; name: string; text?: string } | undefined {
-    if (this.isLogoutTask(task)) return obs.elements.find((e) => e.inViewport && (this.isLogoutIntentTarget(e) || this.isLogoutMenuElement(e)));
-    if (this.isThemeTask(task)) return obs.elements.find((e) => e.inViewport && (this.isThemeIntentTarget(e) || this.isThemeMenuElement(e)));
-    if (this.isMenuTask(task)) return obs.elements.find((e) => e.inViewport && this.isMenuTriggerElement(e));
-    return undefined;
+    if (!this.isLogoutTask(task) && !this.isThemeTask(task) && !this.isMenuTask(task)) return undefined;
+    return this.findElementByOutcomeTarget(task, obs);
   }
 
   private intentRecommendation(task: QaTask, obs: import('../../domain/schemas/observation.schema.js').ScreenObservation): string | undefined {
     const target = this.intentTarget(task, obs);
     if (!target) return undefined;
-    if (this.isLogoutTask(task)) return this.isLogoutIntentTarget(target) ? `Click "${target.name}" and prove login screen` : `Open "${target.name}" and prove "Sair" is visible`;
-    if (this.isThemeTask(task)) return this.isThemeIntentTarget(target) ? `Click "${target.name}" and prove theme toggled` : `Open "${target.name}" and prove theme option is visible`;
-    if (this.isMenuTask(task)) return `Open "${target.name}" and prove a menu item is visible`;
+    return `Use "${target.name}" and prove the expected state with a stronger validation`;
+  }
+
+  private autocorrectExpected(task: QaTask, target: { name: string; text?: string }): Extract<QaActionEnvelope['expected_after_action'], { type: 'text_visible' }> | undefined {
+    if (this.isLogoutTask(task)) return { type: 'text_visible', text: this.primaryOutcomeTarget(task) ?? target.name };
+    if (this.isThemeTask(task) || this.isMenuTask(task)) return { type: 'text_visible', text: this.primaryOutcomeTarget(task) ?? target.name };
     return undefined;
   }
 
-  private isLogoutIntentTarget(element: { name: string; text?: string }): boolean {
-    return /\b(sair|logout|sign out|encerrar sessão)\b/i.test(`${element.name} ${element.text ?? ''}`);
+  private findElementByOutcomeTarget(task: QaTask, obs: import('../../domain/schemas/observation.schema.js').ScreenObservation): { id: string; name: string; text?: string } | undefined {
+    const candidates = this.outcomeTargetCandidates(task);
+    if (!candidates.length) return undefined;
+    return obs.elements.find((element) => element.inViewport && this.matchesAnyCandidate(`${element.name} ${element.text ?? ''}`, candidates));
   }
 
-  private isLogoutMenuElement(element: { name: string; text?: string }): boolean {
-    return /\b(conta|opções|opcoes|settings|menu|perfil|profile|avatar|usu[aá]rio|user)\b/i.test(`${element.name} ${element.text ?? ''}`);
+  private outcomeTargetCandidates(task: QaTask): string[] {
+    const raw = task.expectedOutcome?.target ?? '';
+    return raw.split('|').map((candidate) => candidate.trim()).filter(Boolean);
   }
 
-  private isThemeIntentTarget(element: { name: string; text?: string }): boolean {
-    return this.isThemeControlText(`${element.name} ${element.text ?? ''}`);
+  private primaryOutcomeTarget(task: QaTask): string | undefined {
+    return this.outcomeTargetCandidates(task)[0];
   }
 
-  private isThemeMenuElement(element: { name: string; text?: string }): boolean {
-    return this.isMenuTriggerText(`${element.name} ${element.text ?? ''}`);
+  private matchesAnyCandidate(text: string, candidates: string[]): boolean {
+    const normalizedText = this.normalizeSemanticText(text);
+    return candidates.some((candidate) => {
+      const normalizedCandidate = this.normalizeSemanticText(candidate);
+      return normalizedCandidate.length > 0 && normalizedText.includes(normalizedCandidate);
+    });
   }
 
-  private isMenuTriggerElement(element: { name: string; text?: string }): boolean {
-    return this.isMenuTriggerText(`${element.name} ${element.text ?? ''}`);
-  }
-
-  private isMenuTriggerText(text: string): boolean {
-    return /\b(conta|opções|opcoes|configurações|configuracoes|settings|menu|perfil|profile|avatar|apar[eê]ncia|appearance|usu[aá]rio|user)\b/i.test(text);
-  }
-
-  private themeExpectedAfterClick(element: { name: string; text?: string }): string {
-    const text = `${element.name} ${element.text ?? ''}`;
-    if (/tema escuro|dark/i.test(text)) return 'Tema claro';
-    if (/tema claro|light/i.test(text)) return 'Tema escuro';
-    return 'Tema';
+  private normalizeSemanticText(value: string): string {
+    return value.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim();
   }
 
   private semanticDecisionIssue(task: QaTask, action: QaStep['resolvedAction'], expected: QaStep['boundExpected'], obs: import('../../domain/schemas/observation.schema.js').ScreenObservation): string | undefined {
     if (this.isPreActionWeakExpected(task, action, expected)) return 'Weak validation: expected_after_action does not prove the requested state change';
     if (this.isIntermediateLogoutMenuStep(task, action, expected)) return undefined;
     if (this.isLogoutTask(task) && !this.isLogoutProof(expected)) return 'Logout action must prove a non-authenticated state, not only console or menu visibility';
-    if (this.isThemeTask(task) && expected.type === 'no_console_errors' && !this.isThemeAction(action, obs)) {
+    if (this.isThemeTask(task) && expected.type === 'no_console_errors' && !this.isOutcomeTargetAction(task, action, obs)) {
       return 'Theme-change task cannot use no_console_errors before clicking an actual theme control; open the account/settings menu first and prove a visible theme option or toggled label';
     }
     if (expected.type === 'no_console_errors' && !this.isConsoleSafetyTask(task)) return 'Functional task cannot use no_console_errors as primary success proof';
@@ -648,11 +644,10 @@ export class RunAgentUseCase {
       'Choose an action that directly advances this task.',
       'The expected_after_action must prove the task result, not merely that the clicked element remains visible.',
       'For functional tasks, no_console_errors is only a secondary safety check and is not enough to complete the task.',
-      'For logout/sign-out tasks, prove logout with login screen text, login form visibility, or a URL that clearly moved to /login, /signin, or another non-authenticated route.',
+      'For deauthentication tasks, prove a non-authenticated state with login screen visibility or a non-authenticated route.',
     ];
     if (this.isThemeTask(task)) {
-      base.push('For theme-change tasks, first open account/settings/theme menus if needed and prove the menu or theme option became visible.');
-      base.push('Only click a real theme control such as Tema, Aparência, Escuro, Claro, Dark, Light, or Sistema; after that, prove the toggled option/label or another visible state change.');
+      base.push('For appearance-change tasks, click a real control from the expected outcome target/candidates and prove a visible state change.');
     }
     const memory = this.memory.context(scenarioId, task.id);
     if (memory) base.push(memory);
@@ -711,56 +706,41 @@ export class RunAgentUseCase {
   }
 
   private isThemeTask(task: QaTask): boolean {
-    const title = task.title.toLowerCase();
-    const text = `${task.title} ${task.expected}`.toLowerCase();
-    const menuPreparation =
-      /\b(menu|conta|opções|opcoes|settings|configurações|configuracoes)\b/i.test(title) &&
-      /\b(antes|before|visível|visivel|visible|verificar|check)\b/i.test(title);
-    if (menuPreparation) return false;
-    return /\b(tema|theme|apar[eê]ncia|appearance|modo escuro|dark mode|light mode|escuro|claro)\b/i.test(text);
+    return task.expectedOutcome?.kind === 'APPEARANCE_CHANGE';
   }
 
   private isMenuTask(task: QaTask): boolean {
-    const text = `${task.title} ${task.expected}`.toLowerCase();
-    return /\b(menu|painel|itens acion[aá]veis|account menu|settings menu|opções|opcoes)\b/i.test(text);
+    return task.expectedOutcome?.kind === 'DISCLOSURE';
   }
 
-  private isThemeAction(action: QaStep['resolvedAction'], obs: import('../../domain/schemas/observation.schema.js').ScreenObservation): boolean {
+  private isOutcomeTargetAction(task: QaTask, action: QaStep['resolvedAction'], obs: import('../../domain/schemas/observation.schema.js').ScreenObservation): boolean {
     if (!('targetElementId' in action) || !action.targetElementId) return false;
     const target = obs.elements.find((e) => e.id === action.targetElementId);
-    const text = `${target?.name ?? ''} ${target?.text ?? ''}`.toLowerCase();
-    return /\b(tema|theme|apar[eê]ncia|appearance|dark|light|escuro|claro|system|sistema)\b/i.test(text);
+    if (!target) return false;
+    return this.matchesAnyCandidate(`${target.name} ${target.text ?? ''}`, this.outcomeTargetCandidates(task));
   }
 
   private isIntermediateThemeMenuStep(task: QaTask, action: QaStep['resolvedAction'], expected: QaStep['boundExpected']): boolean {
     if (!this.isThemeTask(task)) return false;
     if (action.type !== 'click') return false;
-    const reason = action.reason.toLowerCase();
-    const looksLikeMenuOpen = /\b(open|abrir|menu|settings|configura[cç][õo]es|conta|perfil|options|opções|opcoes)\b/i.test(reason);
-    if (!looksLikeMenuOpen) return false;
-    if (expected.type === 'text_visible') return /\b(tema|theme|apar[eê]ncia|appearance)\b/i.test(expected.text);
-    if (expected.type === 'element_visible' && expected.text) return /\b(tema|theme|apar[eê]ncia|appearance)\b/i.test(expected.text);
+    const candidates = this.outcomeTargetCandidates(task);
+    if (!candidates.length) return false;
+    if (expected.type === 'text_visible') return this.matchesAnyCandidate(expected.text, candidates);
+    if (expected.type === 'element_visible' && expected.text) return this.matchesAnyCandidate(expected.text, candidates);
     return false;
   }
 
-  private isThemeMenuAction(action: QaStep['resolvedAction'], obs: import('../../domain/schemas/observation.schema.js').ScreenObservation): boolean {
+  private isOutcomeMenuAction(task: QaTask, action: QaStep['resolvedAction'], obs: import('../../domain/schemas/observation.schema.js').ScreenObservation): boolean {
     if (!('targetElementId' in action) || !action.targetElementId) return false;
     const target = obs.elements.find((e) => e.id === action.targetElementId);
-    const text = `${target?.name ?? ''} ${target?.text ?? ''}`.toLowerCase();
-    return this.isMenuTriggerText(text);
-  }
-
-  private isLogoutMenuAction(action: QaStep['resolvedAction'], obs: import('../../domain/schemas/observation.schema.js').ScreenObservation): boolean {
-    if (!('targetElementId' in action) || !action.targetElementId) return false;
-    const target = obs.elements.find((e) => e.id === action.targetElementId);
-    const text = `${target?.name ?? ''} ${target?.text ?? ''}`.toLowerCase();
-    return this.isMenuTriggerText(text);
+    if (!target) return false;
+    return this.matchesAnyCandidate(`${target.name} ${target.text ?? ''}`, this.outcomeTargetCandidates(task));
   }
 
   private isIntermediateLogoutMenuStep(task: QaTask, action: QaStep['resolvedAction'], expected: QaStep['boundExpected']): boolean {
     if (!this.isLogoutTask(task) || action.type !== 'click') return false;
     if (expected.type !== 'text_visible') return false;
-    return /\b(sair|logout|sign out|encerrar sessão)\b/i.test(expected.text);
+    return this.matchesAnyCandidate(expected.text, this.outcomeTargetCandidates(task));
   }
 
   private promoteLogoutMenuExpectation(
@@ -771,8 +751,9 @@ export class RunAgentUseCase {
   ): Extract<QaStep['boundExpected'], { type: 'text_visible' }> | undefined {
     if (!this.isLogoutTask(task)) return undefined;
     if (bound.type !== 'no_console_errors') return undefined;
-    if (!this.isLogoutMenuAction(action, obs)) return undefined;
-    return { type: 'text_visible', text: 'Sair' };
+    if (!this.isOutcomeMenuAction(task, action, obs)) return undefined;
+    const proof = this.primaryOutcomeTarget(task);
+    return proof ? { type: 'text_visible', text: proof } : undefined;
   }
 
   private promoteMenuExpectation(
@@ -785,20 +766,15 @@ export class RunAgentUseCase {
     if (bound.type !== 'no_console_errors') return undefined;
     if (!('targetElementId' in action) || !action.targetElementId) return undefined;
     const target = obs.elements.find((e) => e.id === action.targetElementId);
-    if (!target || !this.isMenuTriggerElement(target)) return undefined;
-    return { type: 'text_visible', text: this.menuProofText(task, target) };
-  }
-
-  private menuProofText(task: QaTask, target: { name: string; text?: string }): string {
-    const text = `${task.title} ${task.expected} ${target.name} ${target.text ?? ''}`.toLowerCase();
-    if (/\b(conta|account|perfil|profile|usu[aá]rio|user)\b/i.test(text)) return 'Sair';
-    if (/\b(tema|theme|apar[eê]ncia|appearance)\b/i.test(text)) return 'Tema';
-    return 'Configurações';
+    if (!target || !this.matchesAnyCandidate(`${target.name} ${target.text ?? ''}`, this.outcomeTargetCandidates(task))) return undefined;
+    const proof = this.primaryOutcomeTarget(task);
+    return proof ? { type: 'text_visible', text: proof } : undefined;
   }
 
   private async trySemanticTheme(task: QaTask, scenario: QaScenario, config: RunConfig, runDir: string, runId: string, result: QaRunResult, attempts: AttemptRecord[], obs: import('../../domain/schemas/observation.schema.js').ScreenObservation): Promise<boolean> {
     if (!this.isThemeTask(task)) return false;
-    const target = obs.elements.find((e) => e.inViewport && this.isThemeControlText(`${e.name} ${e.text ?? ''}`));
+    const candidates = this.outcomeTargetCandidates(task);
+    const target = obs.elements.find((e) => e.inViewport && this.matchesAnyCandidate(`${e.name} ${e.text ?? ''}`, candidates));
     if (!target) return false;
 
     const stepId = `S${String(result.steps.length + 1).padStart(4, '0')}`;
@@ -847,18 +823,11 @@ export class RunAgentUseCase {
   }
 
   private themeObservationValidation(before: import('../../domain/schemas/observation.schema.js').ScreenObservation, after: import('../../domain/schemas/observation.schema.js').ScreenObservation, label: string): { boundExpected: QaStep['boundExpected']; result: NonNullable<QaStep['validation']> } {
-    const text = [...after.visibleTexts, ...after.elements.flatMap((e) => [e.name, e.text ?? ''])].join(' | ');
-    const toggledLabel = /tema escuro|dark/i.test(label) ? /tema claro|light/i.test(text) : /tema escuro|dark/i.test(text);
     const changed = this.observationMeaningfullyChanged(before, after);
-    const ok = toggledLabel || changed;
     return {
-      boundExpected: { type: 'text_visible', text: toggledLabel ? (/tema escuro|dark/i.test(label) ? 'Tema claro' : 'Tema escuro') : label },
-      result: { ok, type: 'theme_state', expected: 'theme control toggled or visible UI state changed', actual: ok ? after.url : `${after.url} :: ${after.visibleTexts.slice(0, 5).join(' | ')}`, durationMs: 0 },
+      boundExpected: { type: 'text_visible', text: label },
+      result: { ok: changed, type: 'appearance_state', expected: 'visible UI state changed', actual: changed ? after.url : `${after.url} :: ${after.visibleTexts.slice(0, 5).join(' | ')}`, durationMs: 0 },
     };
-  }
-
-  private isThemeControlText(text: string): boolean {
-    return /\b(tema\s+(escuro|claro)|dark\s+theme|light\s+theme|modo\s+(escuro|claro)|dark mode|light mode)\b/i.test(text);
   }
 
   private promoteThemeMenuExpectation(
@@ -869,26 +838,19 @@ export class RunAgentUseCase {
   ): Extract<QaStep['boundExpected'], { type: 'text_visible' }> | undefined {
     if (!this.isThemeTask(task)) return undefined;
     if (bound.type !== 'no_console_errors') return undefined;
-    if (!this.isThemeMenuAction(action, obs)) return undefined;
-    return { type: 'text_visible', text: this.themeProofText(task) };
-  }
-
-  private themeProofText(task: QaTask): string {
-    const text = `${task.title} ${task.expected}`.toLowerCase();
-    if (/(apar[eê]ncia|appearance)/i.test(text)) return 'Aparência';
-    if (/\b(dark|escuro)\b/i.test(text)) return 'Escuro';
-    if (/\b(light|claro)\b/i.test(text)) return 'Claro';
-    return 'Tema';
+    if (!this.isOutcomeMenuAction(task, action, obs)) return undefined;
+    const proof = this.primaryOutcomeTarget(task);
+    return proof ? { type: 'text_visible', text: proof } : undefined;
   }
 
   private isLogoutTask(task: QaTask): boolean {
-    const text = `${task.title} ${task.expected}`.toLowerCase();
-    return /\b(logout|deslogar|sair|encerrar sessão|sign out)\b/i.test(text);
+    return task.expectedOutcome?.kind === 'DEAUTHENTICATION';
   }
 
   private async trySemanticLogout(task: QaTask, scenario: QaScenario, config: RunConfig, runDir: string, runId: string, result: QaRunResult, attempts: AttemptRecord[], obs: import('../../domain/schemas/observation.schema.js').ScreenObservation): Promise<boolean> {
     if (!this.isLogoutTask(task)) return false;
-    const target = obs.elements.find((e) => e.inViewport && /(sair|logout|sign out|encerrar sessão)/i.test(`${e.name} ${e.text ?? ''}`));
+    const candidates = this.outcomeTargetCandidates(task);
+    const target = obs.elements.find((e) => e.inViewport && this.matchesAnyCandidate(`${e.name} ${e.text ?? ''}`, candidates));
     if (!target) return false;
 
     const stepId = `S${String(result.steps.length + 1).padStart(4, '0')}`;
@@ -953,9 +915,7 @@ export class RunAgentUseCase {
 
   private isTaskAlreadySatisfied(task: QaTask, config: RunConfig, obs: import('../../domain/schemas/observation.schema.js').ScreenObservation): boolean {
     if (config.auth.kind === 'none') return false;
-    const text = `${task.title} ${task.expected}`.toLowerCase();
-    const authCheck = /(área autenticada|area autenticada|authenticated area|tela autenticada)/i.test(text);
-    if (!authCheck) return false;
+    if (task.expectedOutcome?.kind !== 'AUTHENTICATION') return false;
     const url = obs.url.toLowerCase();
     if (/\/(login|signin|sign-in)\b/.test(url)) return false;
     const hasAppSurface = obs.elements.some((e) => ['button', 'link', 'textbox', 'searchbox'].includes(e.role) && e.inViewport);
