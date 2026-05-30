@@ -6,7 +6,7 @@ import type { QaScenario, QaTask } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
 import type { ExecutionPlan, PlanPatch } from '../../domain/schemas/execution-plan.schema.js';
 import { ExpectedOutcomeSchema, type ExpectedOutcome } from '../../domain/schemas/expected-outcome.schema.js';
-import { DECISION_SYSTEM_PROMPT, EXECUTION_PLAN_SYSTEM_PROMPT, PLAN_SYSTEM_PROMPT, REPLAN_SYSTEM_PROMPT, buildDecisionUserMessage, buildExecutionPlanUserMessage, buildPlanUserMessage, buildReplanUserMessage } from './prompt-builder.js';
+import { CLASSIFY_OUTCOME_SYSTEM_PROMPT, DECISION_SYSTEM_PROMPT, EXECUTION_PLAN_SYSTEM_PROMPT, PLAN_SYSTEM_PROMPT, REPLAN_SYSTEM_PROMPT, buildClassifyOutcomeUserMessage, buildClassifyOutcomesUserMessage, buildDecisionUserMessage, buildExecutionPlanUserMessage, buildPlanUserMessage, buildReplanUserMessage } from './prompt-builder.js';
 import { LlmPlanPatchNormalizer } from './llm-output-normalizer.js';
 
 @Injectable()
@@ -96,14 +96,32 @@ export class OpenAiLangChainDecisionProvider implements DecisionProviderPort {
     throw last;
   }
 
-  async classifyOutcome(_config: RunConfig, task: QaTask): Promise<ExpectedOutcome> {
+  async classifyOutcome(config: RunConfig, task: QaTask): Promise<ExpectedOutcome> {
     this.callCounts.classifyOutcome++;
-    return { kind: 'NO_REGRESSION', description: task.title };
+    const apiKey = process.env[config.llm.apiKeyEnv];
+    if (!apiKey) throw new Error(`Missing env ${config.llm.apiKeyEnv}`);
+    const model = this.model(config, apiKey);
+    const res = await model.invoke([
+      ['system', CLASSIFY_OUTCOME_SYSTEM_PROMPT],
+      ['user', buildClassifyOutcomeUserMessage(task.title, task.expected)],
+    ]);
+    const raw = JSON.parse(this.extractContent(res.content));
+    return this.parseOutcome(raw, task);
   }
 
-  async classifyOutcomes(_config: RunConfig, tasks: QaTask[]): Promise<ExpectedOutcome[]> {
+  async classifyOutcomes(config: RunConfig, tasks: QaTask[]): Promise<ExpectedOutcome[]> {
     this.callCounts.classifyOutcome++;
-    return tasks.map((task) => ({ kind: 'NO_REGRESSION', description: task.title }));
+    const apiKey = process.env[config.llm.apiKeyEnv];
+    if (!apiKey) throw new Error(`Missing env ${config.llm.apiKeyEnv}`);
+    const model = this.model(config, apiKey);
+    const res = await model.invoke([
+      ['system', CLASSIFY_OUTCOME_SYSTEM_PROMPT],
+      ['user', buildClassifyOutcomesUserMessage(tasks.map((task) => ({ id: task.id, title: task.title, expected: task.expected })))],
+    ]);
+    const raw = JSON.parse(this.extractContent(res.content));
+    const items = this.extractOutcomeItems(raw);
+    if (items.length !== tasks.length) throw new Error('Invalid outcome batch size from LLM');
+    return items.map((item, index) => this.parseOutcome(item, tasks[index]!));
   }
 
   stats() {
@@ -124,6 +142,36 @@ export class OpenAiLangChainDecisionProvider implements DecisionProviderPort {
       maxTokens: config.llm.maxTokens,
       modelKwargs: { response_format: { type: 'json_object' } },
     });
+  }
+
+  private parseOutcome(raw: unknown, task: QaTask): ExpectedOutcome {
+    const kind = this.extractOutcomeKind(raw);
+    if (!kind) throw new Error('Invalid outcome kind from LLM');
+    const record = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+    const target = typeof record.target === 'string' && record.target && record.target !== 'NO_REGRESSION' ? record.target : undefined;
+    return ExpectedOutcomeSchema.parse({
+      kind,
+      target,
+      description: typeof record.description === 'string' && record.description ? record.description : task.title,
+    });
+  }
+
+  private extractOutcomeKind(raw: unknown): ExpectedOutcome['kind'] | undefined {
+    const kind = typeof raw === 'object' && raw && typeof (raw as Record<string, unknown>).kind === 'string' ? (raw as Record<string, unknown>).kind : undefined;
+    if (!kind) return undefined;
+    const validKinds: ExpectedOutcome['kind'][] = ['AUTHENTICATION', 'DEAUTHENTICATION', 'NAVIGATION', 'APPEARANCE_CHANGE', 'DISCLOSURE', 'CONTENT_PRESENCE', 'DATA_ENTRY', 'NO_REGRESSION', 'CLASSIFICATION_FAILED'];
+    return validKinds.find((k) => k.toLowerCase() === (kind as string).toLowerCase().trim());
+  }
+
+  private extractOutcomeItems(raw: unknown): unknown[] {
+    if (Array.isArray(raw)) return raw;
+    if (raw && typeof raw === 'object') {
+      const record = raw as Record<string, unknown>;
+      if (Array.isArray(record.outcomes)) return record.outcomes;
+      if (Array.isArray(record.results)) return record.results;
+      if (Array.isArray(record.tasks)) return record.tasks;
+    }
+    return [];
   }
 
   private normalizePlan(raw: { scenarios?: PlanScenarioRaw[] }, config: RunConfig): QaScenario[] {

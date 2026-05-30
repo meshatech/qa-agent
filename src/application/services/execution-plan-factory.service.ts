@@ -155,7 +155,7 @@ export class ExecutionPlanFactoryService {
         let testValue = this.valueGenerator?.generate(task.title, outcome) ?? 'safe-test-value';
         const check = this.actionPolicy.validateDestructiveText(testValue, config);
         if (!check.ok) {
-          this.logger.warn(`Generated DATA_ENTRY value blocked by destructive policy; using safe-test-value (${check.message})`);
+          this.logger.warn(`Generated DATA_ENTRY value "${testValue}" blocked by destructive policy; using safe-test-value (${check.message})`);
           testValue = 'safe-test-value';
         }
         return [this.makeStep(scenarioId, task, { type: 'fill', target: dataTarget, value: testValue, reason: outcome.description }, [{ type: 'no_console_errors' }])];
@@ -226,6 +226,7 @@ export class ExecutionPlanFactoryService {
   }
 
   private async semanticTarget(outcome: ExpectedOutcome, config: RunConfig): Promise<{ strategy: 'text_any'; texts: string[] } | null> {
+    if (outcome.kind === 'NO_REGRESSION') return null;
     if (!this.SEMANTIC_TARGET_KINDS.has(outcome.kind)) return null;
     const texts = config.runtime.semanticAliases?.[outcome.kind] ?? this.splitCandidates(outcome.target ?? outcome.description ?? '');
     if (!texts.length || texts.some((text) => text.trim().length < 2)) {
@@ -263,7 +264,11 @@ export class ExecutionPlanFactoryService {
   }
 
   private decodeTarget(value: string, depth = 0): string {
-    if (depth >= 3 || !value.includes('%')) return value;
+    if (depth >= 3 && value.includes('%')) {
+      this.logger.warn(`decodeTarget reached max depth with remaining encoded characters in: ${value.slice(0, 200)}`);
+      return value;
+    }
+    if (!value.includes('%')) return value;
     try {
       const decoded = decodeURIComponent(value);
       if (decoded === value) return value;
