@@ -153,6 +153,29 @@ export class ExecutionPlanPlannerService {
         }
       }
     }
+    for (const step of plan.steps) {
+      if (step.scenarioId !== 'emergency' || step.taskId !== 'emergency') continue;
+      if (step.action.type === 'navigate') {
+        try {
+          const url = new URL(step.action.to);
+          if (!['http:', 'https:'].includes(url.protocol)) {
+            issues.push(`emergency step "${step.id}" uses unsupported protocol "${url.protocol}"`);
+          }
+          if (url.host !== new URL(config.baseUrl).host) {
+            issues.push(`emergency step "${step.id}" navigates to external host "${url.host}"`);
+          }
+        } catch {
+          issues.push(`emergency step "${step.id}" has invalid navigate URL "${step.action.to}"`);
+        }
+      }
+      if (step.action.type === 'click' || step.action.type === 'fill') {
+        const targetTexts = this.extractLocatorTexts(step.action.target);
+        const placeholders = ['click here', 'button', 'submit', 'fill here'];
+        if (targetTexts.some((t) => placeholders.includes(t.toLowerCase()))) {
+          issues.push(`emergency step "${step.id}" uses generic placeholder target "${targetTexts[0]}"`);
+        }
+      }
+    }
     if (issues.length > 0) throw new SemanticPlanPolicyError(issues.join('; '));
   }
 

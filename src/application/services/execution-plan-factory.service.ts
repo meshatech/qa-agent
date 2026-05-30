@@ -79,20 +79,14 @@ export class ExecutionPlanFactoryService {
         if (!disclosureTarget) {
           return [this.makeSafeCheckStep(scenarioId, task, outcome.description)];
         }
-        const openStep = this.makeStep(
-          scenarioId,
-          task,
-          { type: 'click', target: disclosureTarget, reason: `Open container: ${outcome.description}` },
-          [{ type: 'menu_state', semanticKey: outcome.target ?? 'menu', expected: 'open' }],
-        );
-        const selectStep = this.makeStep(
-          scenarioId,
-          task,
-          { type: 'click', target: disclosureTarget, reason: outcome.description },
-          [{ type: 'menu_state', semanticKey: outcome.target ?? 'menu', expected: 'open' }],
-        );
-        selectStep.id = `${task.id}-select`;
-        return [openStep, selectStep];
+        return [
+          this.makeStep(
+            scenarioId,
+            task,
+            { type: 'click', target: disclosureTarget, reason: `Open container: ${outcome.description}` },
+            [{ type: 'menu_state', semanticKey: outcome.target ?? 'menu', expected: 'open' }],
+          ),
+        ];
       }
       case 'NAVIGATION': {
         let targetUrl: string;
