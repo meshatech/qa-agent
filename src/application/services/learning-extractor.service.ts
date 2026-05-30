@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type { MemoryCandidate } from '../../domain/schemas/memory-candidate.schema.js';
 import type { QaRunResult, QaStep } from '../../domain/models/run.model.js';
@@ -13,6 +13,8 @@ const SCENARIO_CONFIDENCE_MEDIUM = 0.6;
 
 @Injectable()
 export class LearningExtractorService {
+  private readonly logger = new Logger(LearningExtractorService.name);
+
   constructor(
     @Inject('RunRepositoryPort') private readonly repository: RunRepositoryPort,
   ) {}
@@ -33,13 +35,7 @@ export class LearningExtractorService {
     const finalName = 'learning-candidates.json';
     const tempName = `${finalName}.${randomUUID()}.tmp`;
     await this.cleanupTempFiles(result.runDir, finalName);
-    try {
-      await this.repository.writeJson(result.runDir, tempName, candidates);
-      await this.repository.renameFile(result.runDir, tempName, finalName);
-    } catch (error) {
-      await this.repository.deleteFile(result.runDir, tempName).catch(() => {});
-      throw error;
-    }
+    await this.repository.writeJson(result.runDir, tempName, candidates);
     const entry = {
       runId,
       timestamp: result.finishedAt ?? new Date().toISOString(),
@@ -49,7 +45,18 @@ export class LearningExtractorService {
       candidateCount: candidates.length,
       candidates: candidates.map((c) => ({ id: c.id, type: c.type, title: c.title, confidence: c.confidence })),
     };
-    await this.repository.appendRunHistory(result.runDir, entry);
+    try {
+      await this.repository.appendRunHistory(result.runDir, entry);
+    } catch (error) {
+      await this.repository.deleteFile(result.runDir, tempName).catch(() => {});
+      throw error;
+    }
+    try {
+      await this.repository.renameFile(result.runDir, tempName, finalName);
+    } catch (error) {
+      this.logger.warn(`renameFile failed after history was appended; temp file remains: ${tempName}: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
+    }
   }
 
   extractSuccessfulLocators(steps: QaStep[], runId: string, timestamp: string): MemoryCandidate[] {
