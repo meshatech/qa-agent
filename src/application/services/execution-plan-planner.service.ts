@@ -3,6 +3,7 @@ import { ZodError } from 'zod';
 import type { QaScenario } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
 import { ExecutionPlanSchema, type ExecutionPlan, type ExecutionStep, type PlanCondition } from '../../domain/schemas/execution-plan.schema.js';
+import type { LocatorDescriptor } from '../../domain/schemas/action.schema.js';
 import type { DecisionProviderPort } from '../ports/decision-provider.port.js';
 import { ExecutionPlanBuildError } from '../../domain/errors.js';
 import { ExecutionPlanFactoryService } from './execution-plan-factory.service.js';
@@ -135,11 +136,39 @@ export class ExecutionPlanPlannerService {
     if (impossibleChangedStep) {
       issues.push(`passive step "${impossibleChangedStep.id}" cannot expect runtime state changed`);
     }
+    for (const step of plan.steps) {
+      if (step.action.type !== 'click' && step.action.type !== 'fill') continue;
+      const task = this.findTask(step, scenarios);
+      if (!task?.expectedOutcome) continue;
+      const targetTexts = this.extractLocatorTexts(step.action.target);
+      const lowerTexts = targetTexts.map((t) => t.toLowerCase());
+      const genericMappings: { keywords: string[]; expectedKind: string }[] = [
+        { keywords: ['login', 'entrar', 'sign in'], expectedKind: 'AUTHENTICATION' },
+        { keywords: ['logout', 'sair', 'sign out'], expectedKind: 'DEAUTHENTICATION' },
+        { keywords: ['theme', 'appearance', 'dark mode', 'light mode'], expectedKind: 'APPEARANCE_CHANGE' },
+      ];
+      for (const mapping of genericMappings) {
+        if (lowerTexts.some((t) => mapping.keywords.some((k) => t.includes(k))) && task.expectedOutcome.kind !== mapping.expectedKind) {
+          issues.push(`step "${step.id}" target contains generic keyword "${mapping.keywords[0]}" but expectedOutcome is ${task.expectedOutcome.kind}; refine target or expectedOutcome`);
+        }
+      }
+    }
     if (issues.length > 0) throw new SemanticPlanPolicyError(issues.join('; '));
   }
 
   private stepAttemptsRuntimeLogin(step: ExecutionStep): boolean {
-    return step.action.type === 'navigate' && step.action.to.toLowerCase().includes('/login');
+    if (step.action.type === 'navigate') {
+      return step.action.to.toLowerCase().includes('/login');
+    }
+    if (step.action.type === 'fill') {
+      const targetTexts = this.extractLocatorTexts(step.action.target);
+      return targetTexts.some((t) => /email|password|senha|usuário|username/i.test(t));
+    }
+    if (step.action.type === 'click') {
+      const targetTexts = this.extractLocatorTexts(step.action.target);
+      return targetTexts.some((t) => /login|entrar|sign.in|log.in/i.test(t));
+    }
+    return false;
   }
 
   private hasInvalidAppearanceState(plan: ExecutionPlan): boolean {
@@ -225,6 +254,31 @@ export class ExecutionPlanPlannerService {
       }],
       assertions: [],
     };
+  }
+
+  private extractLocatorTexts(target: LocatorDescriptor): string[] {
+    const texts: string[] = [];
+    if ('texts' in target && Array.isArray(target.texts)) {
+      texts.push(...target.texts);
+    }
+    if ('text' in target && typeof target.text === 'string') {
+      texts.push(target.text);
+    }
+    if ('name' in target && typeof target.name === 'string') {
+      texts.push(target.name);
+    }
+    if ('semanticKey' in target && typeof target.semanticKey === 'string') {
+      texts.push(target.semanticKey);
+    }
+    if ('intent' in target && typeof target.intent === 'string') {
+      texts.push(target.intent);
+    }
+    if ('candidates' in target && Array.isArray(target.candidates)) {
+      for (const candidate of target.candidates) {
+        texts.push(...this.extractLocatorTexts(candidate));
+      }
+    }
+    return texts;
   }
 
   private findTask(step: ExecutionStep, scenarios: QaScenario[]): QaScenario['tasks'][number] | undefined {

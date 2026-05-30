@@ -1,7 +1,6 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { posix as posixPath } from 'node:path';
 import type { ExecutionPlan, ExecutionStep, PlanAction } from '../../domain/schemas/execution-plan.schema.js';
-import type { LocatorDescriptor } from '../../domain/schemas/action.schema.js';
 import type { ExpectedOutcome } from '../../domain/schemas/expected-outcome.schema.js';
 import type { QaScenario, QaTask } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
@@ -133,6 +132,24 @@ export class ExecutionPlanFactoryService {
           }
         } else {
           targetUrl = config.baseUrl;
+          if (this.hasPathTraversal(targetUrl)) {
+            this.logger.warn(`Navigation baseUrl contains path traversal; emitting safe check step: ${targetUrl}`);
+            return [this.makeSafeCheckStep(scenarioId, task, outcome.description)];
+          }
+          try {
+            const resolved = new URL(targetUrl);
+            if (!['http:', 'https:'].includes(resolved.protocol)) {
+              this.logger.warn(`Navigation baseUrl uses unsupported protocol "${resolved.protocol}"; emitting safe check step`);
+              return [this.makeSafeCheckStep(scenarioId, task, outcome.description)];
+            }
+            if (this.hasPathTraversal(resolved.pathname)) {
+              this.logger.warn(`Navigation baseUrl contains path traversal after resolution; emitting safe check step`);
+              return [this.makeSafeCheckStep(scenarioId, task, outcome.description)];
+            }
+          } catch {
+            this.logger.warn(`Navigation baseUrl is not a valid URL; emitting safe check step: ${targetUrl}`);
+            return [this.makeSafeCheckStep(scenarioId, task, outcome.description)];
+          }
         }
         return [this.makeStep(scenarioId, task, { type: 'navigate', to: targetUrl, reason: outcome.description }, [{ type: 'route_state', expected: 'matches', expectedUrlPattern: targetUrl }])];
       }
@@ -142,12 +159,10 @@ export class ExecutionPlanFactoryService {
           return [this.makeSafeCheckStep(scenarioId, task, outcome.description)];
         }
         let testValue = this.valueGenerator?.generate(task.title, outcome) ?? 'safe-test-value';
-        if (config) {
-          const check = this.actionPolicy.validateDestructiveText(testValue, config);
-          if (!check.ok) {
-            this.logger.warn(`Generated DATA_ENTRY value blocked by destructive policy; using safe-test-value (${check.message})`);
-            testValue = 'safe-test-value';
-          }
+        const check = this.actionPolicy.validateDestructiveText(testValue, config);
+        if (!check.ok) {
+          this.logger.warn(`Generated DATA_ENTRY value blocked by destructive policy; using safe-test-value (${check.message})`);
+          testValue = 'safe-test-value';
         }
         return [this.makeStep(scenarioId, task, { type: 'fill', target: dataTarget, value: testValue, reason: outcome.description }, [{ type: 'no_console_errors' }])];
       }
@@ -216,38 +231,35 @@ export class ExecutionPlanFactoryService {
     return [themeStep];
   }
 
-  private async semanticTarget(outcome: ExpectedOutcome, config?: RunConfig): Promise<LocatorDescriptor | null> {
+  private async semanticTarget(outcome: ExpectedOutcome, config: RunConfig): Promise<{ strategy: 'text_any'; texts: string[] } | null> {
     if (!this.SEMANTIC_TARGET_KINDS.has(outcome.kind)) return null;
-    const texts = config?.runtime.semanticAliases?.[outcome.kind] ?? this.splitCandidates(outcome.target ?? outcome.description ?? '');
+    const texts = config.runtime.semanticAliases?.[outcome.kind] ?? this.splitCandidates(outcome.target ?? outcome.description ?? '');
     if (!texts.length || texts.some((text) => text.trim().length < 2)) {
       this.logger.warn(`Semantic target for ${outcome.kind} has empty or too-short candidates; emitting safe check step`);
       return null;
     }
     const filteredTexts = texts.filter((text) => text !== 'NO_REGRESSION');
-    if (config) {
-      const safeTexts: string[] = [];
-      for (const text of filteredTexts) {
-        let ok = false;
-        try {
-          ok = this.actionPolicy.validateDestructiveText(text, config).ok;
-        } catch (error) {
-          this.logger.warn(`validateDestructiveText threw for "${text}": ${error instanceof Error ? error.message : String(error)}; skipping candidate`);
-          continue;
-        }
-        if (!ok) {
-          this.logger.warn(`Skipping unsafe semantic target candidate blocked by destructive action policy: ${text}`);
-          continue;
-        }
-        safeTexts.push(text);
-      }
-      if (!safeTexts.length || (safeTexts.length === 1 && safeTexts[0] === 'NO_REGRESSION')) return null;
-      return { strategy: 'text_any', texts: safeTexts };
+    if (!filteredTexts.length) {
+      this.logger.warn(`Semantic target for ${outcome.kind} has no valid candidates after filtering NO_REGRESSION; emitting safe check step`);
+      return null;
     }
-    if (!filteredTexts.length || (filteredTexts.length === 1 && filteredTexts[0] === 'NO_REGRESSION')) return null;
-    return {
-      strategy: 'text_any',
-      texts: filteredTexts,
-    };
+    const safeTexts: string[] = [];
+    for (const text of filteredTexts) {
+      let ok = false;
+      try {
+        ok = this.actionPolicy.validateDestructiveText(text, config).ok;
+      } catch (error) {
+        this.logger.warn(`validateDestructiveText threw for "${text}": ${error instanceof Error ? error.message : String(error)}; skipping candidate`);
+        continue;
+      }
+      if (!ok) {
+        this.logger.warn(`Skipping unsafe semantic target candidate blocked by destructive action policy: ${text}`);
+        continue;
+      }
+      safeTexts.push(text);
+    }
+    if (!safeTexts.length) return null;
+    return { strategy: 'text_any', texts: safeTexts };
   }
 
   private hasPathTraversal(rawPath: string): boolean {
@@ -269,6 +281,6 @@ export class ExecutionPlanFactoryService {
 
   private splitCandidates(value: string): string[] {
     const candidates = value.includes('|') ? value.split('|').map((candidate) => candidate.trim()).filter(Boolean) : [value].filter(Boolean);
-    return candidates.length ? candidates : ['NO_REGRESSION'];
+    return candidates;
   }
 }
