@@ -351,7 +351,7 @@ describe('ExecutionPlanPlannerService', () => {
     expect(result.fallbackReason).toContain('appearance ui_state uses invalid expected value');
   });
 
-  it('falls back to emergency plan when factory_first has no steps and no LLM buildPlan', async () => {
+  it('throws when factory_first has no steps and no LLM fallback by default', async () => {
     const factoryOnlyConfig = {
       ...config,
       runtime: { ...config.runtime, planning: { executionPlanStrategy: 'factory_first' as const } },
@@ -362,14 +362,29 @@ describe('ExecutionPlanPlannerService', () => {
     const stubFactory = {
       async fromScenarios() { return undefined; },
     } as unknown as ExecutionPlanFactoryService;
-    const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
 
-    const result = await new ExecutionPlanPlannerService(provider, stubFactory).build(factoryOnlyConfig, scenarios);
+    await expect(new ExecutionPlanPlannerService(provider, stubFactory).build(factoryOnlyConfig, scenarios))
+      .rejects.toThrow(/factory_first produced no steps and no LLM fallback available/);
+  });
+
+  it('generates emergency plan when factory_first fails and allowEmergencyPlan is true', async () => {
+    const emergencyConfig = {
+      ...config,
+      runtime: { ...config.runtime, planning: { executionPlanStrategy: 'factory_first' as const, allowEmergencyPlan: true } },
+    };
+    const provider: DecisionProviderPort = {
+      async decide() { throw new Error('not used'); },
+    };
+    const stubFactory = {
+      async fromScenarios() { return undefined; },
+    } as unknown as ExecutionPlanFactoryService;
+
+    const result = await new ExecutionPlanPlannerService(provider, stubFactory).build(emergencyConfig, scenarios);
 
     expect(result.plan).toBeDefined();
     expect(result.source).toBe('factory');
     expect(result.fallbackReason).toContain('emergency');
     expect(result.plan!.steps[0].action.type).toBe('navigate');
-    expect((result.plan!.steps[0].action as { to: string }).to).toBe(factoryOnlyConfig.baseUrl);
+    expect((result.plan!.steps[0].action as { to: string }).to).toBe(emergencyConfig.baseUrl);
   });
 });

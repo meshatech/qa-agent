@@ -424,13 +424,22 @@ describe('LearningExtractorService', () => {
       const candidates = service.extract(result, makeConfig());
       await service.persist(result, candidates);
 
-      expect(mockRepository.writeJson).toHaveBeenCalledWith('/tmp/run-persist-001', 'learning-candidates.json.tmp', candidates);
+      const writeCall = (mockRepository.writeJson as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(writeCall[0]).toBe('/tmp/run-persist-001');
+      expect(writeCall[1]).toMatch(/learning-candidates\.json\..+\.tmp/);
+      expect(writeCall[2]).toBe(candidates);
+
+      const renameCall = (mockRepository.renameFile as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(renameCall[0]).toBe('/tmp/run-persist-001');
+      expect(renameCall[1]).toBe(writeCall[1]);
+      expect(renameCall[2]).toBe('learning-candidates.json');
+
       expect(mockRepository.appendRunHistory).toHaveBeenCalledOnce();
-      expect(mockRepository.renameFile).toHaveBeenCalledWith('/tmp/run-persist-001', 'learning-candidates.json.tmp', 'learning-candidates.json');
       expect((mockRepository.writeJson as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0])
         .toBeLessThan((mockRepository.renameFile as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]!);
       expect((mockRepository.renameFile as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0])
         .toBeLessThan((mockRepository.appendRunHistory as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]!);
+
       const callArgs = (mockRepository.appendRunHistory as ReturnType<typeof vi.fn>).mock.calls[0];
       expect(callArgs[0]).toBe('/tmp/run-persist-001');
       expect(callArgs[1].runId).toBe('run-persist-001');
@@ -475,9 +484,11 @@ describe('LearningExtractorService', () => {
       await expect(service.persist(result, candidates)).rejects.toThrow(/disk full/);
       expect(mockRepository.appendRunHistory).not.toHaveBeenCalled();
       expect(mockRepository.renameFile).not.toHaveBeenCalled();
+      expect(mockRepository.deleteFile).toHaveBeenCalledOnce();
+      expect((mockRepository.deleteFile as ReturnType<typeof vi.fn>).mock.calls[0][1]).toMatch(/learning-candidates\.json\..+\.tmp/);
     });
 
-    it('keeps the renamed file and does not roll back when appendRunHistory fails', async () => {
+    it('keeps the renamed file and does not delete when appendRunHistory fails', async () => {
       const result: QaRunResult = {
         status: 'PASSED',
         runDir: '/tmp/run-persist-rollback',
@@ -489,8 +500,7 @@ describe('LearningExtractorService', () => {
 
       await expect(service.persist(result, candidates)).rejects.toThrow(/disk full/);
       expect(mockRepository.renameFile).toHaveBeenCalledOnce();
-      expect(mockRepository.deleteFile).toHaveBeenCalledTimes(1);
-      expect(mockRepository.deleteFile).toHaveBeenNthCalledWith(1, '/tmp/run-persist-rollback', 'learning-candidates.json.tmp');
+      expect(mockRepository.deleteFile).not.toHaveBeenCalled();
     });
 
     it('cleans up temp file and skips history when renameFile fails', async () => {
@@ -505,10 +515,12 @@ describe('LearningExtractorService', () => {
 
       await expect(service.persist(result, candidates)).rejects.toThrow(/rename failed/);
       expect(mockRepository.appendRunHistory).not.toHaveBeenCalled();
-      expect(mockRepository.deleteFile).toHaveBeenLastCalledWith('/tmp/run-persist-rename-fail', 'learning-candidates.json.tmp');
+      const deleteCall = (mockRepository.deleteFile as ReturnType<typeof vi.fn>).mock.calls[0];
+      expect(deleteCall[0]).toBe('/tmp/run-persist-rename-fail');
+      expect(deleteCall[1]).toMatch(/learning-candidates\.json\..+\.tmp/);
     });
 
-    it('cleans up orphan temp before writing new persist', async () => {
+    it('does not call deleteFile on success path', async () => {
       const result: QaRunResult = {
         status: 'PASSED',
         runDir: '/tmp/run-persist-success',
@@ -517,8 +529,7 @@ describe('LearningExtractorService', () => {
       };
       const candidates = service.extract(result, makeConfig());
       await service.persist(result, candidates);
-      expect(mockRepository.deleteFile).toHaveBeenCalledTimes(1);
-      expect(mockRepository.deleteFile).toHaveBeenCalledWith('/tmp/run-persist-success', 'learning-candidates.json.tmp');
+      expect(mockRepository.deleteFile).not.toHaveBeenCalled();
     });
 
     it('appends run history with multiple candidate types', async () => {

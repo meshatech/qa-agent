@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import type { MemoryCandidate } from '../../domain/schemas/memory-candidate.schema.js';
 import type { QaRunResult, QaStep } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
@@ -29,10 +30,15 @@ export class LearningExtractorService {
 
   async persist(result: QaRunResult, candidates: MemoryCandidate[]): Promise<void> {
     const runId = this.runIdFromResult(result);
-    const tempName = 'learning-candidates.json.tmp';
     const finalName = 'learning-candidates.json';
-    await this.repository.deleteFile(result.runDir, tempName);
-    await this.repository.writeJson(result.runDir, tempName, candidates);
+    const tempName = `${finalName}.${randomUUID()}.tmp`;
+    try {
+      await this.repository.writeJson(result.runDir, tempName, candidates);
+      await this.repository.renameFile(result.runDir, tempName, finalName);
+    } catch (error) {
+      await this.repository.deleteFile(result.runDir, tempName).catch(() => {});
+      throw error;
+    }
     const entry = {
       runId,
       timestamp: result.finishedAt ?? new Date().toISOString(),
@@ -42,12 +48,6 @@ export class LearningExtractorService {
       candidateCount: candidates.length,
       candidates: candidates.map((c) => ({ id: c.id, type: c.type, title: c.title, confidence: c.confidence })),
     };
-    try {
-      await this.repository.renameFile(result.runDir, tempName, finalName);
-    } catch (error) {
-      await this.repository.deleteFile(result.runDir, tempName);
-      throw error;
-    }
     await this.repository.appendRunHistory(result.runDir, entry);
   }
 

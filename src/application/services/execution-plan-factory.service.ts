@@ -84,27 +84,38 @@ export class ExecutionPlanFactoryService {
       }
       case 'NAVIGATION': {
         let targetUrl: string;
-        if (outcome.target) {
-          if (this.hasPathTraversal(outcome.target)) {
-            throw new Error(`Navigation target contains path traversal: ${outcome.target}`);
+        const sanitizedTarget = outcome.target?.trim();
+        if (sanitizedTarget) {
+          if (this.hasPathTraversal(sanitizedTarget)) {
+            this.logger.warn(`Navigation target contains path traversal; emitting safe check step: ${sanitizedTarget}`);
+            return [this.makeSafeCheckStep(scenarioId, task, outcome.description)];
           }
-          targetUrl = new URL(outcome.target, config.baseUrl).href;
+          try {
+            targetUrl = new URL(sanitizedTarget, config.baseUrl).href;
+          } catch (error) {
+            this.logger.warn(`Failed to resolve navigation target "${sanitizedTarget}" against baseUrl "${config.baseUrl}": ${error instanceof Error ? error.message : String(error)}; emitting safe check step`);
+            return [this.makeSafeCheckStep(scenarioId, task, outcome.description)];
+          }
           const resolved = new URL(targetUrl);
           if (!['http:', 'https:'].includes(resolved.protocol)) {
-            throw new Error(`Navigation target uses unsupported protocol: ${resolved.protocol}`);
+            this.logger.warn(`Navigation target uses unsupported protocol "${resolved.protocol}"; emitting safe check step: ${sanitizedTarget}`);
+            return [this.makeSafeCheckStep(scenarioId, task, outcome.description)];
           }
           if (this.hasPathTraversal(resolved.pathname)) {
-            throw new Error(`Navigation target contains path traversal after resolution: ${outcome.target}`);
+            this.logger.warn(`Navigation target contains path traversal after resolution; emitting safe check step: ${sanitizedTarget}`);
+            return [this.makeSafeCheckStep(scenarioId, task, outcome.description)];
           }
           const baseHost = new URL(config.baseUrl).host;
           if (resolved.host !== baseHost) {
-            throw new Error(`Navigation target resolves to external host: ${resolved.host}`);
+            this.logger.warn(`Navigation target resolves to external host "${resolved.host}"; emitting safe check step: ${sanitizedTarget}`);
+            return [this.makeSafeCheckStep(scenarioId, task, outcome.description)];
           }
           const basePath = posixPath.normalize(new URL(config.baseUrl).pathname || '/');
           if (basePath !== '/') {
             const resolvedPath = posixPath.normalize(this.decodeTarget(resolved.pathname));
             if (!resolvedPath.startsWith(basePath)) {
-              throw new Error(`Navigation target escapes base path: ${outcome.target}`);
+              this.logger.warn(`Navigation target escapes base path "${basePath}"; emitting safe check step: ${sanitizedTarget}`);
+              return [this.makeSafeCheckStep(scenarioId, task, outcome.description)];
             }
           }
         } else {
@@ -135,7 +146,7 @@ export class ExecutionPlanFactoryService {
     }
   }
 
-  private makeStep(scenarioId: string, task: QaTask, action: PlanAction, postconditions: ExecutionStep['postconditions']): ExecutionStep {
+  private makeStep(scenarioId: string, task: QaTask, action: PlanAction, postconditions: ExecutionStep['postconditions'], isFallback?: boolean): ExecutionStep {
     return {
       id: `${task.id}-outcome`,
       scenarioId,
@@ -146,11 +157,12 @@ export class ExecutionPlanFactoryService {
       postconditions,
       assertions: [],
       onFailure: 'RECOVER',
+      ...(isFallback ? { isFallback: true } : {}),
     };
   }
 
   private makeSafeCheckStep(scenarioId: string, task: QaTask, reason: string): ExecutionStep {
-    return this.makeStep(scenarioId, task, { type: 'waitForStable', timeoutMs: 1000, reason }, [{ type: 'no_console_errors' }]);
+    return this.makeStep(scenarioId, task, { type: 'waitForStable', timeoutMs: 1000, reason }, [{ type: 'no_console_errors' }], true);
   }
 
   private async logoutSteps(scenarioId: string, task: QaTask, config: RunConfig, outcome: ExpectedOutcome): Promise<ExecutionStep[]> {
@@ -194,14 +206,14 @@ export class ExecutionPlanFactoryService {
   private async semanticTarget(outcome: ExpectedOutcome, config?: RunConfig): Promise<LocatorDescriptor | null> {
     if (!this.SEMANTIC_TARGET_KINDS.has(outcome.kind)) return null;
     const texts = config?.runtime.semanticAliases?.[outcome.kind] ?? this.splitCandidates(outcome.target ?? outcome.description ?? '');
-    if (texts.length === 1 && texts[0] === 'NO_REGRESSION') return null;
     if (!texts.length || texts.some((text) => text.trim().length < 3)) {
       this.logger.warn(`Semantic target for ${outcome.kind} has empty or too-short candidates; emitting safe check step`);
       return null;
     }
+    const filteredTexts = texts.filter((text) => text !== 'NO_REGRESSION');
     if (config) {
       const safeTexts: string[] = [];
-      for (const text of texts) {
+      for (const text of filteredTexts) {
         let ok = false;
         try {
           ok = this.actionPolicy.validateDestructiveText(text, config).ok;
@@ -215,12 +227,13 @@ export class ExecutionPlanFactoryService {
         }
         safeTexts.push(text);
       }
-      if (!safeTexts.length) return null;
+      if (!safeTexts.length || (safeTexts.length === 1 && safeTexts[0] === 'NO_REGRESSION')) return null;
       return { strategy: 'text_any', texts: safeTexts };
     }
+    if (!filteredTexts.length || (filteredTexts.length === 1 && filteredTexts[0] === 'NO_REGRESSION')) return null;
     return {
       strategy: 'text_any',
-      texts,
+      texts: filteredTexts,
     };
   }
 

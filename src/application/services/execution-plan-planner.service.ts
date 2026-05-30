@@ -46,8 +46,11 @@ export class ExecutionPlanPlannerService {
           throw new ExecutionPlanBuildError(`factory_first produced no steps and LLM fallback failed: ${this.fallbackReason(error)}`);
         }
       }
-      this.logger.warn('factory_first produced no steps and no LLM fallback available; generating emergency plan');
-      return { plan: this.makeEmergencyPlan(config), source: 'factory', fallbackReason: 'factory_first produced no steps and no LLM fallback; using emergency navigation plan' };
+      if (config.runtime.planning?.allowEmergencyPlan) {
+        this.logger.warn('factory_first produced no steps and no LLM fallback available; generating emergency plan');
+        return { plan: this.makeEmergencyPlan(config), source: 'factory', fallbackReason: 'factory_first produced no steps and no LLM fallback; using emergency navigation plan' };
+      }
+      throw new ExecutionPlanBuildError('factory_first produced no steps and no LLM fallback available');
     }
     if (this.decision.buildPlan) {
       try {

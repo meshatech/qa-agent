@@ -89,6 +89,7 @@ describe('ExecutionPlanFactoryService', () => {
 
     const step = plan!.steps[0];
     expect(step.action.type).toBe('waitForStable');
+    expect(step.isFallback).toBe(true);
   });
 
   it('generates fill action for data entry task', async () => {
@@ -119,6 +120,7 @@ describe('ExecutionPlanFactoryService', () => {
     const step = plan!.steps[0];
     expect(step.action.type).toBe('waitForStable');
     expect(step.postconditions).toEqual([{ type: 'no_console_errors' }]);
+    expect(step.isFallback).toBe(true);
   });
 
   it('preserves known flows: theme', async () => {
@@ -194,6 +196,7 @@ describe('ExecutionPlanFactoryService', () => {
     const step = plan!.steps[0];
     expect(step.action.type).toBe('waitForStable');
     expect(step.postconditions).toEqual([{ type: 'no_console_errors' }]);
+    expect(step.isFallback).toBe(true);
   });
 
   it('returns safe check step for classification failure outcome', async () => {
@@ -207,6 +210,7 @@ describe('ExecutionPlanFactoryService', () => {
     expect(plan!.steps[0].action.type).toBe('waitForStable');
     expect((plan!.steps[0].action as { reason: string }).reason).toContain('Classification failed');
     expect(plan!.steps[0].postconditions).toEqual([{ type: 'no_console_errors' }]);
+    expect(plan!.steps[0].isFallback).toBe(true);
   });
 
   it('uses safe console check for no regression outcome', async () => {
@@ -218,6 +222,7 @@ describe('ExecutionPlanFactoryService', () => {
     const step = plan!.steps[0];
     expect(step.action.type).toBe('waitForStable');
     expect(step.postconditions).toEqual([{ type: 'no_console_errors' }]);
+    expect(step.isFallback).toBe(true);
   });
 
   it('emits a safe check step when the only semantic target is destructive', async () => {
@@ -227,6 +232,7 @@ describe('ExecutionPlanFactoryService', () => {
 
     const plan = await factory.fromScenarios(config, [scenario]);
     expect(plan!.steps[0].action.type).toBe('waitForStable');
+    expect(plan!.steps[0].isFallback).toBe(true);
   });
 
   it('generates single step for logout task with multiple text alternatives', async () => {
@@ -257,20 +263,24 @@ describe('ExecutionPlanFactoryService', () => {
     ]);
   });
 
-  it('rejects navigation target with path traversal', async () => {
+  it('emits safe check step for navigation target with path traversal', async () => {
     const scenario = makeScenario('SCN-010', 'Acessar perfil', [
       { id: 'T010', title: 'Navegar para perfil', expected: 'Perfil carregado', status: 'PENDING', expectedOutcome: { kind: 'NAVIGATION', target: '/../etc/passwd', description: 'navigate' } },
     ]);
 
-    await expect(factory.fromScenarios(config, [scenario])).rejects.toThrow(/path traversal/i);
+    const plan = await factory.fromScenarios(config, [scenario]);
+    expect(plan!.steps[0].action.type).toBe('waitForStable');
+    expect(plan!.steps[0].isFallback).toBe(true);
   });
 
-  it('rejects navigation target resolving to external host', async () => {
+  it('emits safe check step for navigation target resolving to external host', async () => {
     const scenario = makeScenario('SCN-011', 'Acessar externo', [
       { id: 'T011', title: 'Navegar para externo', expected: 'Bloqueado', status: 'PENDING', expectedOutcome: { kind: 'NAVIGATION', target: '//evil.com/admin', description: 'navigate' } },
     ]);
 
-    await expect(factory.fromScenarios(config, [scenario])).rejects.toThrow(/external host/i);
+    const plan = await factory.fromScenarios(config, [scenario]);
+    expect(plan!.steps[0].action.type).toBe('waitForStable');
+    expect(plan!.steps[0].isFallback).toBe(true);
   });
 
   it('normalizes valid relative navigation target with new URL', async () => {
@@ -310,22 +320,27 @@ describe('ExecutionPlanFactoryService', () => {
     const plan = await factory.fromScenarios(config, [scenario]);
     expect(plan).toBeDefined();
     expect(plan!.steps[0].action.type).toBe('waitForStable');
+    expect(plan!.steps[0].isFallback).toBe(true);
   });
 
-  it('rejects navigation target with javascript protocol', async () => {
+  it('emits safe check step for navigation target with javascript protocol', async () => {
     const scenario = makeScenario('SCN-015', 'Injeção JS', [
       { id: 'T015', title: 'Navegar para perfil', expected: 'Bloqueado', status: 'PENDING', expectedOutcome: { kind: 'NAVIGATION', target: 'javascript:alert(1)', description: 'navigate' } },
     ]);
 
-    await expect(factory.fromScenarios(config, [scenario])).rejects.toThrow(/unsupported protocol/);
+    const plan = await factory.fromScenarios(config, [scenario]);
+    expect(plan!.steps[0].action.type).toBe('waitForStable');
+    expect(plan!.steps[0].isFallback).toBe(true);
   });
 
-  it('rejects navigation target with file protocol', async () => {
+  it('emits safe check step for navigation target with file protocol', async () => {
     const scenario = makeScenario('SCN-016', 'File access', [
       { id: 'T016', title: 'Acessar arquivo', expected: 'Bloqueado', status: 'PENDING', expectedOutcome: { kind: 'NAVIGATION', target: 'file:///etc/passwd', description: 'navigate' } },
     ]);
 
-    await expect(factory.fromScenarios(config, [scenario])).rejects.toThrow(/unsupported protocol/);
+    const plan = await factory.fromScenarios(config, [scenario]);
+    expect(plan!.steps[0].action.type).toBe('waitForStable');
+    expect(plan!.steps[0].isFallback).toBe(true);
   });
 
   it('generates email test value for data entry task with email keyword', async () => {
@@ -381,6 +396,7 @@ describe('ExecutionPlanFactoryService', () => {
 
     const plan = await factory.fromScenarios(unsafeConfig, [scenario]);
     expect(plan!.steps[0].action.type).toBe('waitForStable');
+    expect(plan!.steps[0].isFallback).toBe(true);
   });
 
   it('returns safe check step when validateDestructiveText throws unexpectedly', async () => {
@@ -397,22 +413,27 @@ describe('ExecutionPlanFactoryService', () => {
     const plan = await crashingFactory.fromScenarios(config, [scenario]);
     expect(plan).toBeDefined();
     expect(plan!.steps[0].action.type).toBe('waitForStable');
+    expect(plan!.steps[0].isFallback).toBe(true);
   });
 
-  it('rejects navigation target with encoded path traversal', async () => {
+  it('emits safe check step for navigation target with encoded path traversal', async () => {
     const scenario = makeScenario('SCN-021', 'Traversal codificado', [
       { id: 'T021', title: 'Navegar codificado', expected: 'Bloqueado', status: 'PENDING', expectedOutcome: { kind: 'NAVIGATION', target: '/%2e%2e/secret', description: 'navigate' } },
     ]);
 
-    await expect(factory.fromScenarios(config, [scenario])).rejects.toThrow(/path traversal/i);
+    const plan = await factory.fromScenarios(config, [scenario]);
+    expect(plan!.steps[0].action.type).toBe('waitForStable');
+    expect(plan!.steps[0].isFallback).toBe(true);
   });
 
-  it('rejects navigation target with double-encoded path traversal', async () => {
+  it('emits safe check step for navigation target with double-encoded path traversal', async () => {
     const scenario = makeScenario('SCN-021b', 'Dupla codificação', [
       { id: 'T021b', title: 'Navegar duplo', expected: 'Bloqueado', status: 'PENDING', expectedOutcome: { kind: 'NAVIGATION', target: '/%252e%252e/secret', description: 'navigate' } },
     ]);
 
-    await expect(factory.fromScenarios(config, [scenario])).rejects.toThrow(/path traversal/i);
+    const plan = await factory.fromScenarios(config, [scenario]);
+    expect(plan!.steps[0].action.type).toBe('waitForStable');
+    expect(plan!.steps[0].isFallback).toBe(true);
   });
 
   it('returns safe check step for CLASSIFICATION_FAILED outcome', async () => {
@@ -424,6 +445,7 @@ describe('ExecutionPlanFactoryService', () => {
     expect(plan).toBeDefined();
     expect(plan!.steps[0].action.type).toBe('waitForStable');
     expect((plan!.steps[0].action as { reason: string }).reason).toContain('Classification failed');
+    expect(plan!.steps[0].isFallback).toBe(true);
   });
 
   it('returns undefined when no steps can be generated', async () => {
