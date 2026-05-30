@@ -111,7 +111,8 @@ describe('ExecutionPlanFactoryService — contract-driven (typed state, no words
     const tasks = kinds.map((o, i) => makeTask(`T${i}`, `task ${i}`, o));
     const plan = await factory.fromScenarios(config, [makeScenario('SCN-ALL', tasks)]);
 
-    expect(plan!.steps).toHaveLength(kinds.length);
+    // DISCLOSURE produces 2 steps (open + select); all others produce 1
+    expect(plan!.steps).toHaveLength(kinds.length + 1);
     const parsed = ExecutionPlanSchema.safeParse(plan);
     if (!parsed.success) console.log(JSON.stringify(parsed.error.issues.slice(0, 8), null, 2));
     expect(parsed.success).toBe(true);

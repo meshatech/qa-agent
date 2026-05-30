@@ -165,16 +165,24 @@ describe('ExecutionPlanFactoryService', () => {
     ]);
   });
 
-  it('generates semantic click step for account menu task', async () => {
+  it('generates open and select click steps for disclosure task', async () => {
     const scenario = makeScenario('SCN-008', 'Abrir opções da conta', [
       { id: 'T008', title: 'Abrir opções da conta', expected: 'Menu visível', status: 'PENDING', expectedOutcome: { kind: 'DISCLOSURE', description: 'menu' } },
     ]);
     const plan = await factory.fromScenarios(config, [scenario]);
 
-    const step = plan!.steps[0];
-    expect(step.action.type).toBe('click');
-    expect((step.action as { target: { strategy: string } }).target.strategy).toBe('text_any');
-    expect(step.postconditions).toEqual([
+    expect(plan!.steps).toHaveLength(2);
+    const openStep = plan!.steps[0];
+    expect(openStep.action.type).toBe('click');
+    expect(openStep.id).toBe('T008-outcome');
+    expect((openStep.action as { reason: string }).reason).toContain('Open container');
+    expect(openStep.postconditions).toEqual([
+      { type: 'menu_state', expected: 'open', semanticKey: 'menu' },
+    ]);
+    const selectStep = plan!.steps[1];
+    expect(selectStep.action.type).toBe('click');
+    expect(selectStep.id).toBe('T008-select');
+    expect(selectStep.postconditions).toEqual([
       { type: 'menu_state', expected: 'open', semanticKey: 'menu' },
     ]);
   });
@@ -307,9 +315,13 @@ describe('ExecutionPlanFactoryService', () => {
     ]);
 
     const plan = await factory.fromScenarios(unsafeConfig, [scenario]);
-    const step = plan!.steps[0];
-    expect(step.action.type).toBe('click');
-    expect((step.action as { target: { texts: string[] } }).target.texts).toEqual(['Abrir']);
+    expect(plan!.steps).toHaveLength(2);
+    const openStep = plan!.steps[0];
+    expect(openStep.action.type).toBe('click');
+    expect((openStep.action as { target: { texts: string[] } }).target.texts).toEqual(['Abrir']);
+    const selectStep = plan!.steps[1];
+    expect(selectStep.action.type).toBe('click');
+    expect(selectStep.id).toBe('T013-select');
   });
 
   it('returns safe check step for unwhitelisted outcome kind', async () => {

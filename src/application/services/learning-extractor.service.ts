@@ -32,6 +32,7 @@ export class LearningExtractorService {
     const runId = this.runIdFromResult(result);
     const finalName = 'learning-candidates.json';
     const tempName = `${finalName}.${randomUUID()}.tmp`;
+    await this.cleanupTempFiles(result.runDir, finalName);
     try {
       await this.repository.writeJson(result.runDir, tempName, candidates);
       await this.repository.renameFile(result.runDir, tempName, finalName);
@@ -157,6 +158,19 @@ export class LearningExtractorService {
       createdAt: timestamp,
       metadata: { scenarioStatus: status },
     };
+  }
+
+  private async cleanupTempFiles(runDir: string, finalName: string): Promise<void> {
+    try {
+      const files = await this.repository.listFiles(runDir, '.');
+      for (const file of files) {
+        if (file.startsWith(finalName) && file.endsWith('.tmp')) {
+          await this.repository.deleteFile(runDir, file).catch(() => {});
+        }
+      }
+    } catch {
+      // Ignore cleanup errors
+    }
   }
 
   private runIdFromResult(result: QaRunResult): string {

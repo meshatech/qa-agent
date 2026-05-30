@@ -80,7 +80,20 @@ export class ExecutionPlanFactoryService {
         if (!disclosureTarget) {
           return [this.makeSafeCheckStep(scenarioId, task, outcome.description)];
         }
-        return [this.makeStep(scenarioId, task, { type: 'click', target: disclosureTarget, reason: outcome.description }, [{ type: 'menu_state', semanticKey: outcome.target ?? 'menu', expected: 'open' }])];
+        const openStep = this.makeStep(
+          scenarioId,
+          task,
+          { type: 'click', target: disclosureTarget, reason: `Open container: ${outcome.description}` },
+          [{ type: 'menu_state', semanticKey: outcome.target ?? 'menu', expected: 'open' }],
+        );
+        const selectStep = this.makeStep(
+          scenarioId,
+          task,
+          { type: 'click', target: disclosureTarget, reason: outcome.description },
+          [{ type: 'menu_state', semanticKey: outcome.target ?? 'menu', expected: 'open' }],
+        );
+        selectStep.id = `${task.id}-select`;
+        return [openStep, selectStep];
       }
       case 'NAVIGATION': {
         let targetUrl: string;
@@ -206,7 +219,7 @@ export class ExecutionPlanFactoryService {
   private async semanticTarget(outcome: ExpectedOutcome, config?: RunConfig): Promise<LocatorDescriptor | null> {
     if (!this.SEMANTIC_TARGET_KINDS.has(outcome.kind)) return null;
     const texts = config?.runtime.semanticAliases?.[outcome.kind] ?? this.splitCandidates(outcome.target ?? outcome.description ?? '');
-    if (!texts.length || texts.some((text) => text.trim().length < 3)) {
+    if (!texts.length || texts.some((text) => text.trim().length < 2)) {
       this.logger.warn(`Semantic target for ${outcome.kind} has empty or too-short candidates; emitting safe check step`);
       return null;
     }

@@ -48,7 +48,9 @@ export class ExecutionPlanPlannerService {
       }
       if (config.runtime.planning?.allowEmergencyPlan) {
         this.logger.warn('factory_first produced no steps and no LLM fallback available; generating emergency plan');
-        return { plan: this.makeEmergencyPlan(config), source: 'factory', fallbackReason: 'factory_first produced no steps and no LLM fallback; using emergency navigation plan' };
+        const plan = this.makeEmergencyPlan(config);
+        this.validateSemanticPlan(plan, config, scenarios);
+        return { plan, source: 'factory', fallbackReason: 'factory_first produced no steps and no LLM fallback; using emergency navigation plan' };
       }
       throw new ExecutionPlanBuildError('factory_first produced no steps and no LLM fallback available');
     }
@@ -98,13 +100,17 @@ export class ExecutionPlanPlannerService {
     const taskIds = new Set(scenarios.flatMap((scenario) => scenario.tasks.map((task) => task.id)));
     const scenarioIds = new Set(scenarios.map((scenario) => scenario.id));
     for (const step of plan.steps) {
+      if (step.scenarioId === 'emergency' && step.taskId === 'emergency') continue;
       if (!step.scenarioId || !scenarioIds.has(step.scenarioId)) {
         this.logger.warn(`Step "${step.id}" references unknown scenarioId "${step.scenarioId}"; cannot validate theme/logout safety`);
       } else if (!step.taskId || !taskIds.has(step.taskId)) {
         this.logger.warn(`Step "${step.id}" references unknown taskId "${step.taskId}"; cannot validate theme/logout safety`);
       }
     }
-    if (taskIds.size > 0 && plan.steps.some((step) => !step.taskId || !taskIds.has(step.taskId) || !step.scenarioId || !scenarioIds.has(step.scenarioId))) {
+    if (taskIds.size > 0 && plan.steps.some((step) => {
+      if (step.scenarioId === 'emergency' && step.taskId === 'emergency') return false;
+      return !step.taskId || !taskIds.has(step.taskId) || !step.scenarioId || !scenarioIds.has(step.scenarioId);
+    })) {
       issues.push('plan steps must preserve scenarioId/taskId from scenarioCatalog');
     }
     if (config.auth.kind !== 'none' && plan.steps.some((step) => this.stepAttemptsRuntimeLogin(step))) {
