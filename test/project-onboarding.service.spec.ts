@@ -124,6 +124,7 @@ function makePlanExecutor(result: Partial<PlanExecutionResult> = {}): PlanExecut
     },
     patchHistory: [],
     evaluations: [],
+    locatorTelemetry: [],
     ...result,
   });
 

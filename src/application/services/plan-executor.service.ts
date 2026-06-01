@@ -15,6 +15,14 @@ import { PlanReplannerService } from './plan-replanner.service.js';
 import { RecoveryPolicyService } from './recovery-policy.service.js';
 import { TaskMemoryService } from './task-memory.service.js';
 
+export interface LocatorTelemetryEvent {
+  stepId: string;
+  type: 'deterministic_resolution' | 'semantic_fallback' | 'llm_decide' | 'replan' | 'target_not_found';
+  locatorStrategy?: string;
+  elementId?: string;
+  timestamp: string;
+}
+
 export interface PlanExecutionResult {
   ok: boolean;
   steps: QaStep[];
@@ -23,6 +31,7 @@ export interface PlanExecutionResult {
   finalPlan: ExecutionPlan;
   patchHistory: Array<Record<string, unknown>>;
   evaluations: ConditionEvaluationResult[];
+  locatorTelemetry: LocatorTelemetryEvent[];
   failedStep?: QaStep;
   failedObservation?: ScreenObservation;
   failedMessage?: string;
@@ -61,7 +70,7 @@ export class PlanExecutorService {
     let stepIndex = 0;
     let replans = 0;
     const iterations = new Map<string, number>();
-    const result: PlanExecutionResult = { ok: true, steps: [], attempts: [], warnings: [], finalPlan: currentPlan, patchHistory: [], evaluations: [] };
+    const result: PlanExecutionResult = { ok: true, steps: [], attempts: [], warnings: [], finalPlan: currentPlan, patchHistory: [], evaluations: [], locatorTelemetry: [] };
     while (stepIndex < currentPlan.steps.length) {
       const step = currentPlan.steps[stepIndex]!;
       const attempts = step.maxAttempts ?? currentPlan.runtime.maxAttemptsPerStep;
@@ -94,14 +103,15 @@ export class PlanExecutorService {
 
         let action: QaAction;
         try {
-          action = this.resolveAction(step, before);
+          action = this.resolveAction(step, before, result);
         } catch (error) {
+          result.locatorTelemetry.push({ stepId: step.id, type: 'target_not_found', timestamp: new Date().toISOString() });
           await this.recordAccessibilityWarnings(result, step.id);
           const available = await this.ensureActionTargetAvailable(step, before, config);
           result.attempts.push(...available.attempts);
           if (available.available) {
             before = available.observation;
-            action = this.resolveAction(step, before);
+            action = this.resolveAction(step, before, result);
           } else {
             const message = error instanceof Error ? error.message : String(error);
             const patched = await this.tryReplan({ result, config, currentPlan, step, before, reason: 'LOCATOR_NOT_FOUND', message, replans });
@@ -116,6 +126,7 @@ export class PlanExecutorService {
             // Fallback: ask LLM to resolve the concrete action from current observation
             try {
               action = await this.resolveViaLlm(step, before, config);
+              result.locatorTelemetry.push({ stepId: step.id, type: 'llm_decide', timestamp: new Date().toISOString() });
             } catch {
               throw error;
             }
@@ -240,6 +251,7 @@ export class PlanExecutorService {
     message: string;
     replans: number;
   }): Promise<ExecutionPlan | undefined> {
+    input.result.locatorTelemetry.push({ stepId: input.step.id, type: 'replan', timestamp: new Date().toISOString() });
     if (input.currentPlan.mode === 'PLAN_AND_EXECUTE') return undefined;
     if (input.replans >= input.currentPlan.runtime.maxReplansPerScenario) return undefined;
     try {
@@ -293,18 +305,31 @@ export class PlanExecutorService {
     return { ok: true, type: 'conditions', durationMs: 0 };
   }
 
-  private resolveAction(step: ExecutionStep, obs: ScreenObservation): QaAction {
+  private resolveAction(step: ExecutionStep, obs: ScreenObservation, result: PlanExecutionResult): QaAction {
     const action = this.data.resolveObject(step.action, 'action');
-    if (action.type === 'click') return { type: 'click', targetElementId: this.locators.findByLocator(obs, action.target), reason: action.reason };
-    if (action.type === 'fill') return { type: 'fill', targetElementId: this.locators.findByLocator(obs, action.target), value: action.value, reason: action.reason };
-    if (action.type === 'select') return { type: 'select', targetElementId: this.locators.findByLocator(obs, action.target), option: action.option, reason: action.reason };
-    if (action.type === 'press') return { type: 'press', key: action.key, targetElementId: action.target ? this.locators.findByLocator(obs, action.target) : undefined, reason: action.reason };
-    if (action.type === 'assertVisible') return { type: 'assertVisible', targetElementId: action.target ? this.locators.findByLocator(obs, action.target) : undefined, text: action.text, reason: action.reason };
-    if (action.type === 'drag') return { type: 'drag', sourceElementId: this.locators.findByLocator(obs, action.source), targetElementId: this.locators.findByLocator(obs, action.target), reason: action.reason };
-    if (action.type === 'uploadFile') return { type: 'uploadFile', targetElementId: this.locators.findByLocator(obs, action.target), filePath: action.filePath, reason: action.reason };
-    if (action.type === 'richTextFill') return { type: 'richTextFill', targetElementId: this.locators.findByLocator(obs, action.target), value: action.value, reason: action.reason };
-    if (action.type === 'extract') return { type: 'extract', targetElementId: this.locators.findByLocator(obs, action.target), key: action.key, source: action.source, reason: action.reason };
+    if (action.type === 'click') return { type: 'click', targetElementId: this.resolveLocator(step, obs, result, action.target), reason: action.reason };
+    if (action.type === 'fill') return { type: 'fill', targetElementId: this.resolveLocator(step, obs, result, action.target), value: action.value, reason: action.reason };
+    if (action.type === 'select') return { type: 'select', targetElementId: this.resolveLocator(step, obs, result, action.target), option: action.option, reason: action.reason };
+    if (action.type === 'press') return { type: 'press', key: action.key, targetElementId: action.target ? this.resolveLocator(step, obs, result, action.target) : undefined, reason: action.reason };
+    if (action.type === 'assertVisible') return { type: 'assertVisible', targetElementId: action.target ? this.resolveLocator(step, obs, result, action.target) : undefined, text: action.text, reason: action.reason };
+    if (action.type === 'drag') return { type: 'drag', sourceElementId: this.resolveLocator(step, obs, result, action.source), targetElementId: this.resolveLocator(step, obs, result, action.target), reason: action.reason };
+    if (action.type === 'uploadFile') return { type: 'uploadFile', targetElementId: this.resolveLocator(step, obs, result, action.target), filePath: action.filePath, reason: action.reason };
+    if (action.type === 'richTextFill') return { type: 'richTextFill', targetElementId: this.resolveLocator(step, obs, result, action.target), value: action.value, reason: action.reason };
+    if (action.type === 'extract') return { type: 'extract', targetElementId: this.resolveLocator(step, obs, result, action.target), key: action.key, source: action.source, reason: action.reason };
     return action;
+  }
+
+  private resolveLocator(step: ExecutionStep, obs: ScreenObservation, result: PlanExecutionResult, locator: import('../../domain/schemas/action.schema.js').LocatorDescriptor): string {
+    const elementId = this.locators.findByLocator(obs, locator);
+    const isSemanticFallback = locator.strategy === 'semantic';
+    result.locatorTelemetry.push({
+      stepId: step.id,
+      type: isSemanticFallback ? 'semantic_fallback' : 'deterministic_resolution',
+      locatorStrategy: locator.strategy,
+      elementId,
+      timestamp: new Date().toISOString(),
+    });
+    return elementId;
   }
 
   private async resolveViaLlm(step: ExecutionStep, obs: ScreenObservation, config: RunConfig): Promise<QaAction> {

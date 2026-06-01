@@ -37,6 +37,7 @@ function makeSmokeResult(ok: boolean): import('../src/application/services/plan-
     },
     patchHistory: [],
     evaluations: [],
+    locatorTelemetry: [],
     failedMessage: ok ? undefined : 'Navigation timeout',
   };
 }
