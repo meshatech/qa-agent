@@ -300,6 +300,23 @@ pipeline
     }
   });
 
+pipeline
+  .command('promote-learning')
+  .description('Review and promote learning candidates to project memory')
+  .option('--output-dir <path>', 'pipeline artifacts directory', './.agent-qa/pipeline')
+  .option('--project-dir <path>', 'project root', process.cwd())
+  .option('--auto-approve', 'automatically approve high-confidence confirmed candidates', false)
+  .action(async (opts) => {
+    try {
+      const result = await withApp((c) => c.pipelinePromoteLearning(opts.outputDir, opts.projectDir, Boolean(opts.autoApprove)));
+      console.log(JSON.stringify(result, null, 2));
+      process.exitCode = result.promotedCount > 0 ? EXIT.OK : EXIT.CONFIG_ERROR;
+    } catch (err) {
+      console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err), kind: err instanceof Error ? err.constructor.name : 'Error' }, null, 2));
+      process.exitCode = classifyError(err);
+    }
+  });
+
 program
   .command('onboard')
   .description('Run project onboarding with baseline smoke test')
