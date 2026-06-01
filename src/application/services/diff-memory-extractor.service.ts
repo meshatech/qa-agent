@@ -1,8 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { readFile } from 'node:fs/promises';
 import { join, basename } from 'node:path';
+import type { LlmProviderPort } from '../ports/llm-provider.port.js';
 
-const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const SYSTEM_PROMPT = `You are a QA memory generator. Analyze the provided project context (README, git diff, file structure, key source files) and generate a structured memory document in Markdown format.
 
 The output must follow this exact format for each chunk:
@@ -43,8 +43,12 @@ export interface ExtractMemoryFromDiffInput {
 
 @Injectable()
 export class DiffMemoryExtractorService {
+  constructor(
+    @Inject('LlmProviderPort') private readonly llm: LlmProviderPort,
+  ) {}
+
   async extract(input: ExtractMemoryFromDiffInput): Promise<DiffMemoryChunk[]> {
-    const { projectPath, changedFiles, llmApiKey, llmModel = 'llama-3.3-70b-versatile' } = input;
+    const { projectPath, changedFiles, llmModel = 'llama-3.3-70b-versatile' } = input;
 
     // Phase 1: Build lightweight base context (README, package.json, tree, git history)
     const baseContext = await this.buildBaseContext(projectPath, changedFiles);
@@ -54,19 +58,35 @@ export class DiffMemoryExtractorService {
 
     // Phase 3: Process each group with LLM, accumulating chunks
     const allChunks: DiffMemoryChunk[] = [];
+    const delayMs = Number(process.env.GROQ_DELAY_MS ?? 25000);
+
     for (const [category, files] of groups) {
       const groupContext = await this.buildGroupContext(projectPath, category, files, baseContext);
-      const markdown = await this.callLlm(groupContext, llmApiKey, llmModel, category);
-      const chunks = this.parseMarkdownChunks(markdown);
+      const result = await this.llm.complete({
+        context: groupContext,
+        model: llmModel,
+        systemPrompt: SYSTEM_PROMPT,
+        temperature: 0.2,
+        maxTokens: 4096,
+        phase: category,
+      });
+      const chunks = this.parseMarkdownChunks(result.content);
       allChunks.push(...chunks);
-      // Respect Groq rate limits: 12000 TPM limit for 70b
-      await new Promise((r) => setTimeout(r, 25000));
+      // Respect rate limits configured via env
+      await new Promise((r) => setTimeout(r, delayMs));
     }
 
     // Phase 4: Consolidation pass
     const consolidationContext = this.buildConsolidationContext(projectPath, baseContext, allChunks);
-    const finalMarkdown = await this.callLlm(consolidationContext, llmApiKey, llmModel, 'consolidate');
-    const finalChunks = this.parseMarkdownChunks(finalMarkdown);
+    const finalResult = await this.llm.complete({
+      context: consolidationContext,
+      model: llmModel,
+      systemPrompt: SYSTEM_PROMPT,
+      temperature: 0.2,
+      maxTokens: 4096,
+      phase: 'consolidate',
+    });
+    const finalChunks = this.parseMarkdownChunks(finalResult.content);
 
     return finalChunks.length > 0 ? finalChunks : allChunks;
   }
@@ -204,36 +224,6 @@ export class DiffMemoryExtractorService {
     }
   }
 
-  private async callLlm(context: string, apiKey?: string, model = 'llama-3.3-70b-versatile', phase = 'unknown'): Promise<string> {
-    const key = apiKey ?? process.env.GROQ_API_KEY ?? process.env.GROQ_PROVIDER;
-    if (!key) {
-      throw new Error('GROQ_API_KEY or GROQ_PROVIDER not set. Set it as env var or pass llmApiKey.');
-    }
-
-    const body = {
-      model,
-      temperature: 0.2,
-      max_tokens: 4096,
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: `Phase: ${phase}\n\n${context.slice(0, 2800)}` },
-      ],
-    };
-
-    const res = await fetch(GROQ_URL, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${key.trim()}`, 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new Error(`Groq error ${res.status}: ${text}`);
-    }
-
-    const json = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
-    return json.choices?.[0]?.message?.content ?? '';
-  }
 
   private parseMarkdownChunks(markdown: string): DiffMemoryChunk[] {
     const chunks: DiffMemoryChunk[] = [];

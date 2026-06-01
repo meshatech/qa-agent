@@ -73,6 +73,8 @@ import { LearningCandidateExtractorService } from './services/learning-candidate
 import { DiffMemoryExtractorService } from './services/diff-memory-extractor.service.js';
 import { RiskClassifierService } from './services/risk-classifier.service.js';
 import { ValueGeneratorService } from './services/value-generator.service.js';
+import { MemoryChunkRenderer } from './services/memory-chunk-renderer.service.js';
+import { GroqLlmProviderAdapter } from '../infra/llm/groq-llm-provider.adapter.js';
 import { InfraModule } from '../infra/infra.module.js';
 
 export const APPLICATION_PROVIDERS = [
@@ -86,6 +88,8 @@ export const APPLICATION_PROVIDERS = [
       new MemorySearchService(chunker, index, loader),
     inject: [MemoryChunker, BM25MemoryIndex, MemoryMarkdownLoader],
   },
+  { provide: 'LlmProviderPort', useClass: GroqLlmProviderAdapter },
+  MemoryChunkRenderer,
 ];
 
 @Module({ imports: [InfraModule], providers: APPLICATION_PROVIDERS, exports: APPLICATION_PROVIDERS })

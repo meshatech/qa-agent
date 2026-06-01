@@ -3,6 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 import type { PipelinePromoteLearningRunResult } from '../dto/pipeline-promote-learning-result.dto.js';
+import { MemoryChunkRenderer } from '../services/memory-chunk-renderer.service.js';
 
 const LEARNING_CANDIDATES_FILE = 'learning-candidates.json';
 const PROMOTION_LOG_FILE = 'promotion-log.json';
@@ -18,6 +19,10 @@ interface PromotionDecision {
 
 @Injectable()
 export class RunPipelinePromoteLearningUseCase {
+  constructor(
+    @Inject(MemoryChunkRenderer) private readonly renderer: MemoryChunkRenderer,
+  ) {}
+
   async execute(
     outputDir: string,
     options?: { projectPath?: string; autoApprove?: boolean },
@@ -43,7 +48,7 @@ export class RunPipelinePromoteLearningUseCase {
       decisions.push(decision);
 
       if (decision.approved) {
-        const chunk = this.candidateToMemoryChunk(candidate);
+        const chunk = this.renderer.render(candidate);
         if (chunk) {
           promotedChunks.push(chunk);
         } else {
@@ -143,37 +148,6 @@ export class RunPipelinePromoteLearningUseCase {
       reason: reasons.join('; '),
       timestamp: new Date().toISOString(),
     };
-  }
-
-  private candidateToMemoryChunk(
-    candidate: import('../../domain/schemas/learning-candidate.schema.js').LearningCandidate,
-  ): string | null {
-    const typeMap: Record<string, string> = {
-      semantic_locator: 'semantic_locator',
-      route_mapping: 'route',
-      component_behavior: 'known_issue',
-      recovery_pattern: 'runtime_learning',
-      gap: 'known_issue',
-    };
-
-    const chunkType = typeMap[candidate.type];
-    if (!chunkType) return null;
-
-    const id = candidate.id.replace(/[^a-zA-Z0-9_-]/g, '-').toUpperCase();
-
-    const lines: string[] = [];
-    lines.push(`## ${candidate.description}`);
-    lines.push('');
-    lines.push(`<!-- type: ${chunkType} | id: ${id} -->`);
-    lines.push(`- **Description**: ${candidate.description}`);
-    lines.push(`- **Content**: ${candidate.content}`);
-    lines.push(`- **Source**: ${candidate.source}`);
-    lines.push(`- **Confidence**: ${candidate.confidence}`);
-    if (candidate.risk) lines.push(`- **Risk**: ${candidate.risk}`);
-    lines.push(`- **Generated**: ${candidate.generatedAt}`);
-    lines.push('');
-
-    return lines.join('\n');
   }
 
   private async loadCandidates(outputDir: string): Promise<import('../../domain/schemas/learning-candidate.schema.js').LearningCandidatesArtifact | null> {

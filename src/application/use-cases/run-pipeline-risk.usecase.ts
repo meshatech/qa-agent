@@ -46,7 +46,6 @@ export class RunPipelineRiskUseCase {
   private async loadRunHistory(_projectPath: string): Promise<import('../ports/run-repository.port.js').RunHistoryEntry[]> {
     // Best-effort: try to read run-history.jsonl from .agent-qa
     try {
-      const { RunHistoryService } = await import('../services/run-history.service.js');
       const historyPath = join(_projectPath, '.agent-qa', 'run-history.jsonl');
       const content = await readFile(historyPath, 'utf8');
       const lines = content.split('\n').filter((l) => l.trim().length > 0);
