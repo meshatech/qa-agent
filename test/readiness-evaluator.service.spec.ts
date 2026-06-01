@@ -6,6 +6,19 @@ function makeEvaluator() {
   return new ReadinessEvaluatorService();
 }
 
+function makeInput(
+  overrides: Partial<import('../src/application/services/readiness-evaluator.service.js').ReadinessEvaluationInput> = {},
+): import('../src/application/services/readiness-evaluator.service.js').ReadinessEvaluationInput {
+  return {
+    browserOpenOk: true,
+    minimalSmokeOk: true,
+    routeCheckOk: true,
+    smokeResult: null,
+    executionError: false,
+    ...overrides,
+  };
+}
+
 function makeSmokeResult(ok: boolean): import('../src/application/services/plan-executor.service.js').PlanExecutionResult {
   return {
     ok,
@@ -31,37 +44,49 @@ function makeSmokeResult(ok: boolean): import('../src/application/services/plan-
 describe('ReadinessEvaluatorService', () => {
   it('returns UNKNOWN as initial state when no input provided', () => {
     const evaluator = makeEvaluator();
-    const result = evaluator.evaluate({ browserOpenOk: true, smokeResult: null, executionError: false });
+    const result = evaluator.evaluate(makeInput());
     expect(result).toBe('UNKNOWN');
   });
 
   it('returns READY when browser opened and smoke passed', () => {
     const evaluator = makeEvaluator();
-    const result = evaluator.evaluate({ browserOpenOk: true, smokeResult: makeSmokeResult(true), executionError: false });
+    const result = evaluator.evaluate(makeInput({ smokeResult: makeSmokeResult(true) }));
     expect(result).toBe('READY');
   });
 
   it('returns ONBOARDING_BLOCKED when browser failed to open', () => {
     const evaluator = makeEvaluator();
-    const result = evaluator.evaluate({ browserOpenOk: false, smokeResult: null, executionError: false });
+    const result = evaluator.evaluate(makeInput({ browserOpenOk: false }));
     expect(result).toBe('ONBOARDING_BLOCKED');
   });
 
   it('returns ONBOARDING_BLOCKED when smoke failed', () => {
     const evaluator = makeEvaluator();
-    const result = evaluator.evaluate({ browserOpenOk: true, smokeResult: makeSmokeResult(false), executionError: false });
+    const result = evaluator.evaluate(makeInput({ smokeResult: makeSmokeResult(false) }));
+    expect(result).toBe('ONBOARDING_BLOCKED');
+  });
+
+  it('returns ONBOARDING_BLOCKED when minimal smoke checks fail', () => {
+    const evaluator = makeEvaluator();
+    const result = evaluator.evaluate(makeInput({ minimalSmokeOk: false, smokeResult: makeSmokeResult(true) }));
+    expect(result).toBe('ONBOARDING_BLOCKED');
+  });
+
+  it('returns ONBOARDING_BLOCKED when route checks fail', () => {
+    const evaluator = makeEvaluator();
+    const result = evaluator.evaluate(makeInput({ routeCheckOk: false, smokeResult: makeSmokeResult(true) }));
     expect(result).toBe('ONBOARDING_BLOCKED');
   });
 
   it('returns ONBOARDING_BLOCKED when execution error occurred', () => {
     const evaluator = makeEvaluator();
-    const result = evaluator.evaluate({ browserOpenOk: true, smokeResult: makeSmokeResult(true), executionError: true });
+    const result = evaluator.evaluate(makeInput({ smokeResult: makeSmokeResult(true), executionError: true }));
     expect(result).toBe('ONBOARDING_BLOCKED');
   });
 
   it('transitions are deterministic: same input always yields same output', () => {
     const evaluator = makeEvaluator();
-    const input = { browserOpenOk: true, smokeResult: makeSmokeResult(false), executionError: false };
+    const input = makeInput({ smokeResult: makeSmokeResult(false) });
 
     const r1 = evaluator.evaluate(input);
     const r2 = evaluator.evaluate(input);

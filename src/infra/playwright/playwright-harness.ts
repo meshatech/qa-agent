@@ -50,7 +50,6 @@ export class PlaywrightHarness implements BrowserHarnessPort {
       if (config.auth.kind === 'formLogin') await this.formLogin.login(page, config);
       await this.navigateWithRetry(config.baseUrl);
       await this.waitForQuiescence(config.timeouts.quiescenceMs).catch(() => undefined);
-      this.signals.reset();
     } catch (error) {
       if (error instanceof HarnessFatalError) throw error;
       throw new HarnessFatalError(error instanceof Error ? error.message : 'browser open failed', error);
