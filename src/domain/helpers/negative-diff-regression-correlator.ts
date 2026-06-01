@@ -11,6 +11,35 @@ export interface NegativeDiffRegressionInput {
   memory: ConsumedMemorySearchContext;
 }
 
+const LOCK_FILE_PATTERNS = [
+  /package-lock\.json$/,
+  /yarn\.lock$/,
+  /pnpm-lock\.yaml$/,
+];
+
+const CONFIG_FILE_PATTERNS = [
+  /tsconfig.*\.json$/,
+  /jest\.config\./,
+  /vitest\.config\./,
+  /\.eslintrc/,
+  /\.prettierrc/,
+  /^\.env/,
+];
+
+const DEPENDENCY_MANIFEST_PATTERN = /package\.json$/;
+
+function isLockFile(path: string): boolean {
+  return LOCK_FILE_PATTERNS.some((pattern) => pattern.test(path));
+}
+
+function isConfigNoiseFile(path: string): boolean {
+  return CONFIG_FILE_PATTERNS.some((pattern) => pattern.test(path));
+}
+
+function isDependencyManifest(path: string): boolean {
+  return DEPENDENCY_MANIFEST_PATTERN.test(path);
+}
+
 export function correlateNegativeDiffRegressions(
   input: NegativeDiffRegressionInput,
 ): RiskItem[] {
@@ -18,6 +47,22 @@ export function correlateNegativeDiffRegressions(
 
   for (const file of input.prDiff.changedFiles) {
     if (!file.negativeLines.length) {
+      continue;
+    }
+
+    if (isLockFile(file.path) || isConfigNoiseFile(file.path)) {
+      continue;
+    }
+
+    if (isDependencyManifest(file.path)) {
+      risks.push(
+        createRiskItem({
+          severity: 'LOW',
+          description: `Dependencies changed in ${file.path}; may affect runtime behavior`,
+          relatedFile: file.path,
+          type: 'dependency_change',
+        }),
+      );
       continue;
     }
 
