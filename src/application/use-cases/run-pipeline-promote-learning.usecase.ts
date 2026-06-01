@@ -1,9 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 import type { PipelinePromoteLearningRunResult } from '../dto/pipeline-promote-learning-result.dto.js';
 import { MemoryChunkRenderer } from '../services/memory-chunk-renderer.service.js';
+import type { RunRepositoryPort } from '../ports/run-repository.port.js';
 
 const LEARNING_CANDIDATES_FILE = 'learning-candidates.json';
 const PROMOTION_LOG_FILE = 'promotion-log.json';
@@ -21,6 +21,7 @@ interface PromotionDecision {
 export class RunPipelinePromoteLearningUseCase {
   constructor(
     @Inject(MemoryChunkRenderer) private readonly renderer: MemoryChunkRenderer,
+    @Inject('RunRepositoryPort') private readonly repository: RunRepositoryPort,
   ) {}
 
   async execute(
@@ -30,13 +31,15 @@ export class RunPipelinePromoteLearningUseCase {
     const projectPath = options?.projectPath ?? process.cwd();
     const autoApprove = options?.autoApprove ?? false;
 
+    const memoryDir = resolve(join(projectPath, AGENT_QA_DIR));
+
     // 1. Load learning candidates
     const candidatesArtifact = await this.loadCandidates(outputDir);
     const candidates = candidatesArtifact?.candidates ?? [];
 
     // 2. Load existing memory
-    const memoryPath = resolve(join(projectPath, AGENT_QA_DIR, MEMORY_FILE));
-    const existingMemory = await this.readFileSafe(memoryPath) ?? '';
+    const memoryPath = resolve(join(memoryDir, MEMORY_FILE));
+    const existingMemory = await this.readMemorySafe(memoryDir) ?? '';
 
     // 3. Evaluate each candidate
     const decisions: PromotionDecision[] = [];
@@ -59,14 +62,15 @@ export class RunPipelinePromoteLearningUseCase {
 
     // 4. Append promoted chunks to memory.md
     if (promotedChunks.length > 0) {
-      const newContent = promotedChunks.join('\n\n');
-      await writeFile(memoryPath, existingMemory + '\n\n' + newContent, 'utf8');
+      const newContent = existingMemory + '\n\n' + promotedChunks.join('\n\n');
+      await this.repository.writeFile(memoryDir, MEMORY_FILE, newContent);
     }
 
     // 5. Write promotion log
     const promotionLogPath = resolve(join(outputDir, PROMOTION_LOG_FILE));
-    await writeFile(
-      promotionLogPath,
+    await this.repository.writeFile(
+      outputDir,
+      PROMOTION_LOG_FILE,
       JSON.stringify(
         {
           schemaVersion: 'promotion-log.v1',
@@ -79,7 +83,6 @@ export class RunPipelinePromoteLearningUseCase {
         null,
         2,
       ),
-      'utf8',
     );
 
     return {
@@ -152,16 +155,15 @@ export class RunPipelinePromoteLearningUseCase {
 
   private async loadCandidates(outputDir: string): Promise<import('../../domain/schemas/learning-candidate.schema.js').LearningCandidatesArtifact | null> {
     try {
-      const content = await readFile(join(outputDir, LEARNING_CANDIDATES_FILE), 'utf8');
-      return JSON.parse(content) as import('../../domain/schemas/learning-candidate.schema.js').LearningCandidatesArtifact;
+      return await this.repository.readJson(outputDir, LEARNING_CANDIDATES_FILE);
     } catch {
       return null;
     }
   }
 
-  private async readFileSafe(path: string): Promise<string | null> {
+  private async readMemorySafe(memoryDir: string): Promise<string | null> {
     try {
-      return await readFile(path, 'utf8');
+      return await this.repository.readFile(memoryDir, MEMORY_FILE);
     } catch {
       return null;
     }

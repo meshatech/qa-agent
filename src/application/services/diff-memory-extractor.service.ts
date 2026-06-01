@@ -1,31 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { readFile } from 'node:fs/promises';
-import { join, basename } from 'node:path';
+import { join, basename, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { LlmProviderPort } from '../ports/llm-provider.port.js';
 
-const SYSTEM_PROMPT = `You are a QA memory generator. Analyze the provided project context (README, git diff, file structure, key source files) and generate a structured memory document in Markdown format.
-
-The output must follow this exact format for each chunk:
-
-## [Title]
-
-<!-- type: route | id: [UNIQUE_ID] -->
-- **URL**: ...
-- **Description**: ...
-- **Elements**: ...
-- **Actions**: ...
-
-Valid chunk types: project, route, flow, semantic_locator, scenario, known_issue, runtime_learning.
-
-Rules:
-- Generate at least one chunk of type 'project' with overview
-- Generate route chunks for each page/app route found
-- Generate semantic_locator chunks for interactive elements (buttons, forms, links)
-- Generate flow chunks for user journeys (login, create item, edit, delete)
-- Use English for IDs, Portuguese for descriptions
-- Be specific: include actual URLs, element selectors, and actions
-- Do NOT include ephemeral IDs like el_123
-- Do NOT include sensitive data (passwords, tokens)`;
+const PROMPT_PATH = join(dirname(fileURLToPath(import.meta.url)), 'diff-memory-extractor.prompt.md');
 
 export interface DiffMemoryChunk {
   id: string;
@@ -43,12 +22,21 @@ export interface ExtractMemoryFromDiffInput {
 
 @Injectable()
 export class DiffMemoryExtractorService {
+  private systemPrompt: string | null = null;
+
   constructor(
     @Inject('LlmProviderPort') private readonly llm: LlmProviderPort,
   ) {}
 
+  private async loadSystemPrompt(): Promise<string> {
+    if (this.systemPrompt) return this.systemPrompt;
+    this.systemPrompt = await readFile(PROMPT_PATH, 'utf8');
+    return this.systemPrompt;
+  }
+
   async extract(input: ExtractMemoryFromDiffInput): Promise<DiffMemoryChunk[]> {
     const { projectPath, changedFiles, llmModel = 'llama-3.3-70b-versatile' } = input;
+    const systemPrompt = await this.loadSystemPrompt();
 
     // Phase 1: Build lightweight base context (README, package.json, tree, git history)
     const baseContext = await this.buildBaseContext(projectPath, changedFiles);
@@ -65,7 +53,7 @@ export class DiffMemoryExtractorService {
       const result = await this.llm.complete({
         context: groupContext,
         model: llmModel,
-        systemPrompt: SYSTEM_PROMPT,
+        systemPrompt,
         temperature: 0.2,
         maxTokens: 4096,
         phase: category,
@@ -81,7 +69,7 @@ export class DiffMemoryExtractorService {
     const finalResult = await this.llm.complete({
       context: consolidationContext,
       model: llmModel,
-      systemPrompt: SYSTEM_PROMPT,
+      systemPrompt,
       temperature: 0.2,
       maxTokens: 4096,
       phase: 'consolidate',

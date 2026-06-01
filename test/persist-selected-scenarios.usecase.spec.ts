@@ -22,6 +22,7 @@ function makeRepo(): RunRepositoryPort {
     writeReport: vi.fn(),
     findRunDir: vi.fn(),
     readJson: vi.fn(),
+    readFile: vi.fn(),
     exists: vi.fn(),
     listFiles: vi.fn(),
     appendRunHistory: vi.fn(),
