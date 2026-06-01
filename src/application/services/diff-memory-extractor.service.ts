@@ -1,0 +1,268 @@
+import { Injectable } from '@nestjs/common';
+import { readFile } from 'node:fs/promises';
+import { join, basename } from 'node:path';
+
+const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const SYSTEM_PROMPT = `You are a QA memory generator. Analyze the provided project context (README, git diff, file structure, key source files) and generate a structured memory document in Markdown format.
+
+The output must follow this exact format for each chunk:
+
+## [Title]
+
+<!-- type: route | id: [UNIQUE_ID] -->
+- **URL**: ...
+- **Description**: ...
+- **Elements**: ...
+- **Actions**: ...
+
+Valid chunk types: project, route, flow, semantic_locator, scenario, known_issue, runtime_learning.
+
+Rules:
+- Generate at least one chunk of type 'project' with overview
+- Generate route chunks for each page/app route found
+- Generate semantic_locator chunks for interactive elements (buttons, forms, links)
+- Generate flow chunks for user journeys (login, create item, edit, delete)
+- Use English for IDs, Portuguese for descriptions
+- Be specific: include actual URLs, element selectors, and actions
+- Do NOT include ephemeral IDs like el_123
+- Do NOT include sensitive data (passwords, tokens)`;
+
+export interface DiffMemoryChunk {
+  id: string;
+  type: 'route' | 'component' | 'semantic_locator' | 'flow' | 'project' | 'known_issue';
+  title: string;
+  content: string;
+}
+
+export interface ExtractMemoryFromDiffInput {
+  projectPath: string;
+  changedFiles: string[];
+  llmApiKey?: string;
+  llmModel?: string; // e.g. 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant'
+}
+
+@Injectable()
+export class DiffMemoryExtractorService {
+  async extract(input: ExtractMemoryFromDiffInput): Promise<DiffMemoryChunk[]> {
+    const { projectPath, changedFiles, llmApiKey, llmModel = 'llama-3.3-70b-versatile' } = input;
+
+    // Phase 1: Build lightweight base context (README, package.json, tree, git history)
+    const baseContext = await this.buildBaseContext(projectPath, changedFiles);
+
+    // Phase 2: Group source files by logical category
+    const groups = this.groupFilesByCategory(changedFiles);
+
+    // Phase 3: Process each group with LLM, accumulating chunks
+    const allChunks: DiffMemoryChunk[] = [];
+    for (const [category, files] of groups) {
+      const groupContext = await this.buildGroupContext(projectPath, category, files, baseContext);
+      const markdown = await this.callLlm(groupContext, llmApiKey, llmModel, category);
+      const chunks = this.parseMarkdownChunks(markdown);
+      allChunks.push(...chunks);
+      // Respect Groq rate limits: 12000 TPM limit for 70b
+      await new Promise((r) => setTimeout(r, 25000));
+    }
+
+    // Phase 4: Consolidation pass
+    const consolidationContext = this.buildConsolidationContext(projectPath, baseContext, allChunks);
+    const finalMarkdown = await this.callLlm(consolidationContext, llmApiKey, llmModel, 'consolidate');
+    const finalChunks = this.parseMarkdownChunks(finalMarkdown);
+
+    return finalChunks.length > 0 ? finalChunks : allChunks;
+  }
+
+  private async buildBaseContext(projectPath: string, changedFiles: string[]): Promise<string> {
+    const parts: string[] = [];
+    parts.push(`# Project: ${basename(projectPath)}`);
+    parts.push(`Path: ${projectPath}\n`);
+
+    const readme = await this.readFileSafe(join(projectPath, 'README.md'))
+      ?? await this.readFileSafe(join(projectPath, 'readme.md'));
+    if (readme) parts.push('## README\n```markdown\n' + readme.slice(0, 1500) + '\n```\n');
+
+    const pkg = await this.readFileSafe(join(projectPath, 'package.json'));
+    if (pkg) {
+      try {
+        const json = JSON.parse(pkg);
+        parts.push('## Tech Stack\n');
+        parts.push(`- Name: ${json.name ?? 'unknown'}`);
+        parts.push(`- Framework: ${json.dependencies?.next ? 'Next.js' : json.dependencies?.react ? 'React' : 'unknown'}`);
+        parts.push(`- Deps: ${Object.keys(json.dependencies ?? {}).slice(0, 12).join(', ')}\n`);
+      } catch { /* ignore */ }
+    }
+
+    const tree = await this.buildDirectoryTree(projectPath);
+    parts.push('## Structure\n```\n' + tree.slice(0, 800) + '\n```\n');
+
+    const sourceCount = changedFiles.filter((f) => /\.(ts|tsx|js|jsx|vue)$/.test(f)).length;
+    parts.push(`## Source Files: ${sourceCount}\n`);
+
+    const gitHistory = await this.getGitHistory(projectPath);
+    if (gitHistory) parts.push('## Commits\n```\n' + gitHistory.slice(0, 500) + '\n```\n');
+
+    return parts.join('\n');
+  }
+
+  private groupFilesByCategory(files: string[]): Map<string, string[]> {
+    const groups = new Map<string, string[]>();
+    groups.set('routes', []);
+    groups.set('components', []);
+    groups.set('tests', []);
+    groups.set('api_services', []);
+    groups.set('hooks_utils', []);
+    groups.set('other', []);
+
+    for (const file of files) {
+      if (/\.(test|spec)\./.test(file) || file.includes('__tests__')) {
+        groups.get('tests')!.push(file);
+      } else if (file.includes('/api/') || file.includes('/services/') || file.includes('/infra/')) {
+        groups.get('api_services')!.push(file);
+      } else if (/page\.(tsx|jsx|vue)$/.test(file) || (file.includes('/app/') && /\.(tsx|jsx)$/.test(file) && !file.includes('/components/'))) {
+        groups.get('routes')!.push(file);
+      } else if (file.includes('/components/') || file.includes('/ui/') || file.includes('/features/')) {
+        groups.get('components')!.push(file);
+      } else if (file.includes('/hooks/') || file.includes('/utils/') || file.includes('/lib/')) {
+        groups.get('hooks_utils')!.push(file);
+      } else if (/\.(ts|tsx|js|jsx|vue)$/.test(file)) {
+        groups.get('other')!.push(file);
+      }
+    }
+
+    for (const [key, val] of Array.from(groups.entries())) {
+      if (val.length === 0) groups.delete(key);
+    }
+    return groups;
+  }
+
+  private async buildGroupContext(projectPath: string, category: string, files: string[], baseContext: string): Promise<string> {
+    const parts: string[] = [baseContext];
+    parts.push(`## CATEGORY: ${category.toUpperCase()} (${files.length} files)\n`);
+
+    const sample = this.pickRepresentativeFiles(files, 6);
+    for (const file of sample) {
+      const content = await this.readFileSafe(join(projectPath, file));
+      if (content) {
+        parts.push(`### ${file}\n\`\`\`typescript\n${content.slice(0, 500)}\n\`\`\`\n`);
+      }
+    }
+    return parts.join('\n');
+  }
+
+  private buildConsolidationContext(projectPath: string, baseContext: string, chunks: DiffMemoryChunk[]): string {
+    const parts: string[] = [baseContext];
+    parts.push(`## Discovered Chunks (${chunks.length})\n`);
+    for (const chunk of chunks) {
+      parts.push(`- [${chunk.type}] ${chunk.id}: ${chunk.title}`);
+    }
+    parts.push('\n## Instructions\nConsolidate ALL chunks into a single coherent memory.md. Merge duplicates, ensure every route/component/locator is included. Use standard chunk format with <!-- type: ... | id: ... --> metadata.\n');
+    return parts.join('\n');
+  }
+
+  private async buildDirectoryTree(projectPath: string): Promise<string> {
+    const { execSync } = await import('node:child_process');
+    try {
+      const output = execSync(
+        `find . -maxdepth 3 -type d ! -path './node_modules/*' ! -path './.git/*' ! -path './.next/*' ! -path './dist/*' | sort`,
+        { cwd: projectPath, encoding: 'utf8' },
+      );
+      return output;
+    } catch {
+      return 'Directory tree not available';
+    }
+  }
+
+  private pickRepresentativeFiles(files: string[], count: number): string[] {
+    const byDir = new Map<string, string[]>();
+    for (const file of files) {
+      const dir = file.split('/').slice(0, 3).join('/');
+      const existing = byDir.get(dir) ?? [];
+      existing.push(file);
+      byDir.set(dir, existing);
+    }
+
+    const picked: string[] = [];
+    const dirs = Array.from(byDir.keys()).sort();
+    let round = 0;
+    while (picked.length < count && round < 10) {
+      for (const dir of dirs) {
+        const dirFiles = byDir.get(dir)!;
+        if (dirFiles[round] && picked.length < count) {
+          picked.push(dirFiles[round]);
+        }
+      }
+      round++;
+    }
+    return picked;
+  }
+
+  private async getGitHistory(projectPath: string): Promise<string | null> {
+    const { execSync } = await import('node:child_process');
+    try {
+      return execSync('git log --oneline -20', { cwd: projectPath, encoding: 'utf8' });
+    } catch {
+      return null;
+    }
+  }
+
+  private async callLlm(context: string, apiKey?: string, model = 'llama-3.3-70b-versatile', phase = 'unknown'): Promise<string> {
+    const key = apiKey ?? process.env.GROQ_API_KEY ?? process.env.GROQ_PROVIDER;
+    if (!key) {
+      throw new Error('GROQ_API_KEY or GROQ_PROVIDER not set. Set it as env var or pass llmApiKey.');
+    }
+
+    const body = {
+      model,
+      temperature: 0.2,
+      max_tokens: 4096,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: `Phase: ${phase}\n\n${context.slice(0, 2800)}` },
+      ],
+    };
+
+    const res = await fetch(GROQ_URL, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${key.trim()}`, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`Groq error ${res.status}: ${text}`);
+    }
+
+    const json = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
+    return json.choices?.[0]?.message?.content ?? '';
+  }
+
+  private parseMarkdownChunks(markdown: string): DiffMemoryChunk[] {
+    const chunks: DiffMemoryChunk[] = [];
+    const sections = markdown.split(/^## /m).slice(1);
+
+    for (const section of sections) {
+      const lines = section.split('\n');
+      const title = (lines.shift() ?? '').trim();
+      if (!title) continue;
+
+      const body = lines.join('\n').trim();
+      const metadataMatch = body.match(/<!--\s*type:\s*(\w+)\s*\|\s*id:\s*([A-Z0-9-]+)\s*-->/i);
+      if (!metadataMatch) continue;
+
+      const type = metadataMatch[1].toLowerCase() as DiffMemoryChunk['type'];
+      const id = metadataMatch[2].toUpperCase();
+      const content = body.replace(/<!--[^>]+-->/, '').trim();
+
+      chunks.push({ id, type, title, content });
+    }
+
+    return chunks;
+  }
+
+  private async readFileSafe(path: string): Promise<string | null> {
+    try {
+      return await readFile(path, 'utf8');
+    } catch {
+      return null;
+    }
+  }
+}

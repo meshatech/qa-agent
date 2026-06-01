@@ -268,6 +268,22 @@ pipeline
     }
   });
 
+pipeline
+  .command('generate-memory')
+  .description('Generate memory.md from project diff and source analysis')
+  .option('--project-dir <path>', 'project root', process.cwd())
+  .option('--output-dir <path>', 'output directory for memory.md', './.agent-qa')
+  .action(async (opts) => {
+    try {
+      const result = await withApp((c) => c.pipelineGenerateMemory(opts.projectDir, opts.outputDir));
+      console.log(JSON.stringify(result, null, 2));
+      process.exitCode = result.chunksGenerated > 0 ? EXIT.OK : EXIT.CONFIG_ERROR;
+    } catch (err) {
+      console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err), kind: err instanceof Error ? err.constructor.name : 'Error' }, null, 2));
+      process.exitCode = classifyError(err);
+    }
+  });
+
 program
   .command('onboard')
   .description('Run project onboarding with baseline smoke test')

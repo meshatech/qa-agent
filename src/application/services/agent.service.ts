@@ -14,6 +14,7 @@ import { RunPipelineGeneratePlanUseCase } from '../use-cases/run-pipeline-genera
 import { RunPipelineExecuteUseCase } from '../use-cases/run-pipeline-execute.usecase.js';
 import { RunPipelineReportUseCase } from '../use-cases/run-pipeline-report.usecase.js';
 import { RunPipelineLearningUseCase } from '../use-cases/run-pipeline-learning.usecase.js';
+import { RunPipelineGenerateMemoryUseCase } from '../use-cases/run-pipeline-generate-memory.usecase.js';
 import type { PipelinePreflightRunResult } from '../dto/pipeline-preflight-result.dto.js';
 import type { PrDiffContextRunResult } from '../dto/pr-diff-context-result.dto.js';
 import type { PipelinePrepareRunResult } from '../dto/pipeline-prepare-result.dto.js';
@@ -21,6 +22,7 @@ import type { PipelineCorrelateRunResult } from '../dto/pipeline-correlate-resul
 import type { PipelineGeneratePlanRunResult } from '../dto/pipeline-generate-plan-result.dto.js';
 import type { PipelineReportRunResult } from '../dto/pipeline-report-result.dto.js';
 import type { PipelineLearningRunResult } from '../dto/pipeline-learning-result.dto.js';
+import type { PipelineGenerateMemoryRunResult } from '../dto/pipeline-generate-memory-result.dto.js';
 import type { OnboardingResult } from '../../domain/models/readiness.model.js';
 
 @Injectable()
@@ -40,6 +42,7 @@ export class AgentService {
     @Inject(RunPipelineExecuteUseCase) private readonly runPipelineExecute: RunPipelineExecuteUseCase,
     @Inject(RunPipelineReportUseCase) private readonly runPipelineReport: RunPipelineReportUseCase,
     @Inject(RunPipelineLearningUseCase) private readonly runPipelineLearning: RunPipelineLearningUseCase,
+    @Inject(RunPipelineGenerateMemoryUseCase) private readonly runPipelineGenerateMemory: RunPipelineGenerateMemoryUseCase,
   ) {}
 
   execute(dto: RunAgentDto) {
@@ -100,5 +103,9 @@ export class AgentService {
 
   pipelineLearning(outputDir: string, configPath?: string, projectPath?: string): Promise<PipelineLearningRunResult> {
     return this.runPipelineLearning.execute(outputDir, { configPath, projectPath });
+  }
+
+  pipelineGenerateMemory(projectPath?: string, outputDir?: string): Promise<PipelineGenerateMemoryRunResult> {
+    return this.runPipelineGenerateMemory.execute(projectPath ?? process.cwd(), { outputDir });
   }
 }
