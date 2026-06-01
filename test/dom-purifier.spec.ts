@@ -15,6 +15,8 @@ const html = `<!doctype html>
   <button onclick="alert(1)" class="btn aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa long-class" data-internal="x" data-testid="save">Salvar</button>
   <input id="pwd" type="password" name="senha" value="hidden-secret" />
   <input type="hidden" name="token" value="x" />
+  <textarea></textarea>
+  <div contenteditable="true"></div>
   <div style="display:none">should be removed</div>
 </body></html>`;
 
@@ -69,6 +71,8 @@ describe('DomPurifier', () => {
     const elements = await new DomPurifier().fallbackElements(page);
     expect(elements.length).toBeGreaterThan(0);
     expect(elements.some((e) => e.role === 'button' && e.name === 'Salvar')).toBe(true);
+    expect(elements.filter((e) => e.role === 'textbox' && e.name === 'Editable text area')).toHaveLength(2);
+    expect(elements.filter((e) => e.role === 'textbox' && e.name === 'Editable text area').every((e) => e.locator.strategy === 'role' && e.locator.name === undefined)).toBe(true);
     expect(elements.every((e) => !e.value || !e.value.includes('hidden-secret'))).toBe(true);
     await ctx.close();
   }, 30000);

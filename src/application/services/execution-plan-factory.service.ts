@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { posix as posixPath } from 'node:path';
 import type { ExecutionPlan, ExecutionStep, PlanAction } from '../../domain/schemas/execution-plan.schema.js';
+import type { LocatorDescriptor } from '../../domain/schemas/action.schema.js';
 import type { ExpectedOutcome } from '../../domain/schemas/expected-outcome.schema.js';
 import type { QaScenario, QaTask } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
@@ -148,7 +149,7 @@ export class ExecutionPlanFactoryService {
         return [this.makeStep(scenarioId, task, { type: 'navigate', to: targetUrl, reason: outcome.description }, [{ type: 'route_state', expected: 'matches', expectedUrlPattern: targetUrl }])];
       }
       case 'DATA_ENTRY': {
-        const dataTarget = await this.semanticTarget(outcome, config);
+        const dataTarget = await this.dataEntryTarget(outcome, config);
         if (!dataTarget) {
           return [this.makeSafeCheckStep(scenarioId, task, outcome.description)];
         }
@@ -158,7 +159,7 @@ export class ExecutionPlanFactoryService {
           this.logger.warn(`Generated DATA_ENTRY value "${testValue}" blocked by destructive policy; using safe-test-value (${check.message})`);
           testValue = 'safe-test-value';
         }
-        return [this.makeStep(scenarioId, task, { type: 'fill', target: dataTarget, value: testValue, reason: outcome.description }, [{ type: 'no_console_errors' }])];
+        return [this.makeStep(scenarioId, task, { type: 'fill', target: dataTarget, value: testValue, reason: outcome.description }, [{ type: 'field_value_contains', target: dataTarget, value: testValue }])];
       }
       case 'CLASSIFICATION_FAILED':
         throw new Error(`Expected outcome classification failed for task "${task.id}"; cannot generate safe execution step`);
@@ -255,6 +256,17 @@ export class ExecutionPlanFactoryService {
     }
     if (!safeTexts.length) return null;
     return { strategy: 'text_any', texts: safeTexts };
+  }
+
+  private async dataEntryTarget(outcome: ExpectedOutcome, config: RunConfig): Promise<LocatorDescriptor | null> {
+    const semantic = await this.semanticTarget(outcome, config);
+    if (!semantic) return null;
+    return {
+      strategy: 'semantic',
+      semanticKey: outcome.target ?? 'data_entry',
+      intent: 'resolve editable text input',
+      candidates: [semantic, { strategy: 'role', role: 'textbox' }],
+    };
   }
 
   private hasPathTraversal(rawPath: string): boolean {

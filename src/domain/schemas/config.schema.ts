@@ -69,6 +69,7 @@ export const RunConfigSchema = z.object({
     navigationMs: z.number().int().positive().default(30000),
     scenarioMs: z.number().int().positive().default(180000),
     runMs: z.number().int().positive().default(1800000),
+    navigationRetry: z.object({ maxAttempts: z.number().int().positive().max(5).default(1), backoffMs: z.number().int().nonnegative().max(10000).default(250) }).optional(),
   }).default({ quiescenceMs: 3000, actionMs: 15000, navigationMs: 30000, scenarioMs: 180000, runMs: 1800000 }),
   runtime: z.object({
     maxActionsPerTask: z.number().int().positive().default(3),

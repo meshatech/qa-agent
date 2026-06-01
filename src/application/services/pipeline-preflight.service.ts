@@ -1,5 +1,4 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { resolve } from 'node:path';
 
 import type { ConfigLoaderPort } from '../ports/config-loader.port.js';
 import type { ClickUpApiPort, ClickUpReadAccessResult } from '../ports/clickup-api.port.js';
@@ -20,11 +19,16 @@ import {
   type PreflightReport,
 } from '../../domain/schemas/preflight-report.schema.js';
 import { ConfigError, PreflightBlockedError } from '../../domain/errors.js';
+import {
+  loadClickUpConfigSettings,
+  resolveAgentQaConfigPath,
+} from '../helpers/load-clickup-config-settings.js';
 import { resolveHeadBranchFromEnv } from '../../infra/github/github-actions-pr-refs.resolver.js';
 import { extractClickUpTaskIdFromGitHubEvent, sanitizePrContextErrorMessage } from '../../infra/github/github-actions-pr-context.mapper.js';
 import {
   resolveClickUpCustomIdPattern,
 } from '../../infra/github/clickup-task-id-from-pr.resolver.js';
+import { resolveClickUpTaskIdReference } from '../../infra/clickup/clickup-task-id.resolver.js';
 import { collectKnownSecretsFromEnv } from './known-secrets.collector.js';
 import { SanitizerService } from './sanitizer.service.js';
 
@@ -137,13 +141,18 @@ export class PipelinePreflightService {
           return checks.clickupTaskId.error;
         }
         if (checks.clickupTaskId.ok && checks.clickupTaskId.taskId) {
-          const extracted = `ClickUp task ID extracted from PR: ${checks.clickupTaskId.taskId}`;
+          const extracted =
+            checks.clickupTaskId.source === 'config'
+              ? `ClickUp task ID resolved from config: ${checks.clickupTaskId.taskId}`
+              : checks.clickupTaskId.source === 'env'
+                ? `ClickUp task ID resolved from deprecated CLICKUP_TASK_ID env: ${checks.clickupTaskId.taskId}`
+                : `ClickUp task ID extracted from PR: ${checks.clickupTaskId.taskId}`;
           return checks.clickupTaskId.warning ? `${checks.clickupTaskId.warning}. ${extracted}` : extracted;
         }
         if (checks.clickupTaskId.warning) {
-          return `${checks.clickupTaskId.warning}. ClickUp task ID not found in PR title/body`;
+          return `${checks.clickupTaskId.warning}. ClickUp task ID not found in PR title/body or config`;
         }
-        return 'ClickUp task ID not found in PR title/body';
+        return 'ClickUp task ID not found in PR title/body or config';
       case 'githubToken':
         return checks.githubToken.ok
           ? 'GitHub token is configured'
@@ -185,7 +194,7 @@ export class PipelinePreflightService {
   private async validateClickUpTaskId(): Promise<{
     ok: boolean;
     skipped?: boolean;
-    source?: 'pr';
+    source?: 'pr' | 'config' | 'env';
     taskId?: string;
     error?: string;
     warning?: string;
@@ -199,14 +208,27 @@ export class PipelinePreflightService {
       return { ok: true, skipped: true };
     }
 
-    const { pattern, patternWarning } = await this.resolveClickUpCustomIdPatternForPreflight();
+    const { pattern, patternWarning, configTaskId } = await this.resolveClickUpSettingsForPreflight();
 
     try {
       const taskId = await extractClickUpTaskIdFromGitHubEvent(process.env, pattern);
       if (taskId) {
         return { ok: true, source: 'pr', taskId, warning: patternWarning };
       }
-      return { ok: false, warning: patternWarning };
+      try {
+        const configured = resolveClickUpTaskIdReference({
+          env: process.env,
+          configTaskId,
+        });
+        return {
+          ok: true,
+          source: configured.source,
+          taskId: configured.taskId,
+          warning: this.joinWarnings(patternWarning, configured.warning),
+        };
+      } catch {
+        return { ok: false, warning: patternWarning };
+      }
     } catch (error) {
       return {
         ok: false,
@@ -219,27 +241,30 @@ export class PipelinePreflightService {
     }
   }
 
-  private async resolveClickUpCustomIdPatternForPreflight(): Promise<{
+  private async resolveClickUpSettingsForPreflight(): Promise<{
     pattern: RegExp;
     patternWarning?: string;
+    configTaskId?: string;
   }> {
-    let configPattern: string | undefined;
-    try {
-      const configPath = this.resolveConfigPath();
-      const raw = await this.configLoader.load(configPath);
-      const parsed = RunConfigSchema.safeParse(raw);
-      if (parsed.success) {
-        configPattern = parsed.data.clickup?.customIdPattern?.trim() || undefined;
-      }
-    } catch {
-      // fall through to env/default resolution
-    }
+    const settings = await loadClickUpConfigSettings(this.configLoader, process.env);
 
     const result = resolveClickUpCustomIdPattern({
       env: process.env,
-      configPattern,
+      configPattern: settings.customIdPattern,
     });
-    return { pattern: result.pattern, patternWarning: result.warning };
+    return {
+      pattern: result.pattern,
+      patternWarning: result.warning,
+      configTaskId: settings.taskId,
+    };
+  }
+
+  private joinWarnings(...warnings: Array<string | undefined>): string | undefined {
+    const unique = warnings.filter((warning): warning is string => Boolean(warning)).filter((warning, index, all) => all.indexOf(warning) === index);
+    if (!unique.length) {
+      return undefined;
+    }
+    return unique.join('. ');
   }
 
   private resolveGitHubToken(): string {
@@ -338,9 +363,7 @@ export class PipelinePreflightService {
   }
 
   private resolveConfigPath(): string {
-    const rawPath = process.env.AGENT_QA_CONFIG?.trim() || './agent-qa.config.json';
-    const base = process.env.GITHUB_WORKSPACE?.trim() || process.cwd();
-    return resolve(base, rawPath);
+    return resolveAgentQaConfigPath(process.env);
   }
 
   private async validateConfig(): Promise<{ ok: boolean; errors: string[]; configPath?: string }> {

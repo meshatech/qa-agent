@@ -28,7 +28,7 @@ export class ObservationService {
       options.includeScreenshot ? page.screenshot({ type: 'png', scale: 'css' }).then((b) => b.toString('base64')).catch(() => undefined) : Promise.resolve(undefined),
     ]);
 
-    const merged = this.merge(axResult.elements, domElements);
+    const merged = this.prioritizeElements(this.merge(axResult.elements, domElements));
     const elements = merged.slice(0, MAX_ELEMENTS).map((el, i) => ({ ...el, id: `el_${String(i + 1).padStart(3, '0')}` }));
 
     return {
@@ -93,8 +93,20 @@ export class ObservationService {
   }
 
   private preferLocator(a: LocatorDescriptor, b: LocatorDescriptor): LocatorDescriptor {
-    const order: Record<LocatorDescriptor['strategy'], number> = { testid: 0, label: 1, placeholder: 2, role: 3, text_any: 4, text: 5, semantic: 6, document: 7 };
+    const order: Record<LocatorDescriptor['strategy'], number> = { testid: 0, label: 1, placeholder: 2, role: 3, text_any: 4, text: 5, semantic: 6, index: 7, document: 8 };
     return order[a.strategy] <= order[b.strategy] ? a : b;
+  }
+
+  private prioritizeElements(elements: ObservableElement[]): ObservableElement[] {
+    const priority = (element: ObservableElement): number => {
+      if (['textbox', 'searchbox', 'combobox'].includes(element.role)) return 0;
+      if (['button', 'link', 'menuitem', 'option', 'checkbox', 'radio', 'switch', 'tab'].includes(element.role)) return 1;
+      return 2;
+    };
+    return elements
+      .map((element, index) => ({ element, index }))
+      .sort((a, b) => priority(a.element) - priority(b.element) || a.index - b.index)
+      .map(({ element }) => element);
   }
 }
 

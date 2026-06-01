@@ -7,6 +7,7 @@ export const RiskTypeSchema = z.enum([
   'uncovered_criterion',
   'demand_diff_mismatch',
   'missing_memory',
+  'dependency_change',
   'other',
 ]);
 

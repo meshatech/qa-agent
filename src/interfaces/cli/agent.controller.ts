@@ -48,4 +48,32 @@ export class AgentController {
   pipelineCorrelate(outputDir: string, projectPath?: string) {
     return this.service.pipelineCorrelate(outputDir, projectPath);
   }
+
+  pipelineGeneratePlan(outputDir: string, configPath?: string, projectPath?: string) {
+    return this.service.pipelineGeneratePlan(outputDir, configPath, projectPath);
+  }
+
+  pipelineExecute(outputDir: string, configPath?: string, projectPath?: string) {
+    return this.service.pipelineExecute(outputDir, configPath, projectPath);
+  }
+
+  pipelineReport(outputDir: string, configPath?: string, projectPath?: string) {
+    return this.service.pipelineReport(outputDir, configPath, projectPath);
+  }
+
+  pipelineLearning(outputDir: string, configPath?: string, projectPath?: string) {
+    return this.service.pipelineLearning(outputDir, configPath, projectPath);
+  }
+
+  pipelineGenerateMemory(projectPath?: string, outputDir?: string) {
+    return this.service.pipelineGenerateMemory(projectPath, outputDir);
+  }
+
+  pipelineRisk(outputDir: string, projectPath?: string) {
+    return this.service.pipelineRisk(outputDir, projectPath);
+  }
+
+  pipelinePromoteLearning(outputDir: string, projectPath?: string, autoApprove?: boolean) {
+    return this.service.pipelinePromoteLearning(outputDir, projectPath, autoApprove);
+  }
 }

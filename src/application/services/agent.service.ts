@@ -10,10 +10,23 @@ import { RunPipelinePreflightUseCase } from '../use-cases/run-pipeline-preflight
 import { RunPrDiffContextUseCase } from '../use-cases/run-pr-diff-context.usecase.js';
 import { RunPipelinePrepareUseCase } from '../use-cases/run-pipeline-prepare.usecase.js';
 import { RunPipelineCorrelateUseCase } from '../use-cases/run-pipeline-correlate.usecase.js';
+import { RunPipelineGeneratePlanUseCase } from '../use-cases/run-pipeline-generate-plan.usecase.js';
+import { RunPipelineExecuteUseCase } from '../use-cases/run-pipeline-execute.usecase.js';
+import { RunPipelineReportUseCase } from '../use-cases/run-pipeline-report.usecase.js';
+import { RunPipelineLearningUseCase } from '../use-cases/run-pipeline-learning.usecase.js';
+import { RunPipelineGenerateMemoryUseCase } from '../use-cases/run-pipeline-generate-memory.usecase.js';
+import { RunPipelineRiskUseCase } from '../use-cases/run-pipeline-risk.usecase.js';
+import { RunPipelinePromoteLearningUseCase } from '../use-cases/run-pipeline-promote-learning.usecase.js';
 import type { PipelinePreflightRunResult } from '../dto/pipeline-preflight-result.dto.js';
 import type { PrDiffContextRunResult } from '../dto/pr-diff-context-result.dto.js';
 import type { PipelinePrepareRunResult } from '../dto/pipeline-prepare-result.dto.js';
 import type { PipelineCorrelateRunResult } from '../dto/pipeline-correlate-result.dto.js';
+import type { PipelineGeneratePlanRunResult } from '../dto/pipeline-generate-plan-result.dto.js';
+import type { PipelineReportRunResult } from '../dto/pipeline-report-result.dto.js';
+import type { PipelineLearningRunResult } from '../dto/pipeline-learning-result.dto.js';
+import type { PipelineGenerateMemoryRunResult } from '../dto/pipeline-generate-memory-result.dto.js';
+import type { PipelineRiskRunResult } from '../dto/pipeline-risk-result.dto.js';
+import type { PipelinePromoteLearningRunResult } from '../dto/pipeline-promote-learning-result.dto.js';
 import type { OnboardingResult } from '../../domain/models/readiness.model.js';
 
 @Injectable()
@@ -29,6 +42,13 @@ export class AgentService {
     @Inject(RunPrDiffContextUseCase) private readonly runPrDiffContext: RunPrDiffContextUseCase,
     @Inject(RunPipelinePrepareUseCase) private readonly runPipelinePrepare: RunPipelinePrepareUseCase,
     @Inject(RunPipelineCorrelateUseCase) private readonly runPipelineCorrelate: RunPipelineCorrelateUseCase,
+    @Inject(RunPipelineGeneratePlanUseCase) private readonly runPipelineGeneratePlan: RunPipelineGeneratePlanUseCase,
+    @Inject(RunPipelineExecuteUseCase) private readonly runPipelineExecute: RunPipelineExecuteUseCase,
+    @Inject(RunPipelineReportUseCase) private readonly runPipelineReport: RunPipelineReportUseCase,
+    @Inject(RunPipelineLearningUseCase) private readonly runPipelineLearning: RunPipelineLearningUseCase,
+    @Inject(RunPipelineGenerateMemoryUseCase) private readonly runPipelineGenerateMemory: RunPipelineGenerateMemoryUseCase,
+    @Inject(RunPipelineRiskUseCase) private readonly runPipelineRisk: RunPipelineRiskUseCase,
+    @Inject(RunPipelinePromoteLearningUseCase) private readonly runPipelinePromoteLearning: RunPipelinePromoteLearningUseCase,
   ) {}
 
   execute(dto: RunAgentDto) {
@@ -73,5 +93,33 @@ export class AgentService {
 
   pipelineCorrelate(outputDir: string, projectPath?: string): Promise<PipelineCorrelateRunResult> {
     return this.runPipelineCorrelate.execute(outputDir, { projectPath });
+  }
+
+  pipelineGeneratePlan(outputDir: string, configPath?: string, projectPath?: string): Promise<PipelineGeneratePlanRunResult> {
+    return this.runPipelineGeneratePlan.execute(outputDir, { configPath, projectPath });
+  }
+
+  pipelineExecute(outputDir: string, configPath?: string, projectPath?: string) {
+    return this.runPipelineExecute.execute(outputDir, { configPath, projectPath });
+  }
+
+  pipelineReport(outputDir: string, configPath?: string, projectPath?: string): Promise<PipelineReportRunResult> {
+    return this.runPipelineReport.execute(outputDir, { configPath, projectPath });
+  }
+
+  pipelineLearning(outputDir: string, configPath?: string, projectPath?: string): Promise<PipelineLearningRunResult> {
+    return this.runPipelineLearning.execute(outputDir, { configPath, projectPath });
+  }
+
+  pipelineGenerateMemory(projectPath?: string, outputDir?: string): Promise<PipelineGenerateMemoryRunResult> {
+    return this.runPipelineGenerateMemory.execute(projectPath ?? process.cwd(), { outputDir });
+  }
+
+  pipelineRisk(outputDir: string, projectPath?: string): Promise<PipelineRiskRunResult> {
+    return this.runPipelineRisk.execute(outputDir, { projectPath });
+  }
+
+  pipelinePromoteLearning(outputDir: string, projectPath?: string, autoApprove?: boolean): Promise<PipelinePromoteLearningRunResult> {
+    return this.runPipelinePromoteLearning.execute(outputDir, { projectPath, autoApprove });
   }
 }

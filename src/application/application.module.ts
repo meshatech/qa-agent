@@ -45,6 +45,13 @@ import { RunPipelinePreflightUseCase } from './use-cases/run-pipeline-preflight.
 import { RunPrDiffContextUseCase } from './use-cases/run-pr-diff-context.usecase.js';
 import { RunPipelinePrepareUseCase } from './use-cases/run-pipeline-prepare.usecase.js';
 import { RunPipelineCorrelateUseCase } from './use-cases/run-pipeline-correlate.usecase.js';
+import { RunPipelineGeneratePlanUseCase } from './use-cases/run-pipeline-generate-plan.usecase.js';
+import { RunPipelineExecuteUseCase } from './use-cases/run-pipeline-execute.usecase.js';
+import { RunPipelineReportUseCase } from './use-cases/run-pipeline-report.usecase.js';
+import { RunPipelineLearningUseCase } from './use-cases/run-pipeline-learning.usecase.js';
+import { RunPipelineGenerateMemoryUseCase } from './use-cases/run-pipeline-generate-memory.usecase.js';
+import { RunPipelineRiskUseCase } from './use-cases/run-pipeline-risk.usecase.js';
+import { RunPipelinePromoteLearningUseCase } from './use-cases/run-pipeline-promote-learning.usecase.js';
 import { PersistSelectedScenariosUseCase } from './use-cases/persist-selected-scenarios.usecase.js';
 import { PersistExecutionPlanUseCase } from './use-cases/persist-execution-plan.usecase.js';
 import { PersistGherkinScenariosUseCase } from './use-cases/persist-gherkin-scenarios.usecase.js';
@@ -60,15 +67,20 @@ import { ExecutionPlanBuilder } from './services/execution-plan-builder.service.
 import { GherkinRendererService } from './services/gherkin-renderer.service.js';
 import { PRReporterService } from './services/pr-reporter.service.js';
 import { PRReportRenderer } from './services/pr-report-renderer.service.js';
+import { PipelineReportRenderer } from './services/pipeline-report-renderer.service.js';
 import { LearningExtractorService } from './services/learning-extractor.service.js';
+import { LearningCandidateExtractorService } from './services/learning-candidate-extractor.service.js';
+import { DiffMemoryExtractorService } from './services/diff-memory-extractor.service.js';
 import { RiskClassifierService } from './services/risk-classifier.service.js';
 import { ValueGeneratorService } from './services/value-generator.service.js';
+import { MemoryChunkRenderer } from './services/memory-chunk-renderer.service.js';
+import { GroqLlmProviderAdapter } from '../infra/llm/groq-llm-provider.adapter.js';
 import { InfraModule } from '../infra/infra.module.js';
 
 export const APPLICATION_PROVIDERS = [
-  AgentService, RunAgentUseCase, ValidateConfigUseCase, InspectRunUseCase, ReportRunUseCase, CaptureAuthUseCase, RunOnboardingUseCase, RunPipelinePreflightUseCase, RunPrDiffContextUseCase, RunPipelinePrepareUseCase, RunPipelineCorrelateUseCase,
+  AgentService, RunAgentUseCase, ValidateConfigUseCase, InspectRunUseCase, ReportRunUseCase, CaptureAuthUseCase, RunOnboardingUseCase, RunPipelinePreflightUseCase, RunPrDiffContextUseCase, RunPipelinePrepareUseCase, RunPipelineCorrelateUseCase, RunPipelineGeneratePlanUseCase, RunPipelineExecuteUseCase, RunPipelineReportUseCase, RunPipelineLearningUseCase, RunPipelineGenerateMemoryUseCase, RunPipelineRiskUseCase, RunPipelinePromoteLearningUseCase,
   DataHarnessService, LocatorResolverService, ValidationBinderService, ActionPolicyService, RecoveryPolicyService,
-  SanitizerService, BugClassifierService, EvidenceService, ScenarioPlannerService, ScenarioGeneratorService, TaskMemoryService, StateContractTranslatorService, SemanticIntentDetectorService, SemanticLocatorMemoryResolverService, ExpectedOutcomeResolverService, ExecutionPlanFactoryService, ExecutionPlanPlannerService, ExecutionPlanBuilder, GherkinRendererService, ElementAvailabilityResolver, PlanPatchApplierService, PlanExecutorService, PlanReplannerService, PlaywrightSpecExporter, AgentQaLayoutService, MemoryMarkdownLoader, MemoryChunker, BM25MemoryIndex, RunHistoryService, ProjectOnboardingService, ReadinessEvaluatorService, BaselineSmokeBuilderService, PipelinePreflightService, DemandContextPersistenceService, PrDiffContextPersistenceService, DemandDiffMemoryCorrelatorService, MemoryScenarioSelector, RouteScenarioSelector, ComponentScenarioSelector, CriteriaScenarioSelector, ScenarioSelectorService, ScenarioOrchestratorService, PersistSelectedScenariosUseCase, PersistExecutionPlanUseCase, PersistGherkinScenariosUseCase, PRReporterService, PRReportRenderer, LearningExtractorService, RiskClassifierService, ValueGeneratorService,
+  SanitizerService, BugClassifierService, EvidenceService, ScenarioPlannerService, ScenarioGeneratorService, TaskMemoryService, StateContractTranslatorService, SemanticIntentDetectorService, SemanticLocatorMemoryResolverService, ExpectedOutcomeResolverService, ExecutionPlanFactoryService, ExecutionPlanPlannerService, ExecutionPlanBuilder, GherkinRendererService, ElementAvailabilityResolver, PlanPatchApplierService, PlanExecutorService, PlanReplannerService, PlaywrightSpecExporter, AgentQaLayoutService, MemoryMarkdownLoader, MemoryChunker, BM25MemoryIndex, RunHistoryService, ProjectOnboardingService, ReadinessEvaluatorService, BaselineSmokeBuilderService, PipelinePreflightService, DemandContextPersistenceService, PrDiffContextPersistenceService, DemandDiffMemoryCorrelatorService, MemoryScenarioSelector, RouteScenarioSelector, ComponentScenarioSelector, CriteriaScenarioSelector, ScenarioSelectorService, ScenarioOrchestratorService, PersistSelectedScenariosUseCase, PersistExecutionPlanUseCase, PersistGherkinScenariosUseCase, PRReporterService, PRReportRenderer, PipelineReportRenderer, LearningExtractorService, LearningCandidateExtractorService, DiffMemoryExtractorService, RiskClassifierService, ValueGeneratorService,
   { provide: QaToolRegistry, useFactory: () => new QaToolRegistry(ALL_QA_TOOLS) },
   {
     provide: MemorySearchService,
@@ -76,6 +88,8 @@ export const APPLICATION_PROVIDERS = [
       new MemorySearchService(chunker, index, loader),
     inject: [MemoryChunker, BM25MemoryIndex, MemoryMarkdownLoader],
   },
+  { provide: 'LlmProviderPort', useClass: GroqLlmProviderAdapter },
+  MemoryChunkRenderer,
 ];
 
 @Module({ imports: [InfraModule], providers: APPLICATION_PROVIDERS, exports: APPLICATION_PROVIDERS })

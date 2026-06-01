@@ -55,6 +55,10 @@ export class FileRunRepository implements RunRepositoryPort {
     return JSON.parse(await readFile(join(runDir, name), 'utf8')) as T;
   }
 
+  async readFile(runDir: string, name: string): Promise<string> {
+    return readFile(join(runDir, name), 'utf8');
+  }
+
   async exists(runDir: string, relativePath: string): Promise<boolean> {
     try {
       const target = await this.resolveInsideRunDir(runDir, relativePath);

@@ -5,6 +5,8 @@ export interface PipelineCorrelateRunResult {
   result: CorrelationResult;
   requiredScenariosPath: string;
   correlationReportPath: string;
+  selectedScenariosPath?: string;
   demandContextPath: string;
   demand: DemandContext;
+  memoryConsultationLogPath?: string;
 }

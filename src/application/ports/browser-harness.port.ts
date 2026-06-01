@@ -13,6 +13,8 @@ export interface BrowserHarnessPort {
   runtimeState?(observation: ScreenObservation, conditions: PlanCondition[]): Promise<RuntimeStateSnapshot>;
   waitForQuiescence(timeoutMs: number): Promise<QuiescenceResult>;
   screenshot(): Promise<Buffer | undefined>;
+  compareScreenshot?(baselinePath: string, threshold?: number): Promise<{ ok: boolean; diffRatio: number; baselineCreated?: boolean }>;
+  auditAccessibility?(): Promise<Array<{ id: string; impact?: string | null; description: string; nodes: number }>>;
   domSnapshot(): Promise<string | undefined>;
   networkLog(): unknown[];
   consoleLog(): string;

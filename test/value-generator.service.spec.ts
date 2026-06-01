@@ -28,6 +28,10 @@ describe('ValueGeneratorService', () => {
     expect(service.generate('check box', makeOutcome())).toBe('safe-test-value');
   });
 
+  it('uses an explicit quoted literal from the task contract', () => {
+    expect(service.generate('enter text', { kind: 'DATA_ENTRY', description: "type 'teste' in the editor" })).toBe('teste');
+  });
+
   it.each([
     { title: '', expected: 'safe-test-value' },
     { title: ' ', expected: 'safe-test-value' },

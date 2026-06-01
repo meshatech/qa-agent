@@ -6,4 +6,4 @@ const html = readFileSync(join(process.cwd(), 'test/fixtures/smoke.html'));
 createServer((_req, res) => {
   res.writeHead(200, { 'content-type': 'text/html' });
   res.end(html);
-}).listen(4173, '127.0.0.1');
+}).listen(4173, '0.0.0.0');

@@ -31,6 +31,8 @@ export class ProjectOnboardingService {
     let baselineReportPath: string | null = null;
 
     let browserOpenOk = false;
+    let minimalSmokeOk = true;
+    let routeCheckOk = true;
     let smokePlan: ExecutionPlan | null = null;
     let smokeResult: import('./plan-executor.service.js').PlanExecutionResult | null = null;
     let executionError = false;
@@ -47,9 +49,11 @@ export class ProjectOnboardingService {
 
     if (browserOpenOk) {
       const minimalSmoke = await this.verifyMinimalSmoke(config);
+      minimalSmokeOk = minimalSmoke.ok;
       warnings.push(...minimalSmoke.warnings);
 
       const routeCheck = await this.verifyAllowedRoutes(config);
+      routeCheckOk = routeCheck.blockedRoutes.length === 0;
       warnings.push(...routeCheck.warnings);
       accessibleRoutes.push(...routeCheck.accessibleRoutes);
       blockedRoutes.push(...routeCheck.blockedRoutes);
@@ -71,7 +75,13 @@ export class ProjectOnboardingService {
       }
     }
 
-    readiness = this.readinessEvaluator.evaluate({ browserOpenOk, smokeResult, executionError });
+    readiness = this.readinessEvaluator.evaluate({
+      browserOpenOk,
+      minimalSmokeOk,
+      routeCheckOk,
+      smokeResult,
+      executionError,
+    });
 
     if (smokePlan && smokeResult) {
       baselineReportPath = await this.writeBaselineReport(outputDir, config, smokePlan, smokeResult, readiness, warnings, startedAt, accessibleRoutes, blockedRoutes);
@@ -89,7 +99,10 @@ export class ProjectOnboardingService {
       const observation = await this.browser.observe();
 
       // Verify HTTP 200 status for baseUrl navigation
-      const baseUrlSignal = observation.networkSignals.find(
+      // Use full network log; observation.networkSignals is capped to last 50 which may
+      // exclude the baseUrl signal when many third-party requests occur.
+      const allNetworkSignals = this.browser.networkLog() as { url: string; status: number; isAppOrigin: boolean }[];
+      const baseUrlSignal = allNetworkSignals.find(
         (s) => s.url === config.baseUrl || s.url.startsWith(config.baseUrl),
       );
       if (!baseUrlSignal) {
@@ -129,7 +142,8 @@ export class ProjectOnboardingService {
         await this.browser.execute({ type: 'navigate', to: fullUrl, reason: `Onboarding: verify allowed route ${route}` });
         const observation = await this.browser.observe();
 
-        const routeSignal = observation.networkSignals.find(
+        const allNetworkSignals = this.browser.networkLog() as { url: string; status: number }[];
+        const routeSignal = allNetworkSignals.find(
           (s) => s.url === fullUrl || s.url.startsWith(fullUrl),
         );
         if (!routeSignal) {

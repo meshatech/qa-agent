@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Logger } from '@nestjs/common';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -8,6 +8,7 @@ import type { GitHubActionsPrContextReaderPort } from '../src/application/ports/
 import { PrDiffContextPersistenceService } from '../src/application/services/pr-diff-context-persistence.service.js';
 import { SanitizerService } from '../src/application/services/sanitizer.service.js';
 import { PrDiffContextSchema } from '../src/domain/schemas/pr-diff-context.schema.js';
+import { FileConfigLoader } from '../src/infra/config/file-config.loader.js';
 import { FilePrDiffContextWriterAdapter } from '../src/infra/persistence/file-pr-diff-context-writer.adapter.js';
 
 const VALID_READ_RESULT = {
@@ -51,6 +52,7 @@ describe('PrDiffContextPersistenceService', () => {
     const service = new PrDiffContextPersistenceService(
       new FilePrDiffContextWriterAdapter(),
       prContextReader,
+      new FileConfigLoader(),
       new SanitizerService(),
     );
 
@@ -89,6 +91,7 @@ describe('PrDiffContextPersistenceService', () => {
     const service = new PrDiffContextPersistenceService(
       new FilePrDiffContextWriterAdapter(),
       prContextReader,
+      new FileConfigLoader(),
       new SanitizerService(),
     );
 
@@ -130,6 +133,7 @@ describe('PrDiffContextPersistenceService', () => {
     const service = new PrDiffContextPersistenceService(
       new FilePrDiffContextWriterAdapter(),
       prContextReader,
+      new FileConfigLoader(),
       sanitizer,
     );
 
@@ -176,6 +180,7 @@ describe('PrDiffContextPersistenceService', () => {
     const service = new PrDiffContextPersistenceService(
       new FilePrDiffContextWriterAdapter(),
       prContextReader,
+      new FileConfigLoader(),
       passthroughSanitizer,
     );
 
@@ -214,6 +219,7 @@ describe('PrDiffContextPersistenceService', () => {
     const service = new PrDiffContextPersistenceService(
       new FilePrDiffContextWriterAdapter(),
       prContextReader,
+      new FileConfigLoader(),
       new SanitizerService(),
     );
 
@@ -241,6 +247,7 @@ describe('PrDiffContextPersistenceService', () => {
     const service = new PrDiffContextPersistenceService(
       new FilePrDiffContextWriterAdapter(),
       prContextReader,
+      new FileConfigLoader(),
       new SanitizerService(),
     );
 
@@ -249,5 +256,79 @@ describe('PrDiffContextPersistenceService', () => {
     expect(context.changedFiles).toEqual([]);
     expect(context.affectedRoutes).toEqual([]);
     expect(context.affectedSchemas).toEqual([]);
+  });
+
+  it('materializes clickUpTaskId from config when PR metadata has no linked task', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'agent-qa-pr-diff-context-persist-'));
+    tempDirs.push(dir);
+    const configPath = join(dir, 'agent-qa.config.json');
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        baseUrl: 'http://127.0.0.1:4173',
+        appDomains: ['127.0.0.1'],
+        demand: { id: 'DEM-001', title: 'Persist PR diff', description: 'fallback config' },
+        llm: { provider: 'fake', model: 'fake' },
+        clickup: { taskId: 'PRJ-11324' },
+      }),
+      'utf8',
+    );
+    const prContextReader: GitHubActionsPrContextReaderPort = {
+      read: vi.fn(async () => ({
+        ...VALID_READ_RESULT,
+        pullRequest: {
+          ...VALID_READ_RESULT.pullRequest,
+          clickUpTaskId: undefined,
+        },
+      })),
+    };
+    const service = new PrDiffContextPersistenceService(
+      new FilePrDiffContextWriterAdapter(),
+      prContextReader,
+      new FileConfigLoader(),
+      new SanitizerService(),
+    );
+
+    const { context } = await service.persistFromGitHubActions(dir, {
+      env: {
+        AGENT_QA_CONFIG: configPath,
+      },
+    });
+
+    expect(context.pullRequest.clickUpTaskId).toBe('PRJ-11324');
+  });
+
+  it('keeps clickUpTaskId from PR when config also defines a task', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'agent-qa-pr-diff-context-persist-'));
+    tempDirs.push(dir);
+    const configPath = join(dir, 'agent-qa.config.json');
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        baseUrl: 'http://127.0.0.1:4173',
+        appDomains: ['127.0.0.1'],
+        demand: { id: 'DEM-001', title: 'Persist PR diff', description: 'fallback config' },
+        llm: { provider: 'fake', model: 'fake' },
+        clickup: { taskId: 'PRJ-11324' },
+      }),
+      'utf8',
+    );
+    const prContextReader: GitHubActionsPrContextReaderPort = {
+      read: vi.fn(async () => VALID_READ_RESULT),
+    };
+    const service = new PrDiffContextPersistenceService(
+      new FilePrDiffContextWriterAdapter(),
+      prContextReader,
+      new FileConfigLoader(),
+      new SanitizerService(),
+    );
+
+    const { context } = await service.persistFromGitHubActions(dir, {
+      env: {
+        AGENT_QA_CONFIG: configPath,
+      },
+    });
+
+    expect(context.pullRequest.clickUpTaskId).toBe('PRJ-11552');
   });
 });

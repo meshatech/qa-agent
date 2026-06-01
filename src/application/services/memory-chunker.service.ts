@@ -8,7 +8,7 @@ import {
 } from '../../domain/schemas/memory.schema.js';
 import { MemoryMarkdownLoader } from './memory-markdown-loader.service.js';
 
-const CHUNK_METADATA_RE = /<!--\s*type:\s*(\w+)\s*\|\s*id:\s*([A-Z0-9-]+)\s*-->/i;
+const CHUNK_METADATA_RE = /<!--\s*type:\s*(\w+)\s*\|\s*id:\s*([A-Z0-9-]+)(?:\s*\|[^>]*)?\s*-->/i;
 
 export interface MemoryChunkerOptions {
   types?: MemoryChunkType[];

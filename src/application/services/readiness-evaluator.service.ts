@@ -6,6 +6,10 @@ import type { PlanExecutionResult } from './plan-executor.service.js';
 export interface ReadinessEvaluationInput {
   /** Whether the browser opened successfully */
   browserOpenOk: boolean;
+  /** Whether minimal smoke checks passed */
+  minimalSmokeOk: boolean;
+  /** Whether route accessibility checks passed */
+  routeCheckOk: boolean;
   /** Result of the smoke plan execution */
   smokeResult: PlanExecutionResult | null;
   /** Whether an unexpected error occurred during execution */
@@ -30,6 +34,10 @@ export interface ReadinessEvaluationInput {
 export class ReadinessEvaluatorService {
   evaluate(input: ReadinessEvaluationInput): ProjectReadinessStatus {
     if (!input.browserOpenOk || input.executionError) {
+      return 'ONBOARDING_BLOCKED';
+    }
+
+    if (!input.minimalSmokeOk || !input.routeCheckOk) {
       return 'ONBOARDING_BLOCKED';
     }
 

@@ -77,7 +77,11 @@ function makeBrowser(opts: { openFail?: boolean } = {}): BrowserHarnessPort {
     async captureAuth() {},
     async screenshot() { return undefined; },
     async domSnapshot() { return undefined; },
-    networkLog() { return []; },
+    networkLog() {
+      return [
+        { method: 'GET', url: 'https://app.local/', status: 200, isAppOrigin: true, timestamp: new Date().toISOString() },
+      ];
+    },
     consoleLog() { return ''; },
     async saveTrace() {},
     async saveVideo() {},
@@ -120,6 +124,7 @@ function makePlanExecutor(result: Partial<PlanExecutionResult> = {}): PlanExecut
     },
     patchHistory: [],
     evaluations: [],
+    locatorTelemetry: [],
     ...result,
   });
 
@@ -241,11 +246,15 @@ describe('ProjectOnboardingService', () => {
           elements: [{ id: 'el_001', role: 'heading', name: 'App', inViewport: true, locator: { strategy: 'text', text: 'App' } }],
         });
       },
+      networkLog() {
+        return [{ method: 'GET', url: 'https://app.local/', status: 500, isAppOrigin: true, timestamp: new Date().toISOString() }];
+      },
     };
 
     const service = makeService({ browser });
     const result = await service.execute(config, outputDir, projectPath);
 
+    expect(result.readiness).toBe('ONBOARDING_BLOCKED');
     expect(result.warnings.some((w) => w.includes('HTTP 500') && w.includes('expected 200'))).toBe(true);
   });
 
@@ -266,11 +275,15 @@ describe('ProjectOnboardingService', () => {
           elements: [],
         });
       },
+      networkLog() {
+        return [{ method: 'GET', url: 'https://app.local/', status: 200, isAppOrigin: true, timestamp: new Date().toISOString() }];
+      },
     };
 
     const service = makeService({ browser });
     const result = await service.execute(config, outputDir, projectPath);
 
+    expect(result.readiness).toBe('ONBOARDING_BLOCKED');
     expect(result.warnings.some((w) => w.includes('DOM appears empty'))).toBe(true);
   });
 
@@ -428,7 +441,38 @@ describe('ProjectOnboardingService', () => {
       allowedRoutes: ['/dashboard', '/profile'],
     });
 
-    const service = makeService();
+    let callCount = 0;
+    const browser: BrowserHarnessPort = {
+      ...makeBrowser(),
+      async observe() {
+        callCount++;
+        if (callCount === 1) {
+          return makeObservation('https://app.local/', [], {
+            networkSignals: [{ method: 'GET', url: 'https://app.local/', status: 200, isAppOrigin: true, timestamp: new Date().toISOString() }],
+            elements: [{ id: 'el_001', role: 'heading', name: 'App', inViewport: true, locator: { strategy: 'text', text: 'App' } }],
+          });
+        }
+        if (callCount === 2) {
+          return makeObservation('https://app.local/dashboard', [], {
+            networkSignals: [{ method: 'GET', url: 'https://app.local/dashboard', status: 200, isAppOrigin: true, timestamp: new Date().toISOString() }],
+            elements: [{ id: 'el_002', role: 'heading', name: 'Dashboard', inViewport: true, locator: { strategy: 'text', text: 'Dashboard' } }],
+          });
+        }
+        return makeObservation('https://app.local/profile', [], {
+          networkSignals: [{ method: 'GET', url: 'https://app.local/profile', status: 200, isAppOrigin: true, timestamp: new Date().toISOString() }],
+          elements: [{ id: 'el_003', role: 'heading', name: 'Profile', inViewport: true, locator: { strategy: 'text', text: 'Profile' } }],
+        });
+      },
+      networkLog() {
+        return [
+          { method: 'GET', url: 'https://app.local/', status: 200, isAppOrigin: true, timestamp: new Date().toISOString() },
+          { method: 'GET', url: 'https://app.local/dashboard', status: 200, isAppOrigin: true, timestamp: new Date().toISOString() },
+          { method: 'GET', url: 'https://app.local/profile', status: 200, isAppOrigin: true, timestamp: new Date().toISOString() },
+        ];
+      },
+    };
+
+    const service = makeService({ browser });
     const result = await service.execute(config, outputDir, projectPath);
 
     expect(result.warnings.some((w) => w.includes('/dashboard') && w.includes('HTTP'))).toBe(false);
@@ -463,11 +507,18 @@ describe('ProjectOnboardingService', () => {
           elements: [{ id: 'el_001', role: 'heading', name: 'Blocked', inViewport: true, locator: { strategy: 'text', text: 'Blocked' } }],
         });
       },
+      networkLog() {
+        return [
+          { method: 'GET', url: 'https://app.local/', status: 200, isAppOrigin: true, timestamp: new Date().toISOString() },
+          { method: 'GET', url: 'https://app.local/blocked', status: 403, isAppOrigin: true, timestamp: new Date().toISOString() },
+        ];
+      },
     };
 
     const service = makeService({ browser });
     const result = await service.execute(config, outputDir, projectPath);
 
+    expect(result.readiness).toBe('ONBOARDING_BLOCKED');
     expect(result.warnings.some((w) => w.includes('/blocked') && w.includes('HTTP 403'))).toBe(true);
     expect(result.warnings.some((w) => w.includes('expected 200'))).toBe(true);
   });
@@ -498,11 +549,18 @@ describe('ProjectOnboardingService', () => {
           elements: [],
         });
       },
+      networkLog() {
+        return [
+          { method: 'GET', url: 'https://app.local/', status: 200, isAppOrigin: true, timestamp: new Date().toISOString() },
+          { method: 'GET', url: 'https://app.local/empty', status: 200, isAppOrigin: true, timestamp: new Date().toISOString() },
+        ];
+      },
     };
 
     const service = makeService({ browser });
     const result = await service.execute(config, outputDir, projectPath);
 
+    expect(result.readiness).toBe('ONBOARDING_BLOCKED');
     expect(result.warnings.some((w) => w.includes('/empty') && w.includes('DOM empty'))).toBe(true);
   });
 
@@ -592,6 +650,12 @@ describe('ProjectOnboardingService', () => {
           elements: [{ id: 'el_001', role: 'heading', name: 'Blocked', inViewport: true, locator: { strategy: 'text', text: 'Blocked' } }],
         });
       },
+      networkLog() {
+        return [
+          { method: 'GET', url: 'https://app.local/', status: 200, isAppOrigin: true, timestamp: new Date().toISOString() },
+          { method: 'GET', url: 'https://app.local/blocked', status: 403, isAppOrigin: true, timestamp: new Date().toISOString() },
+        ];
+      },
     };
 
     const service = makeService({ browser });
@@ -642,6 +706,13 @@ describe('ProjectOnboardingService', () => {
           networkSignals: [{ method: 'GET', url: 'https://app.local/fail-route', status: 500, isAppOrigin: true, timestamp: new Date().toISOString() }],
           elements: [{ id: 'el_001', role: 'heading', name: 'Fail', inViewport: true, locator: { strategy: 'text', text: 'Fail' } }],
         });
+      },
+      networkLog() {
+        return [
+          { method: 'GET', url: 'https://app.local/', status: 200, isAppOrigin: true, timestamp: new Date().toISOString() },
+          { method: 'GET', url: 'https://app.local/ok-route', status: 200, isAppOrigin: true, timestamp: new Date().toISOString() },
+          { method: 'GET', url: 'https://app.local/fail-route', status: 500, isAppOrigin: true, timestamp: new Date().toISOString() },
+        ];
       },
     };
 
@@ -741,6 +812,13 @@ describe('ProjectOnboardingService', () => {
           networkSignals: [{ method: 'GET', url: 'https://app.local/bad', status: 500, isAppOrigin: true, timestamp: new Date().toISOString() }],
           elements: [{ id: 'el_001', role: 'heading', name: 'Bad', inViewport: true, locator: { strategy: 'text', text: 'Bad' } }],
         });
+      },
+      networkLog() {
+        return [
+          { method: 'GET', url: 'https://app.local/', status: 200, isAppOrigin: true, timestamp: new Date().toISOString() },
+          { method: 'GET', url: 'https://app.local/good', status: 200, isAppOrigin: true, timestamp: new Date().toISOString() },
+          { method: 'GET', url: 'https://app.local/bad', status: 500, isAppOrigin: true, timestamp: new Date().toISOString() },
+        ];
       },
     };
 

@@ -41,6 +41,12 @@ export class LocatorResolverService {
       }
       throw new DomainError('LOCATOR_NOT_FOUND', `Element not found for semantic locator: ${locator.semanticKey}`);
     }
+    if (locator.strategy === 'index') {
+      const matches = obs.elements.filter((element) => this.sameLocator(element.locator, locator.target) || this.sameElement(element, locator.target));
+      const found = matches[locator.index];
+      if (!found) throw new DomainError('LOCATOR_NOT_FOUND', `Element not found for indexed locator: ${JSON.stringify(locator)}`);
+      return found.id;
+    }
     const found = obs.elements.find((element) => this.sameLocator(element.locator, locator))
       ?? obs.elements.find((element) => this.sameElement(element, locator))
       ?? this.bestTokenOverlap(obs, locator);

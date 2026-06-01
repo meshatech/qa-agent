@@ -139,4 +139,67 @@ describe('correlateNegativeDiffRegressions', () => {
     expect(withIrrelevantMemory[0]?.severity).toBe(withoutMemory[0]?.severity);
     expect(withIrrelevantMemory[0]?.description).not.toContain('memory');
   });
+
+  it('ignores lock files (package-lock.json, yarn.lock, pnpm-lock.yaml)', () => {
+    const lockFiles = ['package-lock.json', 'yarn.lock', 'pnpm-lock.yaml'];
+    for (const lockFile of lockFiles) {
+      const prDiff = consumePrDiffContext({
+        ...BASE_PR_DIFF,
+        changedFiles: [
+          {
+            path: lockFile,
+            status: 'modified',
+            kind: 'other',
+            positiveLines: [],
+            negativeLines: [{ type: 'removed', lineNumber: 1, content: 'dependency version' }],
+            contextLines: [],
+          },
+        ],
+      });
+      const risks = correlateNegativeDiffRegressions({ prDiff, memory: consumeMemorySearchResults([]) });
+      expect(risks).toHaveLength(0);
+    }
+  });
+
+  it('ignores config noise files (tsconfig, jest, vitest, eslint, prettier, .env)', () => {
+    const configFiles = ['tsconfig.json', 'jest.config.ts', 'vitest.config.ts', '.eslintrc.json', '.prettierrc', '.env.local'];
+    for (const configFile of configFiles) {
+      const prDiff = consumePrDiffContext({
+        ...BASE_PR_DIFF,
+        changedFiles: [
+          {
+            path: configFile,
+            status: 'modified',
+            kind: 'other',
+            positiveLines: [],
+            negativeLines: [{ type: 'removed', lineNumber: 1, content: 'config' }],
+            contextLines: [],
+          },
+        ],
+      });
+      const risks = correlateNegativeDiffRegressions({ prDiff, memory: consumeMemorySearchResults([]) });
+      expect(risks).toHaveLength(0);
+    }
+  });
+
+  it('adds LOW severity dependency_change risk for package.json', () => {
+    const prDiff = consumePrDiffContext({
+      ...BASE_PR_DIFF,
+      changedFiles: [
+        {
+          path: 'package.json',
+          status: 'modified',
+          kind: 'other',
+          positiveLines: [],
+          negativeLines: [{ type: 'removed', lineNumber: 1, content: '"lodash": "^4.17.0"' }],
+          contextLines: [],
+        },
+      ],
+    });
+    const risks = correlateNegativeDiffRegressions({ prDiff, memory: consumeMemorySearchResults([]) });
+    expect(risks).toHaveLength(1);
+    expect(risks[0]?.type).toBe('dependency_change');
+    expect(risks[0]?.severity).toBe('LOW');
+    expect(risks[0]?.relatedFile).toBe('package.json');
+  });
 });

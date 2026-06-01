@@ -78,12 +78,13 @@ export class DomPurifier {
       inViewport: boolean;
       type?: string;
       options?: string[];
+      editable?: boolean;
+      ariaLabel?: string;
     };
 
     const raws = await page
-      .locator('input,textarea,select,button,a,[role],[data-testid]')
+      .locator('input,textarea,select,button,a,[role],[data-testid],[contenteditable="true"]')
       .evaluateAll((nodes) => {
-        const inViewport = (rect: DOMRect) => rect.width > 0 && rect.height > 0 && rect.bottom >= 0 && rect.right >= 0 && rect.top <= window.innerHeight && rect.left <= window.innerWidth;
         return nodes
           .filter((n) => {
             const el = n as HTMLElement;
@@ -98,6 +99,7 @@ export class DomPurifier {
             const textarea = el as HTMLTextAreaElement;
             const rect = el.getBoundingClientRect();
             const inputType = el.tagName === 'INPUT' ? (input.type ?? 'text') : '';
+            const editable = el.tagName === 'TEXTAREA' || el.getAttribute('contenteditable') === 'true';
             const role =
               el.getAttribute('role') ||
               (el.tagName === 'INPUT'
@@ -108,6 +110,8 @@ export class DomPurifier {
                     : 'textbox'
                 : el.tagName === 'TEXTAREA'
                   ? 'textbox'
+                  : editable
+                    ? 'textbox'
                   : el.tagName === 'BUTTON'
                     ? 'button'
                     : el.tagName === 'SELECT'
@@ -119,7 +123,7 @@ export class DomPurifier {
             const label = labels?.[0]?.textContent?.trim() ?? undefined;
             const ariaLabel = el.getAttribute('aria-label');
             const placeholder = input.placeholder ?? textarea.placeholder ?? undefined;
-            const name = ariaLabel || label || placeholder || el.textContent?.trim() || (el as HTMLInputElement).name || '';
+            const name = ariaLabel || label || placeholder || el.textContent?.trim() || (el as HTMLInputElement).name || (editable ? 'Editable text area' : '');
             const opts: string[] | undefined = el.tagName === 'SELECT' ? Array.from(select.options).map((o) => o.label || o.value) : undefined;
             const isInputElement = el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT';
             const value = isInputElement && inputType !== 'password' ? (input.value ?? select.value ?? textarea.value ?? '') : '';
@@ -138,13 +142,14 @@ export class DomPurifier {
               testid: el.getAttribute('data-testid') || undefined,
               label,
               bounds: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
-              inViewport: inViewport(rect),
+              inViewport: rect.width > 0 && rect.height > 0 && rect.bottom >= 0 && rect.right >= 0 && rect.top <= window.innerHeight && rect.left <= window.innerWidth,
               type: inputType || undefined,
               ariaLabel: el.getAttribute('aria-label') || undefined,
               title: el.getAttribute('title') || undefined,
               alt: (el as HTMLImageElement).alt || undefined,
               className: el.className || undefined,
               options: opts,
+              editable,
             } as RawElement;
           });
       });
@@ -155,11 +160,13 @@ export class DomPurifier {
         const id = `el_${String(i + 1).padStart(3, '0')}`;
         const locator: LocatorDescriptor = r.testid
           ? { strategy: 'testid', value: r.testid }
-          : r.label
-            ? { strategy: 'label', text: r.label }
+          : r.label || (r.tag === 'input' && r.ariaLabel)
+            ? { strategy: 'label', text: r.label ?? r.ariaLabel! }
             : r.placeholder
               ? { strategy: 'placeholder', text: r.placeholder }
-              : { strategy: 'role', role: r.role, name: r.name };
+              : r.editable
+                ? { strategy: 'role', role: r.role }
+                : { strategy: 'role', role: r.role, name: r.name };
         return {
           id,
           role: r.role,
