@@ -23,15 +23,29 @@ function exists(path) {
 
 // --- Rules ---
 const RULES_DIR = '.cursor/rules';
-const EXPECTED_RULE_COUNT = 12;
 const MAX_RULE_LINES = 55;
+const REQUIRED_RULE_FILES = [
+  'agent-qa-project-memory.mdc',
+  'agentic-memory-bank.mdc',
+  'application-services.mdc',
+  'clean-architecture.mdc',
+  'cli-interfaces.mdc',
+  'llm-providers.mdc',
+  'playwright-observation.mdc',
+  'project-core.mdc',
+  'qa-tools-and-actions.mdc',
+  'runtime-invariants.mdc',
+  'specs-and-docs.mdc',
+  'testing-vitest.mdc',
+];
 
 if (!exists(RULES_DIR)) {
   fail(`Missing ${RULES_DIR}/`);
 } else {
   const ruleFiles = readdirSync(join(ROOT, RULES_DIR)).filter((f) => f.endsWith('.mdc'));
-  if (ruleFiles.length !== EXPECTED_RULE_COUNT) {
-    fail(`Expected ${EXPECTED_RULE_COUNT} .mdc rules, found ${ruleFiles.length}`);
+  const missingRuleFiles = REQUIRED_RULE_FILES.filter((file) => !ruleFiles.includes(file));
+  if (missingRuleFiles.length) {
+    fail(`Missing required .mdc rules: ${missingRuleFiles.join(', ')}`);
   }
   for (const file of ruleFiles) {
     const content = read(join(RULES_DIR, file));
@@ -149,6 +163,6 @@ if (errors.length) {
 }
 
 console.log('validate-agent-config: OK');
-console.log(`  - ${EXPECTED_RULE_COUNT} rules in ${RULES_DIR}/`);
+console.log(`  - ${REQUIRED_RULE_FILES.length} required rules present in ${RULES_DIR}/ (${readdirSync(join(ROOT, RULES_DIR)).filter((f) => f.endsWith('.mdc')).length} total)`);
 console.log(`  - ${MEMORY_FILES.length} memory bank files`);
 console.log(`  - .agent-qa/memory.md chunk format valid`);

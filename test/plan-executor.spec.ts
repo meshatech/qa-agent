@@ -187,6 +187,45 @@ describe('PlanExecutorService', () => {
     expect(result.warnings.map((w) => w.message)).toContain('QUIESCENCE_TIMEOUT');
   });
 
+  it('records WCAG warnings from critical accessibility violations', async () => {
+    const browser: Partial<BrowserHarnessPort> = {
+      async observe() { return obs(['Dashboard']); },
+      async execute(action) { return { ok: true, actionType: action.type, durationMs: 1 }; },
+      async waitForQuiescence() { return { stable: true, reason: 'NETWORK_AND_DOM_IDLE', elapsedMs: 1 }; },
+      async validate(expected) { return { ok: true, type: expected.type, durationMs: 1 }; },
+      async auditAccessibility() {
+        return [
+          { id: 'color-contrast', impact: 'critical', description: 'Insufficient color contrast', nodes: 2 },
+          { id: 'landmark-one-main', impact: 'serious', description: 'Document should have one main landmark', nodes: 1 },
+        ];
+      },
+    };
+    const plan: ExecutionPlan = {
+      schemaVersion: 'execution-plan.v1',
+      planId: 'a11y-warning',
+      version: 1,
+      goal: 'Accessibility warning propagation',
+      mode: 'HYBRID_GUARDED',
+      runtime: { maxAttemptsPerStep: 1, maxReplansPerScenario: 0, destructiveActionPolicy: 'BLOCK' },
+      assertions: [],
+      steps: [{
+        id: 'S001',
+        description: 'Navigate to dashboard',
+        preconditions: [],
+        action: { type: 'navigate', to: 'https://app.local/dashboard', reason: 'open dashboard' },
+        postconditions: [{ type: 'no_console_errors' }],
+        assertions: [],
+        onFailure: 'BLOCK',
+      }],
+    };
+
+    const result = await executor(browser as BrowserHarnessPort).execute(plan, config);
+
+    expect(result.ok).toBe(true);
+    expect(result.warnings).toContainEqual({ stepId: 'S001', message: 'WCAG_color-contrast: Insufficient color contrast' });
+    expect(result.warnings.some((warning) => warning.message.includes('landmark-one-main'))).toBe(false);
+  });
+
   it('runs final business assertions after plan steps', async () => {
     const browser: Partial<BrowserHarnessPort> = {
       async observe() { return obs(['Produto salvo']); },
