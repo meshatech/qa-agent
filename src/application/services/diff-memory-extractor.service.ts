@@ -63,8 +63,9 @@ export class DiffMemoryExtractorService {
       allChunks.push(...chunks);
       // Respect rate limits: skip delay on last group; use model-aware default
       if (i < groupEntries.length - 1) {
-        const defaultDelay = llmModel.includes('70b') ? 25000 : 5000;
-        const delayMs = Number(process.env.GROQ_DELAY_MS ?? defaultDelay);
+        const defaultDelay = llmModel.includes('70b') ? 25000 : 1000;
+        const rawDelay = Number(process.env.GROQ_DELAY_MS ?? defaultDelay);
+        const delayMs = Number.isFinite(rawDelay) && rawDelay >= 0 ? rawDelay : defaultDelay;
         await new Promise((r) => setTimeout(r, delayMs));
       }
     }
@@ -172,13 +173,15 @@ export class DiffMemoryExtractorService {
   }
 
   private async buildDirectoryTree(projectPath: string): Promise<string> {
-    const { execSync } = await import('node:child_process');
+    const { spawnSync } = await import('node:child_process');
     try {
-      const output = execSync(
-        `find . -maxdepth 3 -type d ! -path './node_modules/*' ! -path './.git/*' ! -path './.next/*' ! -path './dist/*' | sort`,
+      const result = spawnSync(
+        'find',
+        ['.', '-maxdepth', '3', '-type', 'd', '!', '-path', './node_modules/*', '!', '-path', './.git/*', '!', '-path', './.next/*', '!', '-path', './dist/*'],
         { cwd: projectPath, encoding: 'utf8' },
       );
-      return output;
+      if (result.error || result.status !== 0) return 'Directory tree not available';
+      return result.stdout.split('\n').sort().join('\n');
     } catch {
       return 'Directory tree not available';
     }
@@ -209,9 +212,11 @@ export class DiffMemoryExtractorService {
   }
 
   private async getGitHistory(projectPath: string): Promise<string | null> {
-    const { execSync } = await import('node:child_process');
+    const { spawnSync } = await import('node:child_process');
     try {
-      return execSync('git log --oneline -20', { cwd: projectPath, encoding: 'utf8' });
+      const result = spawnSync('git', ['log', '--oneline', '-20'], { cwd: projectPath, encoding: 'utf8' });
+      if (result.error || result.status !== 0) return null;
+      return result.stdout;
     } catch {
       return null;
     }

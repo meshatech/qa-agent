@@ -260,8 +260,9 @@ export class LearningCandidateExtractorService {
     if (memoryConsultationLog?.entries) {
       for (const entry of memoryConsultationLog.entries) {
         if (!entry.used || entry.chunks.length === 0) {
+          const safeQuery = entry.query.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 50);
           candidates.push({
-            id: `lc-${runId}-memory-gap-${entry.query.slice(0, 30)}`,
+            id: `lc-${runId}-memory-gap-${safeQuery}`,
             type: 'gap',
             runId,
             description: 'Memory query returned no useful results',
@@ -270,7 +271,7 @@ export class LearningCandidateExtractorService {
             confidence: 0.5,
             risk: 'medium',
             metadata: {
-              memoryGap: `no_results_for_${entry.query.slice(0, 30)}`,
+              memoryGap: `no_results_for_${safeQuery}`,
             },
             generatedAt: now,
           });

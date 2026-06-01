@@ -9,6 +9,10 @@ const TYPE_MAP: Record<string, string> = {
   gap: 'known_issue',
 };
 
+function escapeMarkdown(text: string): string {
+  return text.replace(/([\\\-[[\]()>])/g, '\\$1');
+}
+
 @Injectable()
 export class MemoryChunkRenderer {
   render(candidate: LearningCandidate): string | null {
@@ -18,14 +22,14 @@ export class MemoryChunkRenderer {
     const id = candidate.id.replace(/[^a-zA-Z0-9_-]/g, '-').toUpperCase();
 
     const lines: string[] = [];
-    lines.push(`## ${candidate.description}`);
+    lines.push(`## ${escapeMarkdown(candidate.description)}`);
     lines.push('');
     lines.push(`<!-- type: ${chunkType} | id: ${id} -->`);
-    lines.push(`- **Description**: ${candidate.description}`);
-    lines.push(`- **Content**: ${candidate.content}`);
-    lines.push(`- **Source**: ${candidate.source}`);
+    lines.push(`- **Description**: ${escapeMarkdown(candidate.description)}`);
+    lines.push(`- **Content**: ${escapeMarkdown(candidate.content)}`);
+    lines.push(`- **Source**: ${escapeMarkdown(candidate.source)}`);
     lines.push(`- **Confidence**: ${candidate.confidence}`);
-    if (candidate.risk) lines.push(`- **Risk**: ${candidate.risk}`);
+    if (candidate.risk) lines.push(`- **Risk**: ${escapeMarkdown(candidate.risk)}`);
     lines.push(`- **Generated**: ${candidate.generatedAt}`);
     lines.push('');
 
