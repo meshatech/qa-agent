@@ -474,6 +474,7 @@ function buildUseCase(clickUpReader: ClickUpReaderPort): RunPipelineCorrelateUse
       new CriteriaScenarioSelector(),
     ),
     new FileCorrelationArtifactsWriterAdapter(),
+    { write: vi.fn(async (_dir, _log) => join(_dir, 'memory-consultation-log.json')) },
   );
 }
 

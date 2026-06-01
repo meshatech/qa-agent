@@ -7,4 +7,5 @@ export interface PipelineCorrelateRunResult {
   correlationReportPath: string;
   demandContextPath: string;
   demand: DemandContext;
+  memoryConsultationLogPath?: string;
 }

@@ -9,6 +9,7 @@ import {
 } from '../helpers/read-pipeline-artifact.js';
 import { redactSecretsInMessage } from '../helpers/sanitize-token.js';
 import type { CorrelationArtifactsWriterPort } from '../ports/correlation-artifacts-writer.port.js';
+import type { MemoryConsultationLogWriterPort } from '../ports/memory-consultation-log-writer.port.js';
 import { DemandContextPersistenceService } from '../services/demand-context-persistence.service.js';
 import { DemandDiffMemoryCorrelatorService } from '../services/demand-diff-memory-correlator.service.js';
 import { MemorySearchService } from '../services/memory-search.service.js';
@@ -25,6 +26,11 @@ import {
 } from '../../domain/schemas/correlation.schema.js';
 import { PrDiffContextSchema, type PrDiffContext } from '../../domain/schemas/pr-diff-context.schema.js';
 import type { CorrelationReportContext } from '../../domain/helpers/correlation-report.renderer.js';
+import {
+  createMemoryConsultationLog,
+  type MemoryChunkConsultation,
+  type MemoryGap,
+} from '../../domain/schemas/memory-consultation-log.schema.js';
 
 @Injectable()
 export class RunPipelineCorrelateUseCase {
@@ -37,6 +43,8 @@ export class RunPipelineCorrelateUseCase {
     @Inject(ScenarioSelectorService) private readonly scenarioSelector: ScenarioSelectorService,
     @Inject('CorrelationArtifactsWriterPort')
     private readonly artifactsWriter: CorrelationArtifactsWriterPort,
+    @Inject('MemoryConsultationLogWriterPort')
+    private readonly memoryLogWriter: MemoryConsultationLogWriterPort,
   ) {}
 
   async execute(
@@ -181,6 +189,16 @@ export class RunPipelineCorrelateUseCase {
       result.warnings.push(...selected.warnings);
     }
 
+    const memoryLog = this.buildMemoryConsultationLog(memoryQuery, memoryResponse, result, prDiff);
+    let memoryConsultationLogPath: string | undefined;
+    try {
+      memoryConsultationLogPath = await this.memoryLogWriter.write(outputDir, memoryLog);
+    } catch (error) {
+      result.warnings.push(
+        `Failed to write memory consultation log: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
     if (result.status === 'BLOCKED') {
       throw new CorrelationBlockedError({
         ...result,
@@ -202,6 +220,7 @@ export class RunPipelineCorrelateUseCase {
       correlationReportPath: paths.correlationReportPath,
       demandContextPath,
       demand,
+      memoryConsultationLogPath,
     };
   }
 
@@ -211,6 +230,74 @@ export class RunPipelineCorrelateUseCase {
     context: CorrelationReportContext,
   ) {
     return this.artifactsWriter.write(outputDir, result, context);
+  }
+
+  private buildMemoryConsultationLog(
+    query: string,
+    memoryResponse: import('../../domain/schemas/memory.schema.js').MemorySearchResponse,
+    result: CorrelationResult,
+    prDiff: PrDiffContext,
+  ) {
+    const usedChunkIds = new Set<string>();
+    for (const corr of result.correlations) {
+      if (corr.memoryChunk) {
+        usedChunkIds.add(corr.memoryChunk);
+      }
+    }
+
+    const chunks: MemoryChunkConsultation[] = memoryResponse.chunks.map((item) => {
+      const chunk = item.chunk;
+      let influence: MemoryChunkConsultation['influence'] = 'none';
+      if (usedChunkIds.has(chunk.id)) {
+        influence = chunk.type === 'scenario' ? 'scenario' : 'plan';
+      } else if (chunk.type === 'scenario') {
+        influence = 'scenario';
+      }
+      return {
+        chunkId: chunk.id,
+        chunkType: chunk.type,
+        chunkTitle: chunk.title,
+        relevanceScore: item.relevanceScore,
+        influence,
+        rationale: influence !== 'none' ? `Chunk ${chunk.id} influenced correlation` : undefined,
+      };
+    });
+
+    const gaps: MemoryGap[] = [];
+    for (const corr of result.correlations) {
+      if (corr.score < 0.15) {
+        gaps.push({
+          description: `Acceptance criterion uncovered by memory or diff: "${corr.criterion}"`,
+          criterion: corr.criterion,
+        });
+      }
+    }
+
+    for (const route of prDiff.affectedRoutes) {
+      const hasRouteChunk = memoryResponse.chunks.some(
+        (c) => c.chunk.type === 'route' && (c.chunk.content.includes(route) || c.chunk.title.includes(route)),
+      );
+      if (!hasRouteChunk) {
+        gaps.push({
+          description: `Affected route "${route}" has no aligned route memory chunk`,
+          affectedRoute: route,
+        });
+      }
+    }
+
+    if (memoryResponse.chunks.length === 0) {
+      gaps.push({
+        description: 'BM25 memory search returned no chunks',
+      });
+    }
+
+    return createMemoryConsultationLog({
+      query,
+      totalChunksReturned: memoryResponse.chunks.length,
+      chunks,
+      gaps,
+      timestamp: new Date().toISOString(),
+    });
   }
 
   private blockAndThrow(
