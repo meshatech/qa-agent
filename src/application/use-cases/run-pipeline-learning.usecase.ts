@@ -3,7 +3,7 @@ import { writeFile, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 import type { PipelineLearningRunResult } from '../dto/pipeline-learning-result.dto.js';
-import { LearningCandidateExtractorService } from '../services/learning-candidate-extractor.service.js';
+import { LearningCandidateExtractorService, isEphemeralId } from '../services/learning-candidate-extractor.service.js';
 import type { ConfigLoaderPort } from '../ports/config-loader.port.js';
 import { LearningCandidatesArtifactSchema } from '../../domain/schemas/learning-candidate.schema.js';
 import { RunConfigSchema } from '../../domain/schemas/config.schema.js';
@@ -60,7 +60,10 @@ export class RunPipelineLearningUseCase {
       inferredCount: candidates.filter((c) => c.source === 'inferred').length,
       gapCount: candidates.filter((c) => c.type === 'gap').length,
       semanticLocatorSuggestions: candidates.filter((c) => c.type === 'semantic_locator').length,
-      hasEphemeralIdsFiltered: candidates.some((c) => c.metadata?.ephemeralIdPresent),
+      hasEphemeralIdsFiltered: (Array.isArray(executionResult?.locatorTelemetry)
+        ? (executionResult.locatorTelemetry as Array<{ elementId?: string }>)
+        : []
+      ).some((e) => isEphemeralId(e.elementId)),
     };
   }
 

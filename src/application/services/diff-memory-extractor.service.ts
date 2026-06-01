@@ -46,9 +46,10 @@ export class DiffMemoryExtractorService {
 
     // Phase 3: Process each group with LLM, accumulating chunks
     const allChunks: DiffMemoryChunk[] = [];
-    const delayMs = Number(process.env.GROQ_DELAY_MS ?? 25000);
+    const groupEntries = Array.from(groups.entries());
 
-    for (const [category, files] of groups) {
+    for (let i = 0; i < groupEntries.length; i++) {
+      const [category, files] = groupEntries[i];
       const groupContext = await this.buildGroupContext(projectPath, category, files, baseContext);
       const result = await this.llm.complete({
         context: groupContext,
@@ -60,8 +61,12 @@ export class DiffMemoryExtractorService {
       });
       const chunks = this.parseMarkdownChunks(result.content);
       allChunks.push(...chunks);
-      // Respect rate limits configured via env
-      await new Promise((r) => setTimeout(r, delayMs));
+      // Respect rate limits: skip delay on last group; use model-aware default
+      if (i < groupEntries.length - 1) {
+        const defaultDelay = llmModel.includes('70b') ? 25000 : 5000;
+        const delayMs = Number(process.env.GROQ_DELAY_MS ?? defaultDelay);
+        await new Promise((r) => setTimeout(r, delayMs));
+      }
     }
 
     // Phase 4: Consolidation pass

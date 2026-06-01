@@ -136,4 +136,165 @@ describe('RunPipelineExecuteUseCase', () => {
 
     await rm(dir, { recursive: true, force: true });
   });
+
+  it('counts passed and failed steps correctly', async () => {
+    const dir = await setupTempDir();
+
+    const mockResult: PlanExecutionResult = {
+      ok: false,
+      steps: [
+        {
+          stepId: 'S001',
+          action: { type: 'navigate', to: 'http://example.com', reason: 'test' },
+          resolvedAction: { type: 'navigate', to: 'http://example.com', reason: 'test' },
+          boundExpected: { type: 'no_console_errors' },
+          validation: { ok: true, type: 'no_console_errors', durationMs: 1 },
+          startedAt: new Date().toISOString(),
+          finishedAt: new Date().toISOString(),
+        },
+        {
+          stepId: 'S002',
+          action: { type: 'click', targetElementId: 'el_001', reason: 'test' },
+          resolvedAction: { type: 'click', targetElementId: 'el_001', reason: 'test' },
+          boundExpected: { type: 'no_console_errors' },
+          validation: { ok: false, type: 'element_visible', durationMs: 1 },
+          error: { code: 'LOCATOR_NOT_FOUND', message: 'Not found' },
+          startedAt: new Date().toISOString(),
+          finishedAt: new Date().toISOString(),
+        },
+        {
+          stepId: 'S003',
+          action: { type: 'fill', targetElementId: 'el_002', value: 'x', reason: 'test' },
+          resolvedAction: { type: 'fill', targetElementId: 'el_002', value: 'x', reason: 'test' },
+          boundExpected: { type: 'no_console_errors' },
+          // no validation, no error
+          startedAt: new Date().toISOString(),
+          finishedAt: new Date().toISOString(),
+        },
+      ],
+      attempts: [],
+      warnings: [],
+      finalPlan: MOCK_PLAN,
+      patchHistory: [],
+      evaluations: [],
+      locatorTelemetry: [],
+    };
+
+    const useCase = new RunPipelineExecuteUseCase(
+      { execute: vi.fn().mockResolvedValue(mockResult) } as unknown as import('../src/application/services/plan-executor.service.js').PlanExecutorService,
+      { load: async () => MOCK_CONFIG } as unknown as import('../src/application/ports/config-loader.port.js').ConfigLoaderPort,
+      { open: vi.fn().mockResolvedValue(undefined), close: vi.fn().mockResolvedValue(undefined) } as unknown as import('../src/application/ports/browser-harness.port.js').BrowserHarnessPort,
+    );
+
+    const result = await useCase.execute(dir, { configPath: join(dir, 'agent-qa.config.json') });
+
+    expect(result.stepsExecuted).toBe(3);
+    expect(result.stepsPassed).toBe(1); // only S001 (ok=true, no error)
+    expect(result.stepsFailed).toBe(2); // S002 (error), S003 (no validation.ok)
+
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('closes browser even when execution throws', async () => {
+    const dir = await setupTempDir();
+    const closeMock = vi.fn().mockResolvedValue(undefined);
+
+    const useCase = new RunPipelineExecuteUseCase(
+      { execute: vi.fn().mockRejectedValue(new Error('Execution exploded')) } as unknown as import('../src/application/services/plan-executor.service.js').PlanExecutorService,
+      { load: async () => MOCK_CONFIG } as unknown as import('../src/application/ports/config-loader.port.js').ConfigLoaderPort,
+      { open: vi.fn().mockResolvedValue(undefined), close: closeMock } as unknown as import('../src/application/ports/browser-harness.port.js').BrowserHarnessPort,
+    );
+
+    await expect(useCase.execute(dir, { configPath: join(dir, 'agent-qa.config.json') })).rejects.toThrow('Execution exploded');
+    expect(closeMock).toHaveBeenCalledTimes(1);
+
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('closes browser even when open throws', async () => {
+    const dir = await setupTempDir();
+    const closeMock = vi.fn().mockResolvedValue(undefined);
+
+    const useCase = new RunPipelineExecuteUseCase(
+      { execute: vi.fn() } as unknown as import('../src/application/services/plan-executor.service.js').PlanExecutorService,
+      { load: async () => MOCK_CONFIG } as unknown as import('../src/application/ports/config-loader.port.js').ConfigLoaderPort,
+      { open: vi.fn().mockRejectedValue(new Error('Browser launch failed')), close: closeMock } as unknown as import('../src/application/ports/browser-harness.port.js').BrowserHarnessPort,
+    );
+
+    await expect(useCase.execute(dir, { configPath: join(dir, 'agent-qa.config.json') })).rejects.toThrow('Browser launch failed');
+    expect(closeMock).toHaveBeenCalledTimes(1);
+
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('returns zero counts when no steps executed', async () => {
+    const dir = await setupTempDir();
+
+    const mockResult: PlanExecutionResult = {
+      ok: true,
+      steps: [],
+      attempts: [],
+      warnings: [],
+      finalPlan: MOCK_PLAN,
+      patchHistory: [],
+      evaluations: [],
+      locatorTelemetry: [],
+    };
+
+    const useCase = new RunPipelineExecuteUseCase(
+      { execute: vi.fn().mockResolvedValue(mockResult) } as unknown as import('../src/application/services/plan-executor.service.js').PlanExecutorService,
+      { load: async () => MOCK_CONFIG } as unknown as import('../src/application/ports/config-loader.port.js').ConfigLoaderPort,
+      { open: vi.fn().mockResolvedValue(undefined), close: vi.fn().mockResolvedValue(undefined) } as unknown as import('../src/application/ports/browser-harness.port.js').BrowserHarnessPort,
+    );
+
+    const result = await useCase.execute(dir, { configPath: join(dir, 'agent-qa.config.json') });
+
+    expect(result.stepsExecuted).toBe(0);
+    expect(result.stepsPassed).toBe(0);
+    expect(result.stepsFailed).toBe(0);
+    expect(result.warningsCount).toBe(0);
+
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('handles empty telemetry gracefully', async () => {
+    const dir = await setupTempDir();
+
+    const mockResult: PlanExecutionResult = {
+      ok: true,
+      steps: [
+        {
+          stepId: 'S001',
+          action: { type: 'navigate', to: 'http://example.com', reason: 'test' },
+          resolvedAction: { type: 'navigate', to: 'http://example.com', reason: 'test' },
+          boundExpected: { type: 'no_console_errors' },
+          validation: { ok: true, type: 'no_console_errors', durationMs: 1 },
+          startedAt: new Date().toISOString(),
+          finishedAt: new Date().toISOString(),
+        },
+      ],
+      attempts: [],
+      warnings: [],
+      finalPlan: MOCK_PLAN,
+      patchHistory: [],
+      evaluations: [],
+      locatorTelemetry: [],
+    };
+
+    const useCase = new RunPipelineExecuteUseCase(
+      { execute: vi.fn().mockResolvedValue(mockResult) } as unknown as import('../src/application/services/plan-executor.service.js').PlanExecutorService,
+      { load: async () => MOCK_CONFIG } as unknown as import('../src/application/ports/config-loader.port.js').ConfigLoaderPort,
+      { open: vi.fn().mockResolvedValue(undefined), close: vi.fn().mockResolvedValue(undefined) } as unknown as import('../src/application/ports/browser-harness.port.js').BrowserHarnessPort,
+    );
+
+    const result = await useCase.execute(dir, { configPath: join(dir, 'agent-qa.config.json') });
+
+    expect(result.telemetrySummary.deterministicResolutions).toBe(0);
+    expect(result.telemetrySummary.semanticFallbacks).toBe(0);
+    expect(result.telemetrySummary.llmDecides).toBe(0);
+    expect(result.telemetrySummary.replans).toBe(0);
+    expect(result.telemetrySummary.targetsNotFound).toBe(0);
+
+    await rm(dir, { recursive: true, force: true });
+  });
 });

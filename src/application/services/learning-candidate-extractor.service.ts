@@ -75,7 +75,7 @@ export interface ExtractLearningCandidatesInput {
   };
 }
 
-function isEphemeralId(id?: string): boolean {
+export function isEphemeralId(id?: string): boolean {
   return Boolean(id && /^el_\d{3,}$/.test(id));
 }
 
@@ -115,7 +115,6 @@ export class LearningCandidateExtractorService {
             hadTokenOverlap: false,
             hadReplan: false,
             hadDecide: false,
-            ephemeralIdPresent: isEphemeralId(event.elementId),
           },
           generatedAt: now,
         });

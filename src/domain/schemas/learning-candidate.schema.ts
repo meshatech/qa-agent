@@ -27,7 +27,6 @@ export const LearningCandidateSchema = z.object({
     hadDecide: z.boolean().optional(),
     hadElementAvailability: z.boolean().optional(),
     memoryGap: z.string().optional(),
-    ephemeralIdPresent: z.boolean().optional(),
   }).optional(),
   generatedAt: z.string().datetime(),
 });
