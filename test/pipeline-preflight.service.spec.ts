@@ -235,6 +235,7 @@ describe('PipelinePreflightService', () => {
   it('returns BLOCKED when clickup env is empty strings', async () => {
     process.env.CLICKUP_TOKEN = '';
     process.env.GITHUB_TOKEN = '   ';
+    process.env.CLICKUP_TASK_ID = '   ';
     setPullRequestContextEnv();
     await attachPullRequestEventWithTaskId({ title: 'Fix login without task id' });
     await attachValidConfig();
@@ -253,6 +254,7 @@ describe('PipelinePreflightService', () => {
     async function setFullEnvExceptClickUpTaskId(): Promise<void> {
       process.env.CLICKUP_TOKEN = 'pk_live_valid_token';
       process.env.GITHUB_TOKEN = 'ghp_xxx';
+      delete process.env.CLICKUP_TASK_ID;
       setPullRequestContextEnv();
       await attachPullRequestEventWithTaskId({ title: 'Fix login without task id' });
       await attachValidConfig();
@@ -278,15 +280,36 @@ describe('PipelinePreflightService', () => {
       expect(result.report.status).toBe('BLOCKED');
     });
 
-    it('clickupTaskId check fails when legacy env is set but PR has no task ID', async () => {
+    it('clickupTaskId check passes when config provides a fallback task ID', async () => {
+      await setFullEnvExceptClickUpTaskId();
+      const configDir = await tempDir();
+      process.env.AGENT_QA_CONFIG = await writeConfigFile(configDir, {
+        ...VALID_CONFIG,
+        clickup: { taskId: 'PRJ-11324' },
+      });
+
+      const outputDir = await tempDir();
+      const result = await makeService().run(outputDir);
+
+      expect(result.report.checks.clickupTaskId.ok).toBe(true);
+      expect(result.report.checks.clickupTaskId.source).toBe('config');
+      expect(result.report.checks.clickupTaskId.taskId).toBe('PRJ-11324');
+      expect(result.report.status).toBe('PASS');
+    });
+
+    it('clickupTaskId check passes with warning when legacy env is set and PR has no task ID', async () => {
       await setFullEnvExceptClickUpTaskId();
       process.env.CLICKUP_TASK_ID = '86ahmgfc0';
 
       const outputDir = await tempDir();
       const result = await makeService().run(outputDir);
 
-      expect(result.report.checks.clickupTaskId.ok).toBe(false);
-      expect(result.report.status).toBe('BLOCKED');
+      expect(result.report.checks.clickupTaskId.ok).toBe(true);
+      expect(result.report.checks.clickupTaskId.source).toBe('env');
+      expect(result.report.checks.clickupTaskId.taskId).toBe('***REDACTED***');
+      expect(result.report.checks.clickupTaskId.warning).toContain('CLICKUP_TASK_ID env is deprecated');
+      expect(result.report.checkItems.find((item) => item.name === 'clickupTaskId')?.status).toBe('WARN');
+      expect(result.report.status).toBe('PASS');
     });
 
     it('status is BLOCKED when only ClickUp task ID is missing from PR', async () => {

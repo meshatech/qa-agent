@@ -42,7 +42,7 @@ export const PreflightChecksDetailSchema = z.object({
   clickupTaskId: z.object({
     ok: z.boolean(),
     skipped: z.boolean().optional(),
-    source: z.enum(['pr']).optional(),
+    source: z.enum(['pr', 'config', 'env']).optional(),
     taskId: z.string().optional(),
     error: z.string().optional(),
     warning: z.string().optional(),
