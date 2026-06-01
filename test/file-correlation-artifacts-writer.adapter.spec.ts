@@ -66,7 +66,7 @@ describe('FileCorrelationArtifactsWriterAdapter', () => {
       memoryResults: [],
     });
 
-    const paths = await adapter.write(dir, result, {
+    const paths = await adapter.write(dir, result, [], {
       demandTitle: BASE_DEMAND.title,
       prNumber: BASE_PR_DIFF.pullRequest.prNumber,
     });
@@ -94,7 +94,7 @@ describe('FileCorrelationArtifactsWriterAdapter', () => {
       memoryResults: [],
     });
 
-    const paths = await adapter.write(dir, result);
+    const paths = await adapter.write(dir, result, []);
 
     await expect(access(`${paths.requiredScenariosPath}.tmp`)).rejects.toThrow();
     await expect(access(`${paths.correlationReportPath}.tmp`)).rejects.toThrow();
@@ -116,7 +116,7 @@ describe('FileCorrelationArtifactsWriterAdapter', () => {
     const tmpPath = `${finalPath}.tmp`;
     await mkdir(finalPath);
 
-    await expect(adapter.write(dir, result)).rejects.toThrow();
+    await expect(adapter.write(dir, result, [])).rejects.toThrow();
     await expect(access(tmpPath)).rejects.toThrow();
   });
 
@@ -140,7 +140,7 @@ describe('FileCorrelationArtifactsWriterAdapter', () => {
       return originalWrite(...args);
     });
 
-    await expect(adapter.write(dir, result)).rejects.toThrow('report write failed');
+    await expect(adapter.write(dir, result, [])).rejects.toThrow('report write failed');
     await expect(access(join(dir, 'required-scenarios.json'))).rejects.toThrow();
     await expect(access(join(dir, 'correlation-report.md'))).rejects.toThrow();
     expect((await readdir(dir)).every((entry) => !entry.startsWith('.correlation-artifacts-'))).toBe(

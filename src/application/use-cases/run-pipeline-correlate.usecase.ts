@@ -209,7 +209,7 @@ export class RunPipelineCorrelateUseCase {
       });
     }
 
-    const paths = await this.persistArtifacts(outputDir, result, {
+    const paths = await this.persistArtifacts(outputDir, result, selected.selectedScenarios, {
       demandTitle: demand.title,
       prNumber: prDiff.pullRequest.prNumber,
     });
@@ -218,6 +218,7 @@ export class RunPipelineCorrelateUseCase {
       result,
       requiredScenariosPath: paths.requiredScenariosPath,
       correlationReportPath: paths.correlationReportPath,
+      selectedScenariosPath: paths.selectedScenariosPath,
       demandContextPath,
       demand,
       memoryConsultationLogPath,
@@ -227,9 +228,10 @@ export class RunPipelineCorrelateUseCase {
   private async persistArtifacts(
     outputDir: string,
     result: CorrelationResult,
+    selectedScenarios: import('../../domain/models/run.model.js').QaScenario[],
     context: CorrelationReportContext,
   ) {
-    return this.artifactsWriter.write(outputDir, result, context);
+    return this.artifactsWriter.write(outputDir, result, selectedScenarios, context);
   }
 
   private buildMemoryConsultationLog(
