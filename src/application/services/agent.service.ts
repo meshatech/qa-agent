@@ -10,10 +10,12 @@ import { RunPipelinePreflightUseCase } from '../use-cases/run-pipeline-preflight
 import { RunPrDiffContextUseCase } from '../use-cases/run-pr-diff-context.usecase.js';
 import { RunPipelinePrepareUseCase } from '../use-cases/run-pipeline-prepare.usecase.js';
 import { RunPipelineCorrelateUseCase } from '../use-cases/run-pipeline-correlate.usecase.js';
+import { RunPipelineGeneratePlanUseCase } from '../use-cases/run-pipeline-generate-plan.usecase.js';
 import type { PipelinePreflightRunResult } from '../dto/pipeline-preflight-result.dto.js';
 import type { PrDiffContextRunResult } from '../dto/pr-diff-context-result.dto.js';
 import type { PipelinePrepareRunResult } from '../dto/pipeline-prepare-result.dto.js';
 import type { PipelineCorrelateRunResult } from '../dto/pipeline-correlate-result.dto.js';
+import type { PipelineGeneratePlanRunResult } from '../dto/pipeline-generate-plan-result.dto.js';
 import type { OnboardingResult } from '../../domain/models/readiness.model.js';
 
 @Injectable()
@@ -29,6 +31,7 @@ export class AgentService {
     @Inject(RunPrDiffContextUseCase) private readonly runPrDiffContext: RunPrDiffContextUseCase,
     @Inject(RunPipelinePrepareUseCase) private readonly runPipelinePrepare: RunPipelinePrepareUseCase,
     @Inject(RunPipelineCorrelateUseCase) private readonly runPipelineCorrelate: RunPipelineCorrelateUseCase,
+    @Inject(RunPipelineGeneratePlanUseCase) private readonly runPipelineGeneratePlan: RunPipelineGeneratePlanUseCase,
   ) {}
 
   execute(dto: RunAgentDto) {
@@ -73,5 +76,9 @@ export class AgentService {
 
   pipelineCorrelate(outputDir: string, projectPath?: string): Promise<PipelineCorrelateRunResult> {
     return this.runPipelineCorrelate.execute(outputDir, { projectPath });
+  }
+
+  pipelineGeneratePlan(outputDir: string, configPath?: string, projectPath?: string): Promise<PipelineGeneratePlanRunResult> {
+    return this.runPipelineGeneratePlan.execute(outputDir, { configPath, projectPath });
   }
 }

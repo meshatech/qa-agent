@@ -200,6 +200,23 @@ pipeline
     }
   });
 
+pipeline
+  .command('generate-plan')
+  .description('Build ExecutionPlan from selected scenarios')
+  .option('--output-dir <path>', 'pipeline artifacts directory', './.agent-qa/pipeline')
+  .option('--config <path>', 'config path', './agent-qa.config.json')
+  .option('--project-dir <path>', 'project root', process.cwd())
+  .action(async (opts) => {
+    try {
+      const result = await withApp((c) => c.pipelineGeneratePlan(opts.outputDir, opts.config, opts.projectDir));
+      console.log(JSON.stringify(result, null, 2));
+      process.exitCode = result.executionPlanPath ? EXIT.OK : EXIT.CONFIG_ERROR;
+    } catch (err) {
+      console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err), kind: err instanceof Error ? err.constructor.name : 'Error' }, null, 2));
+      process.exitCode = classifyError(err);
+    }
+  });
+
 program
   .command('onboard')
   .description('Run project onboarding with baseline smoke test')

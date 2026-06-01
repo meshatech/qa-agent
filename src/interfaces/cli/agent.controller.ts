@@ -48,4 +48,8 @@ export class AgentController {
   pipelineCorrelate(outputDir: string, projectPath?: string) {
     return this.service.pipelineCorrelate(outputDir, projectPath);
   }
+
+  pipelineGeneratePlan(outputDir: string, configPath?: string, projectPath?: string) {
+    return this.service.pipelineGeneratePlan(outputDir, configPath, projectPath);
+  }
 }

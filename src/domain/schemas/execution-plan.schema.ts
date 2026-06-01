@@ -115,6 +115,17 @@ export const ExecutionPlanSchema = z.object({
   }).default({ maxAttemptsPerStep: 2, maxReplansPerScenario: 2, destructiveActionPolicy: 'BLOCK' }),
   steps: z.array(ExecutionStepSchema).min(1),
   assertions: z.array(BusinessAssertionSchema).default([]),
+  metadata: z.object({
+    planSource: z.string().optional(),
+    fallbackReason: z.string().optional(),
+    fallbackWarning: z.string().optional(),
+    qualityAudit: z.object({
+      semanticTargetsPerTask: z.number().int().nonnegative(),
+      hasFragileTargets: z.boolean(),
+      hasGenericTargets: z.boolean(),
+      hasUnobservableTargets: z.boolean(),
+    }).optional(),
+  }).optional(),
 }).strict().superRefine((plan, ctx) => {
   const text = JSON.stringify(plan);
   if (/"targetElementId"\s*:/.test(text) || /\bel_\d{3}\b/.test(text)) {
