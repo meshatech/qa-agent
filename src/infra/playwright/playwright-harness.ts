@@ -1,7 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { chromium, firefox, webkit, type Browser, type BrowserContext, type Page, type Locator, type BrowserType } from 'playwright';
 import { mkdir } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import pixelmatch from 'pixelmatch';
+import { PNG } from 'pngjs';
+import { AxeBuilder } from '@axe-core/playwright';
 import type { BrowserHarnessPort } from '../../application/ports/browser-harness.port.js';
 import type { BoundExpectedAfterAction, LocatorDescriptor, QaAction } from '../../domain/schemas/action.schema.js';
 import type { ScreenObservation } from '../../domain/schemas/observation.schema.js';
@@ -24,6 +28,7 @@ export class PlaywrightHarness implements BrowserHarnessPort {
   private signals: SignalsBuffer;
   private readonly locators = new Map<string, LocatorDescriptor>();
   private readonly videoDir = '.agent-qa-video';
+  private pendingDialog?: { accept(promptText?: string): Promise<void>; dismiss(): Promise<void>; message(): string };
 
   constructor(
     @Inject(PlaywrightQuiescenceGuard) private readonly quiescence: PlaywrightQuiescenceGuard,
@@ -43,7 +48,7 @@ export class PlaywrightHarness implements BrowserHarnessPort {
       await this.createContextAndPage(config);
       const page = this.mustPage();
       if (config.auth.kind === 'formLogin') await this.formLogin.login(page, config);
-      await page.goto(config.baseUrl, { timeout: config.timeouts.navigationMs });
+      await this.navigateWithRetry(config.baseUrl);
       await this.waitForQuiescence(config.timeouts.quiescenceMs).catch(() => undefined);
       this.signals.reset();
     } catch (error) {
@@ -86,10 +91,11 @@ export class PlaywrightHarness implements BrowserHarnessPort {
     const started = Date.now();
     if (this.inFlight) return { ok: false, actionType: action.type, durationMs: 0, error: { code: 'CONCURRENT_ACTION_DENIED', message: 'Action already in flight' } };
     this.inFlight = true;
+    let data: string | undefined;
     try {
       switch (action.type) {
         case 'fill': await this.byId(action.targetElementId).fill(action.value); break;
-        case 'click': await this.byId(action.targetElementId).click(); break;
+        case 'click': await this.clickAllowingPendingDialog(this.byId(action.targetElementId)); break;
         case 'press': {
           const target = action.targetElementId ? this.byId(action.targetElementId) : null;
           if (target) await target.press(action.key);
@@ -103,7 +109,35 @@ export class PlaywrightHarness implements BrowserHarnessPort {
           break;
         }
         case 'waitForStable': await this.waitForQuiescence(action.timeoutMs ?? 3000); break;
-        case 'navigate': await this.mustPage().goto(new URL(action.to, this.mustPage().url()).toString()); break;
+        case 'navigate': await this.navigateWithRetry(new URL(action.to, this.mustPage().url()).toString()); break;
+        case 'drag': await this.byId(action.sourceElementId).dragTo(this.byId(action.targetElementId)); break;
+        case 'uploadFile': await this.byId(action.targetElementId).setInputFiles(action.filePath); break;
+        case 'waitForCondition': await this.mustPage().getByText(action.text).first().waitFor({ state: 'visible', timeout: action.timeoutMs ?? 10000 }); break;
+        case 'compareScreenshot': {
+          const result = await this.compareScreenshot(action.baselinePath, action.threshold);
+          if (!result.ok) return { ok: false, actionType: action.type, durationMs: Date.now() - started, error: { code: 'ASSERTION_FAILED', message: `screenshot diff ratio ${result.diffRatio}` } };
+          break;
+        }
+        case 'auditAccessibility': {
+          const violations = await this.auditAccessibility();
+          if (violations.some((item) => item.impact === 'critical')) return { ok: false, actionType: action.type, durationMs: Date.now() - started, error: { code: 'ASSERTION_FAILED', message: `critical accessibility violations: ${violations.map((item) => item.id).join(', ')}` } };
+          break;
+        }
+        case 'acceptDialog': {
+          if (!this.pendingDialog) throw new Error('No browser dialog is pending');
+          if (action.text && !this.pendingDialog.message().includes(action.text)) throw new Error(`Unexpected dialog text: ${this.pendingDialog.message()}`);
+          await this.pendingDialog.accept();
+          this.pendingDialog = undefined;
+          break;
+        }
+        case 'dismissDialog': {
+          if (!this.pendingDialog) throw new Error('No browser dialog is pending');
+          await this.pendingDialog.dismiss();
+          this.pendingDialog = undefined;
+          break;
+        }
+        case 'richTextFill': await this.fillRichText(this.byId(action.targetElementId), action.value); break;
+        case 'extract': data = action.source === 'value' ? await this.byId(action.targetElementId).inputValue() : await this.byId(action.targetElementId).innerText(); break;
         case 'abortScenario': return { ok: false, actionType: action.type, durationMs: Date.now() - started };
         case 'select': await this.byId(action.targetElementId).selectOption('label' in action.option ? { label: action.option.label } : 'value' in action.option ? { value: action.option.value } : { index: action.option.index }); break;
         case 'clickAtCoordinates': await this.mustPage().mouse.click(action.x, action.y); break;
@@ -119,7 +153,7 @@ export class PlaywrightHarness implements BrowserHarnessPort {
           break;
         }
       }
-      return { ok: true, actionType: action.type, durationMs: Date.now() - started };
+      return { ok: true, actionType: action.type, durationMs: Date.now() - started, data };
     } catch (e) {
       const code = e instanceof Error && /timeout/i.test(e.message) ? 'QUIESCENCE_TIMEOUT' : 'LOCATOR_NOT_FOUND';
       return { ok: false, actionType: action.type, durationMs: Date.now() - started, error: { code, message: e instanceof Error ? e.message : String(e) } };
@@ -148,7 +182,7 @@ export class PlaywrightHarness implements BrowserHarnessPort {
         return { ok: actual.includes(expected.value), type: expected.type, expected: expected.value, actual, durationMs: Date.now() - started };
       }
       if (expected.type === 'no_console_errors') {
-        const errors = this.signals.console.filter((c) => c.level === 'error' && c.isAppOrigin);
+        const errors = this.signals.console.filter((c) => c.level === 'error' && c.isAppOrigin && !this.isKnownConsoleNoise(c.text));
         return { ok: errors.length === 0, type: expected.type, durationMs: Date.now() - started, actual: errors.length ? errors.map((e) => e.text).join(' | ').slice(0, 200) : undefined };
       }
       return { ok: true, type: (expected as { type: string }).type, durationMs: Date.now() - started };
@@ -252,7 +286,13 @@ export class PlaywrightHarness implements BrowserHarnessPort {
 
   private locator(desc: LocatorDescriptor): Locator {
     const p = this.mustPage();
-    if (desc.strategy === 'semantic') return this.locator(desc.candidates[0]!);
+    if (desc.strategy === 'semantic') {
+      return desc.candidates
+        .map((candidate) => this.locator(candidate))
+        .reduce((combined, candidate) => combined.or(candidate))
+        .first();
+    }
+    if (desc.strategy === 'index') return this.locator(desc.target).nth(desc.index);
     if (desc.strategy === 'text_any') return p.getByText(new RegExp(desc.texts.map((t) => this.escapeRegExp(t)).join('|'), desc.exact ? undefined : 'i')).first();
     if (desc.strategy === 'document') return p.locator('html');
     if (desc.strategy === 'label') return p.getByLabel(desc.text, { exact: desc.exact });
@@ -282,6 +322,38 @@ export class PlaywrightHarness implements BrowserHarnessPort {
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
+  async compareScreenshot(baselinePath: string, threshold = 0.01): Promise<{ ok: boolean; diffRatio: number; baselineCreated?: boolean }> {
+    const actual = await this.screenshot();
+    if (!actual) return { ok: false, diffRatio: 1 };
+    await mkdir(dirname(baselinePath), { recursive: true });
+    const baseline = await readFile(baselinePath).catch(() => undefined);
+    if (!baseline) {
+      await writeFile(baselinePath, actual);
+      return { ok: true, diffRatio: 0, baselineCreated: true };
+    }
+    const expectedPng = PNG.sync.read(baseline);
+    const actualPng = PNG.sync.read(actual);
+    if (expectedPng.width !== actualPng.width || expectedPng.height !== actualPng.height) return { ok: false, diffRatio: 1 };
+    const changed = pixelmatch(expectedPng.data, actualPng.data, undefined, actualPng.width, actualPng.height, { threshold: 0.1 });
+    const diffRatio = changed / (actualPng.width * actualPng.height);
+    return { ok: diffRatio <= threshold, diffRatio };
+  }
+
+  async auditAccessibility(): Promise<Array<{ id: string; impact?: string | null; description: string; nodes: number }>> {
+    const results = await new AxeBuilder({ page: this.mustPage() }).analyze();
+    return results.violations.map((violation) => ({ id: violation.id, impact: violation.impact, description: violation.description, nodes: violation.nodes.length }));
+  }
+
+  private isKnownConsoleNoise(text: string): boolean {
+    return (this.config?.classifier.knownNoiseRegexes ?? []).some((pattern) => {
+      try {
+        return new RegExp(pattern, 'i').test(text);
+      } catch {
+        return false;
+      }
+    });
+  }
+
   private mustPage(): Page {
     if (!this.page) throw new HarnessFatalError('Browser not opened');
     return this.page;
@@ -308,8 +380,8 @@ export class PlaywrightHarness implements BrowserHarnessPort {
     } else {
       this.signalsCollector.attach(this.page, config, this.signals);
     }
-    const page = this.mustPage();
-    await page.goto(config.baseUrl, { timeout: config.timeouts.navigationMs }).catch(() => undefined);
+    this.mustPage();
+    await this.navigateWithRetry(config.baseUrl).catch(() => undefined);
   }
 
   private async createContextAndPage(config: RunConfig): Promise<void> {
@@ -323,8 +395,44 @@ export class PlaywrightHarness implements BrowserHarnessPort {
     });
     await this.context.tracing.start({ screenshots: true, snapshots: true, sources: true }).catch(() => undefined);
     this.page = await this.context.newPage();
+    this.page.on('dialog', (dialog) => {
+      this.pendingDialog = dialog;
+    });
     this.signals.reset();
     this.signalsCollector.attach(this.page, config, this.signals);
+  }
+
+  private async navigateWithRetry(url: string): Promise<void> {
+    const retry = this.config?.timeouts.navigationRetry ?? { maxAttempts: 1, backoffMs: 250 };
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= retry.maxAttempts; attempt++) {
+      try {
+        await this.mustPage().goto(url, { timeout: this.config?.timeouts.navigationMs });
+        return;
+      } catch (error) {
+        lastError = error;
+        if (attempt < retry.maxAttempts) await this.mustPage().waitForTimeout(retry.backoffMs * attempt);
+      }
+    }
+    throw lastError;
+  }
+
+  private async fillRichText(target: Locator, value: string): Promise<void> {
+    if (await target.getAttribute('contenteditable') === 'true') {
+      await target.click();
+      await target.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+      await target.pressSequentially(value);
+      return;
+    }
+    await target.fill(value);
+  }
+
+  private async clickAllowingPendingDialog(target: Locator): Promise<void> {
+    try {
+      await target.click({ timeout: Math.min(this.config?.timeouts.actionMs ?? 15000, 1000) });
+    } catch (error) {
+      if (!this.pendingDialog) throw error;
+    }
   }
 
   private async isPageUsable(page: Page): Promise<boolean> {

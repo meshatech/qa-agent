@@ -100,7 +100,8 @@ describe('ExecutionPlanFactoryService', () => {
 
     const step = plan!.steps[0];
     expect(step.action.type).toBe('fill');
-    expect((step.action as { target: { strategy: string } }).target.strategy).toBe('text_any');
+    expect((step.action as { target: { strategy: string } }).target.strategy).toBe('semantic');
+    expect(step.postconditions[0]).toMatchObject({ type: 'field_value_contains', value: 'safe-test-value' });
   });
 
   it('uses safe console check when data entry target resolves to NO_REGRESSION', async () => {

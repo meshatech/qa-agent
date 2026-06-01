@@ -62,6 +62,7 @@ export interface ActionExecutionResult {
   durationMs: number;
   error?: { code: RuntimeErrorCode; message: string };
   quiescence?: QuiescenceResult;
+  data?: string;
 }
 
 export interface QaStep {

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head><meta charset="utf-8"><title>Roadmap v1 Fixture</title></head>
+  <body>
+    <button id="bad-button"></button>
+    <button onclick="document.querySelector('#done').textContent = 'Concluído'">Iniciar</button>
+    <p id="done"></p>
+    <button id="source" draggable="true">Origem</button>
+    <button id="target">Destino</button>
+    <input type="file" aria-label="Arquivo">
+    <button class="remove">Excluir</button><button class="remove">Excluir</button>
+    <div contenteditable="true" role="textbox" aria-label="Editor"></div>
+    <p id="price">R$ 10,00</p>
+    <button onclick="alert('Confirmar operação')">Abrir diálogo</button>
+    <script>
+      document.querySelector('#source').addEventListener('dragstart', event => event.dataTransfer.setData('text/plain', 'ok'));
+      document.querySelector('#target').addEventListener('dragover', event => event.preventDefault());
+      document.querySelector('#target').addEventListener('drop', event => {
+        event.preventDefault();
+        event.currentTarget.textContent = event.dataTransfer.getData('text/plain');
+      });
+    </script>
+  </body>
+</html>

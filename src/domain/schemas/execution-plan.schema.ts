@@ -54,6 +54,15 @@ export const PlanActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('clickAtCoordinates'), x: z.number().int().nonnegative(), y: z.number().int().nonnegative(), reason: z.string().min(10), risk: z.literal('HIGH') }).strict(),
   z.object({ type: z.literal('waitForStable'), timeoutMs: z.number().int().positive().max(10000).optional(), reason }).strict(),
   z.object({ type: z.literal('navigate'), to: z.string(), reason }).strict(),
+  z.object({ type: z.literal('drag'), source: LocatorDescriptorSchema, target: LocatorDescriptorSchema, reason }).strict(),
+  z.object({ type: z.literal('uploadFile'), target: LocatorDescriptorSchema, filePath: z.string().min(1), reason }).strict(),
+  z.object({ type: z.literal('waitForCondition'), text: z.string().min(1), timeoutMs: z.number().int().positive().max(30000).optional(), reason }).strict(),
+  z.object({ type: z.literal('compareScreenshot'), baselinePath: z.string().min(1), threshold: z.number().min(0).max(1).optional(), reason }).strict(),
+  z.object({ type: z.literal('auditAccessibility'), reason }).strict(),
+  z.object({ type: z.literal('acceptDialog'), text: z.string().optional(), reason }).strict(),
+  z.object({ type: z.literal('dismissDialog'), reason }).strict(),
+  z.object({ type: z.literal('richTextFill'), target: LocatorDescriptorSchema, value: z.string(), reason }).strict(),
+  z.object({ type: z.literal('extract'), target: LocatorDescriptorSchema, key: z.string().min(1), source: z.enum(['text', 'value']).default('text'), reason }).strict(),
   z.object({ type: z.literal('assertVisible'), target: LocatorDescriptorSchema.optional(), text: z.string().optional(), reason }).strict().refine((a) => a.target || a.text, 'assertVisible requires target or text'),
   z.object({ type: z.literal('abortScenario'), reason: z.string().min(10) }).strict(),
 ]);
@@ -69,6 +78,8 @@ export const ExecutionStepSchema = z.object({
   assertions: z.array(BusinessAssertionSchema).default([]),
   onFailure: StepFailurePolicySchema.default('RECOVER'),
   maxAttempts: z.number().int().positive().optional(),
+  repeatUntil: PlanConditionSchema.optional(),
+  maxIterations: z.number().int().positive().max(100).optional(),
   isFallback: z.boolean().optional(),
 }).strict();
 

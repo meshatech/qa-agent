@@ -13,6 +13,10 @@ export class DataHarnessService {
     return Object.fromEntries(this.store);
   }
 
+  storeValue(key: string, value: string): void {
+    this.set(key, value);
+  }
+
   resolveObject<T>(input: T, mode: 'action' | 'assertion' = 'action'): T {
     if (typeof input === 'string') return this.resolve(input, mode) as T;
     if (Array.isArray(input)) return input.map((v) => this.resolveObject(v, mode)) as T;

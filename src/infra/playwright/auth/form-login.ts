@@ -88,6 +88,7 @@ export class FormLoginService {
     if (selector.strategy === 'text') return page.getByText(selector.text, { exact: selector.exact });
     if (selector.strategy === 'text_any') return page.getByText(new RegExp(selector.texts.map((text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), selector.exact ? undefined : 'i')).first();
     if (selector.strategy === 'semantic') return this.toLocator(page, selector.candidates[0]!);
+    if (selector.strategy === 'index') return this.toLocator(page, selector.target).nth(selector.index);
     if (selector.strategy === 'document') return page.locator('html');
     return page.getByTestId(selector.value);
   }

@@ -60,12 +60,14 @@ export class PlanExecutorService {
     let currentPlan = plan;
     let stepIndex = 0;
     let replans = 0;
+    const iterations = new Map<string, number>();
     const result: PlanExecutionResult = { ok: true, steps: [], attempts: [], warnings: [], finalPlan: currentPlan, patchHistory: [], evaluations: [] };
     while (stepIndex < currentPlan.steps.length) {
       const step = currentPlan.steps[stepIndex]!;
       const attempts = step.maxAttempts ?? currentPlan.runtime.maxAttemptsPerStep;
       let passed = false;
       let patchedStep = false;
+      let repeatStep = false;
       for (let attempt = 0; attempt < attempts && !passed; attempt++) {
         let before = await this.observe(step);
         const beforeState = await this.runtimeState(before, [...step.preconditions, ...step.postconditions, ...step.assertions]);
@@ -94,6 +96,7 @@ export class PlanExecutorService {
         try {
           action = this.resolveAction(step, before);
         } catch (error) {
+          await this.recordAccessibilityWarnings(result, step.id);
           const available = await this.ensureActionTargetAvailable(step, before, config);
           result.attempts.push(...available.attempts);
           if (available.available) {
@@ -126,6 +129,7 @@ export class PlanExecutorService {
         }
 
         const exec = await this.browser.execute(action);
+        if (exec.ok && action.type === 'extract' && exec.data !== undefined) this.data.storeValue(action.key, exec.data);
         const record: AttemptRecord = { actionType: action.type, result: exec.ok ? 'PASSED' : 'FAILED', reason: exec.error?.message, ts: new Date().toISOString() };
         result.attempts.push(record);
         if (step.scenarioId && step.taskId) this.memory.action(step.scenarioId, step.taskId, action, record.result);
@@ -141,6 +145,7 @@ export class PlanExecutorService {
         }
 
         const after = await this.observe(step);
+        if (action.type === 'navigate' || action.type === 'compareScreenshot') await this.recordAccessibilityWarnings(result, step.id);
         const afterState = await this.runtimeState(after, [...step.postconditions, ...step.assertions]);
         const post = await this.checkAll(step.postconditions, after, beforeState, afterState);
         result.evaluations.push(...this.conditionEvaluations(step, 'postcondition', step.postconditions, post, beforeState, afterState));
@@ -197,10 +202,20 @@ export class PlanExecutorService {
           return this.fail(result, qaStep, after, business.actual ?? 'business assertion failed');
         }
         result.steps.push(this.planStep(step, after, action, action, this.boundCondition(step.postconditions[0] ?? { type: 'no_console_errors' }, after), post, quiescence));
+        if (step.repeatUntil) {
+          const repeated = await this.checkAll([step.repeatUntil], after, beforeState, afterState);
+          if (!repeated.ok) {
+            const iteration = (iterations.get(step.id) ?? 1) + 1;
+            if (iteration > (step.maxIterations ?? 1)) return this.fail(result, result.steps.at(-1)!, after, `repeatUntil exhausted after ${iteration - 1} iterations`);
+            iterations.set(step.id, iteration);
+            repeatStep = true;
+          }
+        }
         passed = true;
       }
       if (!passed) return { ...result, ok: false, failedMessage: 'maxAttemptsPerStep exhausted' };
       if (patchedStep) continue;
+      if (repeatStep) continue;
       stepIndex++;
     }
     const finalObs = await this.browser.observe();
@@ -285,6 +300,10 @@ export class PlanExecutorService {
     if (action.type === 'select') return { type: 'select', targetElementId: this.locators.findByLocator(obs, action.target), option: action.option, reason: action.reason };
     if (action.type === 'press') return { type: 'press', key: action.key, targetElementId: action.target ? this.locators.findByLocator(obs, action.target) : undefined, reason: action.reason };
     if (action.type === 'assertVisible') return { type: 'assertVisible', targetElementId: action.target ? this.locators.findByLocator(obs, action.target) : undefined, text: action.text, reason: action.reason };
+    if (action.type === 'drag') return { type: 'drag', sourceElementId: this.locators.findByLocator(obs, action.source), targetElementId: this.locators.findByLocator(obs, action.target), reason: action.reason };
+    if (action.type === 'uploadFile') return { type: 'uploadFile', targetElementId: this.locators.findByLocator(obs, action.target), filePath: action.filePath, reason: action.reason };
+    if (action.type === 'richTextFill') return { type: 'richTextFill', targetElementId: this.locators.findByLocator(obs, action.target), value: action.value, reason: action.reason };
+    if (action.type === 'extract') return { type: 'extract', targetElementId: this.locators.findByLocator(obs, action.target), key: action.key, source: action.source, reason: action.reason };
     return action;
   }
 
@@ -312,7 +331,8 @@ export class PlanExecutorService {
 
   private target(obs: ScreenObservation, locator: import('../../domain/schemas/action.schema.js').LocatorDescriptor) {
     const id = this.locators.findByLocator(obs, locator);
-    return { originalElementId: id, observationId: obs.observationId, locator, humanName: obs.elements.find((e) => e.id === id)?.name };
+    const resolved = this.locators.resolve(obs.observationId, id);
+    return { originalElementId: id, observationId: obs.observationId, locator: resolved.locator, humanName: resolved.humanName };
   }
 
   private hasText(obs: ScreenObservation, text: string): boolean {
@@ -394,6 +414,13 @@ export class PlanExecutorService {
     const target = 'target' in action ? action.target : undefined;
     if (!target) return { available: false, observation: obs, reobserved: false, reason: 'NOT_FOUND' as const, attempts: [] };
     return this.availability.ensureAvailable({ target, observation: obs, config, policy: this.elementAvailabilityPolicy(step, config) });
+  }
+
+  private async recordAccessibilityWarnings(result: PlanExecutionResult, stepId: string): Promise<void> {
+    const violations = await this.browser.auditAccessibility?.().catch(() => []);
+    for (const violation of violations ?? []) {
+      if (violation.impact === 'critical') result.warnings.push({ stepId, message: `WCAG_${violation.id}: ${violation.description}` });
+    }
   }
 
   private elementAvailabilityPolicy(step: ExecutionStep, config: RunConfig): EnsureElementAvailablePolicy {

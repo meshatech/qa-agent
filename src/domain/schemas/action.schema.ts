@@ -14,7 +14,9 @@ const BaseLocatorDescriptorSchema = z.discriminatedUnion('strategy', [
 ]);
 
 type BaseLocatorDescriptorInput = z.infer<typeof BaseLocatorDescriptorSchema>;
-type LocatorDescriptorInput = BaseLocatorDescriptorInput | { strategy: 'semantic'; semanticKey: string; intent: string; candidates: LocatorDescriptorInput[]; minConfidence?: number };
+type LocatorDescriptorInput = BaseLocatorDescriptorInput
+  | { strategy: 'semantic'; semanticKey: string; intent: string; candidates: LocatorDescriptorInput[]; minConfidence?: number }
+  | { strategy: 'index'; target: LocatorDescriptorInput; index: number };
 
 export const LocatorDescriptorSchema: z.ZodType<LocatorDescriptorInput> = z.lazy(() => z.discriminatedUnion('strategy', [
   ...BaseLocatorDescriptorSchema.options,
@@ -25,6 +27,7 @@ export const LocatorDescriptorSchema: z.ZodType<LocatorDescriptorInput> = z.lazy
     candidates: z.array(LocatorDescriptorSchema).min(1),
     minConfidence: z.number().min(0).max(1).optional(),
   }),
+  z.object({ strategy: z.literal('index'), target: LocatorDescriptorSchema, index: z.number().int().nonnegative() }),
 ]));
 
 export const QaActionSchema = z.discriminatedUnion('type', [
@@ -36,6 +39,15 @@ export const QaActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('clickAtCoordinates'), x: z.number().int().nonnegative(), y: z.number().int().nonnegative(), reason: z.string().min(10), risk: z.literal('HIGH') }),
   z.object({ type: z.literal('waitForStable'), timeoutMs: z.number().int().positive().max(10000).optional(), reason }),
   z.object({ type: z.literal('navigate'), to: z.string(), reason }),
+  z.object({ type: z.literal('drag'), sourceElementId: el, targetElementId: el, reason }),
+  z.object({ type: z.literal('uploadFile'), targetElementId: el, filePath: z.string().min(1), reason }),
+  z.object({ type: z.literal('waitForCondition'), text: z.string().min(1), timeoutMs: z.number().int().positive().max(30000).optional(), reason }),
+  z.object({ type: z.literal('compareScreenshot'), baselinePath: z.string().min(1), threshold: z.number().min(0).max(1).optional(), reason }),
+  z.object({ type: z.literal('auditAccessibility'), reason }),
+  z.object({ type: z.literal('acceptDialog'), text: z.string().optional(), reason }),
+  z.object({ type: z.literal('dismissDialog'), reason }),
+  z.object({ type: z.literal('richTextFill'), targetElementId: el, value: z.string(), reason }),
+  z.object({ type: z.literal('extract'), targetElementId: el, key: z.string().min(1), source: z.enum(['text', 'value']).default('text'), reason }),
   z.object({ type: z.literal('assertVisible'), targetElementId: el.optional(), text: z.string().optional(), reason }).refine((a) => a.targetElementId || a.text, 'assertVisible requires targetElementId or text'),
   z.object({ type: z.literal('assertText'), targetElementId: el, expected: z.string(), match: z.enum(['equals', 'contains', 'regex']).default('contains'), reason }),
   z.object({ type: z.literal('abortScenario'), reason: z.string().min(10) }),

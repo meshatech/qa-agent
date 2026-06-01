@@ -139,4 +139,14 @@ describe('LocatorResolverService', () => {
     const locator: LocatorDescriptor = { strategy: 'text', text: 'ok' };
     expect(resolver.findByLocator(observation, locator)).toBe('el_001');
   });
+
+  it('resolves an indexed locator without relying on ambiguous text', () => {
+    const resolver = new LocatorResolverService();
+    const observation = obsWithElements([
+      element({ id: 'el_001', name: 'Excluir', locator: { strategy: 'role', role: 'button', name: 'Excluir' } }),
+      element({ id: 'el_002', name: 'Excluir', locator: { strategy: 'role', role: 'button', name: 'Excluir' } }),
+    ]);
+    const locator: LocatorDescriptor = { strategy: 'index', target: { strategy: 'role', role: 'button', name: 'Excluir' }, index: 1 };
+    expect(resolver.findByLocator(observation, locator)).toBe('el_002');
+  });
 });

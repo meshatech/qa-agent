@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createServer, type Server } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { PlaywrightHarness } from '../src/infra/playwright/playwright-harness.js';
 import { PlaywrightQuiescenceGuard } from '../src/infra/playwright/playwright-quiescence.guard.js';
 import { ObservationService } from '../src/infra/observation/observation.service.js';
@@ -23,12 +24,18 @@ function buildHarness() {
 
 let server: Server;
 let baseUrl = '';
+let retryRequests = 0;
 
 beforeAll(async () => {
   const html = await readFile(join(process.cwd(), 'test/fixtures/smoke.html'));
-  server = createServer((_req, res) => {
+  const roadmap = await readFile(join(process.cwd(), 'test/fixtures/roadmap-v1.html'));
+  server = createServer((req, res) => {
+    if (req.url === '/retry' && retryRequests++ === 0) {
+      req.socket.destroy();
+      return;
+    }
     res.writeHead(200, { 'content-type': 'text/html' });
-    res.end(html);
+    res.end(req.url === '/roadmap' ? roadmap : html);
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const addr = server.address();
@@ -92,5 +99,49 @@ describe('PlaywrightHarness', () => {
 
     expect(obs.elements.length).toBeGreaterThan(0);
     await harness.close();
+  }, 30000);
+
+  it('executes roadmap browser capabilities without exposing Playwright', async () => {
+    const harness = buildHarness();
+    await harness.open(RunConfigSchema.parse({ baseUrl: `${baseUrl}/roadmap`, appDomains: ['127.0.0.1'], demand: { id: 'D', title: 'Roadmap', description: 'Roadmap' }, llm: { provider: 'fake' } }));
+    const obs = await harness.observe();
+    const id = (name: string) => obs.elements.find((element) => element.name.includes(name))!.id;
+    const file = join(tmpdir(), `agent-qa-${Date.now()}.txt`);
+    const baseline = join(tmpdir(), `agent-qa-${Date.now()}.png`);
+    await writeFile(file, 'fixture');
+
+    expect((await harness.execute({ type: 'drag', sourceElementId: id('Origem'), targetElementId: id('Destino'), reason: 'test drag' })).ok).toBe(true);
+    expect((await harness.execute({ type: 'uploadFile', targetElementId: id('Arquivo'), filePath: file, reason: 'test upload' })).ok).toBe(true);
+    expect((await harness.execute({ type: 'click', targetElementId: id('Iniciar'), reason: 'start status' })).ok).toBe(true);
+    expect((await harness.execute({ type: 'waitForCondition', text: 'Concluído', reason: 'wait status' })).ok).toBe(true);
+    expect((await harness.execute({ type: 'richTextFill', targetElementId: id('Editor'), value: 'texto rico', reason: 'fill editor' })).ok).toBe(true);
+    expect((await harness.execute({ type: 'extract', targetElementId: id('Editor'), key: 'editor', source: 'text', reason: 'extract editor' })).data).toBe('texto rico');
+    expect((await harness.compareScreenshot(baseline)).baselineCreated).toBe(true);
+    expect((await harness.compareScreenshot(baseline)).ok).toBe(true);
+    await harness.execute({ type: 'richTextFill', targetElementId: id('Editor'), value: 'layout alterado', reason: 'change screenshot' });
+    expect((await harness.compareScreenshot(baseline, 0)).ok).toBe(false);
+    expect((await harness.auditAccessibility()).some((violation) => violation.id === 'button-name')).toBe(true);
+    expect((await harness.execute({ type: 'click', targetElementId: id('Abrir diálogo'), reason: 'open dialog' })).ok).toBe(true);
+    expect((await harness.execute({ type: 'acceptDialog', text: 'Confirmar', reason: 'accept dialog' })).ok).toBe(true);
+
+    await harness.close();
+    await rm(file, { force: true });
+    await rm(baseline, { force: true });
+  }, 60000);
+
+  it('retries transient navigation failures with configured backoff', async () => {
+    retryRequests = 0;
+    const harness = buildHarness();
+    await harness.open(RunConfigSchema.parse({
+      baseUrl,
+      appDomains: ['127.0.0.1'],
+      demand: { id: 'D', title: 'Retry', description: 'Retry' },
+      llm: { provider: 'fake' },
+      timeouts: { navigationRetry: { maxAttempts: 2, backoffMs: 1 } },
+    }));
+    const result = await harness.execute({ type: 'navigate', to: `${baseUrl}/retry`, reason: 'test retry' });
+    await harness.close();
+    expect(result.ok).toBe(true);
+    expect(retryRequests).toBe(2);
   }, 30000);
 });

@@ -55,6 +55,57 @@ function executorWithDecision(browser: BrowserHarnessPort, decision: DecisionPro
 }
 
 describe('PlanExecutorService', () => {
+  it('repeats a guarded step until repeatUntil passes', async () => {
+    let clicks = 0;
+    let current = obs(['Pendente']);
+    const browser: Partial<BrowserHarnessPort> = {
+      async observe() { return current; },
+      async execute(action) {
+        if (action.type === 'click') {
+          clicks++;
+          current = obs([clicks >= 2 ? 'Concluído' : 'Pendente']);
+        }
+        return { ok: true, actionType: action.type, durationMs: 1 };
+      },
+      async waitForQuiescence() { return { stable: true, reason: 'NETWORK_AND_DOM_IDLE', elapsedMs: 1 }; },
+      async validate(expected) {
+        if (expected.type === 'text_visible') return { ok: current.visibleTexts.includes(expected.text), type: expected.type, durationMs: 1 };
+        return { ok: true, type: expected.type, durationMs: 1 };
+      },
+    };
+    const plan: ExecutionPlan = {
+      schemaVersion: 'execution-plan.v1', planId: 'repeat', version: 1, goal: 'Repeat', mode: 'HYBRID_GUARDED',
+      runtime: { maxAttemptsPerStep: 1, maxReplansPerScenario: 0, destructiveActionPolicy: 'BLOCK' }, assertions: [],
+      steps: [{ id: 'S001', description: 'Process item', preconditions: [], action: { type: 'click', target: { strategy: 'role', role: 'button', name: 'Salvar' }, reason: 'process item' }, postconditions: [{ type: 'no_console_errors' }], assertions: [], onFailure: 'BLOCK', repeatUntil: { type: 'text_visible', text: 'Concluído' }, maxIterations: 2 }],
+    };
+    expect((await executor(browser as BrowserHarnessPort).execute(plan, config)).ok).toBe(true);
+    expect(clicks).toBe(2);
+  });
+
+  it('stores extracted screen data for subsequent guarded actions', async () => {
+    let filled = '';
+    const browser: Partial<BrowserHarnessPort> = {
+      async observe() { return obs(['Preço']); },
+      async execute(action) {
+        if (action.type === 'extract') return { ok: true, actionType: action.type, durationMs: 1, data: 'R$ 10,00' };
+        if (action.type === 'fill') filled = action.value;
+        return { ok: true, actionType: action.type, durationMs: 1 };
+      },
+      async waitForQuiescence() { return { stable: true, reason: 'NETWORK_AND_DOM_IDLE', elapsedMs: 1 }; },
+      async validate(expected) { return { ok: true, type: expected.type, durationMs: 1 }; },
+    };
+    const plan: ExecutionPlan = {
+      schemaVersion: 'execution-plan.v1', planId: 'extract', version: 1, goal: 'Extract', mode: 'HYBRID_GUARDED',
+      runtime: { maxAttemptsPerStep: 1, maxReplansPerScenario: 0, destructiveActionPolicy: 'BLOCK' }, assertions: [],
+      steps: [
+        { id: 'S001', description: 'Read value', preconditions: [], action: { type: 'extract', target: { strategy: 'label', text: 'Nome' }, key: 'price', source: 'text', reason: 'extract value' }, postconditions: [{ type: 'no_console_errors' }], assertions: [], onFailure: 'BLOCK' },
+        { id: 'S002', description: 'Reuse value', preconditions: [], action: { type: 'fill', target: { strategy: 'label', text: 'Nome' }, value: '{{ref:price}}', reason: 'reuse extracted value' }, postconditions: [{ type: 'no_console_errors' }], assertions: [], onFailure: 'BLOCK' },
+      ],
+    };
+    expect((await executor(browser as BrowserHarnessPort).execute(plan, config)).ok).toBe(true);
+    expect(filled).toBe('R$ 10,00');
+  });
+
   it('executes a manual plan without LLM and reuses dynamic data in postconditions', async () => {
     let current = obs(['Novo produto']);
     const actions: QaAction[] = [];
