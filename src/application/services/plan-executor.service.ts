@@ -206,7 +206,7 @@ export class PlanExecutorService {
           const repeated = await this.checkAll([step.repeatUntil], after, beforeState, afterState);
           if (!repeated.ok) {
             const iteration = (iterations.get(step.id) ?? 1) + 1;
-            if (iteration > (step.maxIterations ?? 1)) return this.fail(result, result.steps.at(-1)!, after, `repeatUntil exhausted after ${iteration - 1} iterations`);
+            if (iteration > (step.maxIterations ?? 10)) return this.fail(result, result.steps.at(-1)!, after, `repeatUntil exhausted after ${iteration - 1} iterations`);
             iterations.set(step.id, iteration);
             repeatStep = true;
           }
@@ -417,9 +417,17 @@ export class PlanExecutorService {
   }
 
   private async recordAccessibilityWarnings(result: PlanExecutionResult, stepId: string): Promise<void> {
-    const violations = await this.browser.auditAccessibility?.().catch(() => []);
-    for (const violation of violations ?? []) {
-      if (violation.impact === 'critical') result.warnings.push({ stepId, message: `WCAG_${violation.id}: ${violation.description}` });
+    const auditResult = await this.browser.auditAccessibility?.().catch((error: unknown) => {
+      result.warnings.push({ stepId, message: `Accessibility audit failed: ${error instanceof Error ? error.message : String(error)}` });
+      return [];
+    });
+    const violations = auditResult ?? [];
+    const relevantImpacts = new Set(['critical', 'serious']);
+    for (const violation of violations) {
+      const impact = violation.impact ?? 'unknown';
+      if (relevantImpacts.has(impact)) {
+        result.warnings.push({ stepId, message: `WCAG_${violation.id} [${impact}]: ${violation.description}` });
+      }
     }
   }
 

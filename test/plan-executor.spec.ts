@@ -222,8 +222,8 @@ describe('PlanExecutorService', () => {
     const result = await executor(browser as BrowserHarnessPort).execute(plan, config);
 
     expect(result.ok).toBe(true);
-    expect(result.warnings).toContainEqual({ stepId: 'S001', message: 'WCAG_color-contrast: Insufficient color contrast' });
-    expect(result.warnings.some((warning) => warning.message.includes('landmark-one-main'))).toBe(false);
+    expect(result.warnings).toContainEqual({ stepId: 'S001', message: 'WCAG_color-contrast [critical]: Insufficient color contrast' });
+    expect(result.warnings).toContainEqual({ stepId: 'S001', message: 'WCAG_landmark-one-main [serious]: Document should have one main landmark' });
   });
 
   it('runs final business assertions after plan steps', async () => {
