@@ -8,8 +8,6 @@ import { ExecutionPlanPlannerService, type PlannedExecutionPlan } from '../servi
 import type { ConfigLoaderPort } from '../ports/config-loader.port.js';
 import { SelectedScenariosSchema } from '../../domain/schemas/selected-scenarios.schema.js';
 import { RunConfigSchema, type RunConfig } from '../../domain/schemas/config.schema.js';
-import { ExecutionPlanSchema } from '../../domain/schemas/execution-plan.schema.js';
-import { ConfigError } from '../../domain/errors.js';
 
 const SELECTED_SCENARIOS_FILE = 'selected-scenarios.json';
 const EXECUTION_PLAN_FILE = 'execution-plan.json';
@@ -115,7 +113,7 @@ export class RunPipelineGeneratePlanUseCase {
     let semanticTargetsPerTask = 0;
     let hasFragileTargets = false;
     let hasGenericTargets = false;
-    let hasUnobservableTargets = false;
+    const hasUnobservableTargets = false;
 
     for (const step of plan.steps) {
       const action = step.action;

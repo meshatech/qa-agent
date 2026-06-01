@@ -13,12 +13,14 @@ import { RunPipelineCorrelateUseCase } from '../use-cases/run-pipeline-correlate
 import { RunPipelineGeneratePlanUseCase } from '../use-cases/run-pipeline-generate-plan.usecase.js';
 import { RunPipelineExecuteUseCase } from '../use-cases/run-pipeline-execute.usecase.js';
 import { RunPipelineReportUseCase } from '../use-cases/run-pipeline-report.usecase.js';
+import { RunPipelineLearningUseCase } from '../use-cases/run-pipeline-learning.usecase.js';
 import type { PipelinePreflightRunResult } from '../dto/pipeline-preflight-result.dto.js';
 import type { PrDiffContextRunResult } from '../dto/pr-diff-context-result.dto.js';
 import type { PipelinePrepareRunResult } from '../dto/pipeline-prepare-result.dto.js';
 import type { PipelineCorrelateRunResult } from '../dto/pipeline-correlate-result.dto.js';
 import type { PipelineGeneratePlanRunResult } from '../dto/pipeline-generate-plan-result.dto.js';
 import type { PipelineReportRunResult } from '../dto/pipeline-report-result.dto.js';
+import type { PipelineLearningRunResult } from '../dto/pipeline-learning-result.dto.js';
 import type { OnboardingResult } from '../../domain/models/readiness.model.js';
 
 @Injectable()
@@ -37,6 +39,7 @@ export class AgentService {
     @Inject(RunPipelineGeneratePlanUseCase) private readonly runPipelineGeneratePlan: RunPipelineGeneratePlanUseCase,
     @Inject(RunPipelineExecuteUseCase) private readonly runPipelineExecute: RunPipelineExecuteUseCase,
     @Inject(RunPipelineReportUseCase) private readonly runPipelineReport: RunPipelineReportUseCase,
+    @Inject(RunPipelineLearningUseCase) private readonly runPipelineLearning: RunPipelineLearningUseCase,
   ) {}
 
   execute(dto: RunAgentDto) {
@@ -91,7 +94,11 @@ export class AgentService {
     return this.runPipelineExecute.execute(outputDir, { configPath, projectPath });
   }
 
-  pipelineReport(outputDir: string, configPath?: string, projectPath?: string) {
+  pipelineReport(outputDir: string, configPath?: string, projectPath?: string): Promise<PipelineReportRunResult> {
     return this.runPipelineReport.execute(outputDir, { configPath, projectPath });
+  }
+
+  pipelineLearning(outputDir: string, configPath?: string, projectPath?: string): Promise<PipelineLearningRunResult> {
+    return this.runPipelineLearning.execute(outputDir, { configPath, projectPath });
   }
 }

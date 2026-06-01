@@ -60,4 +60,8 @@ export class AgentController {
   pipelineReport(outputDir: string, configPath?: string, projectPath?: string) {
     return this.service.pipelineReport(outputDir, configPath, projectPath);
   }
+
+  pipelineLearning(outputDir: string, configPath?: string, projectPath?: string) {
+    return this.service.pipelineLearning(outputDir, configPath, projectPath);
+  }
 }

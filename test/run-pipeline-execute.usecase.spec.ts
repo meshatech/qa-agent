@@ -81,9 +81,9 @@ describe('RunPipelineExecuteUseCase', () => {
     };
 
     const useCase = new RunPipelineExecuteUseCase(
-      { execute: vi.fn().mockResolvedValue(mockResult) } as any,
-      { load: async () => MOCK_CONFIG } as any,
-      { open: vi.fn().mockResolvedValue(undefined), close: vi.fn().mockResolvedValue(undefined) } as any,
+      { execute: vi.fn().mockResolvedValue(mockResult) } as unknown as import('../src/application/services/plan-executor.service.js').PlanExecutorService,
+      { load: async () => MOCK_CONFIG } as unknown as import('../src/application/ports/config-loader.port.js').ConfigLoaderPort,
+      { open: vi.fn().mockResolvedValue(undefined), close: vi.fn().mockResolvedValue(undefined) } as unknown as import('../src/application/ports/browser-harness.port.js').BrowserHarnessPort,
     );
 
     const result = await useCase.execute(dir, { configPath: join(dir, 'agent-qa.config.json') });
@@ -119,9 +119,9 @@ describe('RunPipelineExecuteUseCase', () => {
     };
 
     const useCase = new RunPipelineExecuteUseCase(
-      { execute: vi.fn().mockResolvedValue(mockResult) } as any,
-      { load: async () => MOCK_CONFIG } as any,
-      { open: vi.fn().mockResolvedValue(undefined), close: vi.fn().mockResolvedValue(undefined) } as any,
+      { execute: vi.fn().mockResolvedValue(mockResult) } as unknown as import('../src/application/services/plan-executor.service.js').PlanExecutorService,
+      { load: async () => MOCK_CONFIG } as unknown as import('../src/application/ports/config-loader.port.js').ConfigLoaderPort,
+      { open: vi.fn().mockResolvedValue(undefined), close: vi.fn().mockResolvedValue(undefined) } as unknown as import('../src/application/ports/browser-harness.port.js').BrowserHarnessPort,
     );
 
     const result = await useCase.execute(dir, { configPath: join(dir, 'agent-qa.config.json') });

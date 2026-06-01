@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -50,7 +50,7 @@ describe('RunPipelineReportUseCase', () => {
 
     const useCase = new RunPipelineReportUseCase(
       new PipelineReportRenderer(),
-      { load: async () => MOCK_CONFIG } as any,
+      { load: async () => MOCK_CONFIG } as unknown as import('../src/application/ports/config-loader.port.js').ConfigLoaderPort,
     );
 
     const result = await useCase.execute(dir, { configPath: join(dir, 'agent-qa.config.json') });
@@ -85,7 +85,7 @@ describe('RunPipelineReportUseCase', () => {
 
     const useCase = new RunPipelineReportUseCase(
       new PipelineReportRenderer(),
-      { load: async () => MOCK_CONFIG } as any,
+      { load: async () => MOCK_CONFIG } as unknown as import('../src/application/ports/config-loader.port.js').ConfigLoaderPort,
     );
 
     const result = await useCase.execute(dir, { configPath: join(dir, 'agent-qa.config.json') });

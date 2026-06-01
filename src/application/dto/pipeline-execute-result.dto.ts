@@ -1,4 +1,4 @@
-import type { PlanExecutionResult, LocatorTelemetryEvent } from '../services/plan-executor.service.js';
+import type { LocatorTelemetryEvent } from '../services/plan-executor.service.js';
 
 export interface PipelineExecuteRunResult {
   ok: boolean;
