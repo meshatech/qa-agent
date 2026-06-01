@@ -56,4 +56,8 @@ export class AgentController {
   pipelineExecute(outputDir: string, configPath?: string, projectPath?: string) {
     return this.service.pipelineExecute(outputDir, configPath, projectPath);
   }
+
+  pipelineReport(outputDir: string, configPath?: string, projectPath?: string) {
+    return this.service.pipelineReport(outputDir, configPath, projectPath);
+  }
 }

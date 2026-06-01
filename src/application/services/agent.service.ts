@@ -12,11 +12,13 @@ import { RunPipelinePrepareUseCase } from '../use-cases/run-pipeline-prepare.use
 import { RunPipelineCorrelateUseCase } from '../use-cases/run-pipeline-correlate.usecase.js';
 import { RunPipelineGeneratePlanUseCase } from '../use-cases/run-pipeline-generate-plan.usecase.js';
 import { RunPipelineExecuteUseCase } from '../use-cases/run-pipeline-execute.usecase.js';
+import { RunPipelineReportUseCase } from '../use-cases/run-pipeline-report.usecase.js';
 import type { PipelinePreflightRunResult } from '../dto/pipeline-preflight-result.dto.js';
 import type { PrDiffContextRunResult } from '../dto/pr-diff-context-result.dto.js';
 import type { PipelinePrepareRunResult } from '../dto/pipeline-prepare-result.dto.js';
 import type { PipelineCorrelateRunResult } from '../dto/pipeline-correlate-result.dto.js';
 import type { PipelineGeneratePlanRunResult } from '../dto/pipeline-generate-plan-result.dto.js';
+import type { PipelineReportRunResult } from '../dto/pipeline-report-result.dto.js';
 import type { OnboardingResult } from '../../domain/models/readiness.model.js';
 
 @Injectable()
@@ -34,6 +36,7 @@ export class AgentService {
     @Inject(RunPipelineCorrelateUseCase) private readonly runPipelineCorrelate: RunPipelineCorrelateUseCase,
     @Inject(RunPipelineGeneratePlanUseCase) private readonly runPipelineGeneratePlan: RunPipelineGeneratePlanUseCase,
     @Inject(RunPipelineExecuteUseCase) private readonly runPipelineExecute: RunPipelineExecuteUseCase,
+    @Inject(RunPipelineReportUseCase) private readonly runPipelineReport: RunPipelineReportUseCase,
   ) {}
 
   execute(dto: RunAgentDto) {
@@ -86,5 +89,9 @@ export class AgentService {
 
   pipelineExecute(outputDir: string, configPath?: string, projectPath?: string) {
     return this.runPipelineExecute.execute(outputDir, { configPath, projectPath });
+  }
+
+  pipelineReport(outputDir: string, configPath?: string, projectPath?: string) {
+    return this.runPipelineReport.execute(outputDir, { configPath, projectPath });
   }
 }
