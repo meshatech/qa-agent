@@ -68,4 +68,8 @@ export class AgentController {
   pipelineGenerateMemory(projectPath?: string, outputDir?: string) {
     return this.service.pipelineGenerateMemory(projectPath, outputDir);
   }
+
+  pipelineRisk(outputDir: string, projectPath?: string) {
+    return this.service.pipelineRisk(outputDir, projectPath);
+  }
 }

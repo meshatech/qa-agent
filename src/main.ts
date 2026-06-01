@@ -284,6 +284,22 @@ pipeline
     }
   });
 
+pipeline
+  .command('risk')
+  .description('Calculate and validate risk score from PR diff')
+  .option('--output-dir <path>', 'pipeline artifacts directory', './.agent-qa/pipeline')
+  .option('--project-dir <path>', 'project root', process.cwd())
+  .action(async (opts) => {
+    try {
+      const result = await withApp((c) => c.pipelineRisk(opts.outputDir, opts.projectDir));
+      console.log(JSON.stringify(result, null, 2));
+      process.exitCode = EXIT.OK;
+    } catch (err) {
+      console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err), kind: err instanceof Error ? err.constructor.name : 'Error' }, null, 2));
+      process.exitCode = classifyError(err);
+    }
+  });
+
 program
   .command('onboard')
   .description('Run project onboarding with baseline smoke test')
