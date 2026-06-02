@@ -120,9 +120,13 @@ npm run check
 ### Fase 4 — Controle de custo (MÉDIO)
 - [x] **4.1** `executionPlanStrategy: 'factory_first'` adicionado em `agent-qa.codeshare.config.json`
   (elimina a chamada `buildPlan` rejeitada por policy → esperado 4→3 chamadas LLM). Validar em run real.
-- [ ] **4.2** Manter cache de plano (`PlanCachePort`) ativo.
-- [ ] **4.3** Logar qual degrau resolveu cada passo (auditoria de custo).
-- [ ] **4.4** Smoke em 2 sites (meshamail + codeshare) + commit final.
+- [x] **4.2** Cache de plano ativo: `PlanCachePort` → `InMemoryPlanCacheAdapter` wired em `application.module.ts`,
+  consumido por `ExecutionPlanPlannerService`. (Adapters file/redis disponíveis para troca.)
+- [x] **4.3** Observabilidade da escada JÁ existe: `locatorTelemetry` (deterministic/semantic/llm_decide/replan/
+  target_not_found) persistido e renderizado em `run-pipeline-report` + `pipeline-report-renderer`.
+  (Melhoria futura opcional: tipo distinto `deep_think` para separar degrau 5 do degrau 3.)
+- [~] **4.4** Smoke: **codeshare OK** (anon, 2 chamadas LLM, PASSED_WITH_WARNINGS). **meshamail PENDENTE**
+  — requer `MESHA_EMAIL`/`MESHA_PASSWORD` + login em produção (acionar pelo usuário).
 
 ---
 
@@ -172,3 +176,10 @@ npm run check
 > - Fase 3 REVISADA por evidência: stall era falso-positivo. Removido warning enganoso + código morto.
 >   typecheck+lint verdes; plan-executor 8/8. **Commit Fase 3: pendente.**
 > **Próxima ação:** rodar suite completa → commitar Fase 3 → Fase 4.3 (log do degrau) / 4.4 (smoke 2 sites).
+>
+> **ATUALIZAÇÃO Iteração 5 (estado quase-final):**
+> - Commit `cacb4b1` (Fase 3, remoção stall falso-positivo). Suite completa verde (1484/0).
+> - Fase 4.2 (cache) e 4.3 (observabilidade telemetria) JÁ satisfeitas no código existente.
+> - Fase 4.4: codeshare validado; meshamail pendente (credenciais SSO de produção, acionar usuário).
+> **Commits na branch prj-experimental:** b3452b1 (0-1), 81ed583 (2+4.1), cacb4b1 (3).
+> **STATUS GERAL:** Fases 0,1,2,3,4.1,4.2,4.3 concluídas. Falta só smoke meshamail (4.4).
