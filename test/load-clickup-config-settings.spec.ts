@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { loadClickUpConfigSettings, resolveAgentQaConfigPath } from '../src/application/helpers/load-clickup-config-settings.js';
@@ -80,11 +80,11 @@ describe('loadClickUpConfigSettings', () => {
 
   it('resolves config path from env variables', () => {
     const path = resolveAgentQaConfigPath({ AGENT_QA_CONFIG: './custom.json', GITHUB_WORKSPACE: '/workspace' });
-    expect(path).toBe(join('/workspace', 'custom.json'));
+    expect(path).toBe(resolve('/workspace', './custom.json'));
   });
 
   it('resolves default config path when env is empty', () => {
     const path = resolveAgentQaConfigPath({});
-    expect(path).toBe(join(process.cwd(), 'agent-qa.config.json'));
+    expect(path).toBe(resolve(process.cwd(), './agent-qa.config.json'));
   });
 });

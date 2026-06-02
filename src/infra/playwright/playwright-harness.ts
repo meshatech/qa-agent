@@ -25,6 +25,7 @@ export class PlaywrightHarness implements BrowserHarnessPort {
   private page?: Page;
   private config?: RunConfig;
   private inFlight = false;
+  private recovering = false;
   private signals: SignalsBuffer;
   private readonly locators = new Map<string, LocatorDescriptor>();
   private readonly videoDir = '.agent-qa-video';
@@ -48,6 +49,13 @@ export class PlaywrightHarness implements BrowserHarnessPort {
       await this.createContextAndPage(config);
       const page = this.mustPage();
       if (config.auth.kind === 'formLogin') await this.formLogin.login(page, config);
+      if (config.auth.kind === 'ssoRedirect') {
+        const storagePath = config.auth.storageStatePath;
+        const exists = await readFile(storagePath).then(() => true).catch(() => false);
+        if (!exists) {
+          throw new HarnessFatalError(`Storage state not found: ${storagePath}. Run "npx tsx src/main.ts capture-auth --config <config> --output ${storagePath}" first to authenticate via SSO.`);
+        }
+      }
       await this.navigateWithRetry(config.baseUrl);
       await this.waitForQuiescence(config.timeouts.quiescenceMs).catch(() => undefined);
     } catch (error) {
@@ -366,29 +374,50 @@ export class PlaywrightHarness implements BrowserHarnessPort {
     const config = this.config;
     if (!config) throw new HarnessFatalError('Browser not opened');
     if (!this.browser?.isConnected()) throw new HarnessFatalError('Browser is closed');
+    if (this.recovering) {
+      await this.waitWhileRecovering();
+      if (this.page && !this.page.isClosed()) return this.page;
+    }
     await this.recoverPage(config);
     return this.mustPage();
   }
 
   private async recoverPage(config: RunConfig): Promise<void> {
-    this.page = undefined;
+    if (this.recovering) return;
+    this.recovering = true;
     try {
-      this.page = await this.context?.newPage();
-      this.registerDialogHandler();
-    } catch {
-      this.context = undefined;
+      const oldPage = this.page;
+      this.page = undefined;
+      try {
+        await oldPage?.close().catch(() => undefined);
+        this.page = await this.context?.newPage();
+        this.registerDialogHandler();
+      } catch {
+        this.context = undefined;
+      }
+      if (!this.page) {
+        await this.createContextAndPage(config);
+      } else {
+        this.signalsCollector.attach(this.page, config, this.signals);
+      }
+      this.mustPage();
+      await this.navigateWithRetry(config.baseUrl).catch(() => undefined);
+    } finally {
+      this.recovering = false;
     }
-    if (!this.page) {
-      await this.createContextAndPage(config);
-    } else {
-      this.signalsCollector.attach(this.page, config, this.signals);
+  }
+
+  private async waitWhileRecovering(): Promise<void> {
+    for (let i = 0; i < 50 && this.recovering; i++) {
+      await new Promise((r) => setTimeout(r, 100));
     }
-    this.mustPage();
-    await this.navigateWithRetry(config.baseUrl).catch(() => undefined);
   }
 
   private async createContextAndPage(config: RunConfig): Promise<void> {
     if (!this.browser?.isConnected()) throw new HarnessFatalError('Browser is closed');
+    const oldContext = this.context;
+    this.context = undefined;
+    await oldContext?.close().catch(() => undefined);
     this.context = await this.browser.newContext({
       viewport: config.browser.viewport,
       locale: config.browser.locale,

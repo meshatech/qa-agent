@@ -85,6 +85,10 @@ export class FakeDecisionProvider implements DecisionProviderPort {
     };
   }
 
+  async deepThink(input: DecisionInput): Promise<QaActionEnvelope> {
+    return this.decide(input);
+  }
+
   async classifyOutcome(_config: RunConfig, task: QaTask): Promise<ExpectedOutcome> {
     this.callCounts.classifyOutcome++;
     return { kind: 'NO_REGRESSION', description: task.title };

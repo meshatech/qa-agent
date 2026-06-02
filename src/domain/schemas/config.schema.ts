@@ -51,6 +51,19 @@ export const RunConfigSchema = z.object({
       errorTextSelector: z.string().optional(),
       maxRetries: z.number().int().nonnegative().default(1),
     }),
+    z.object({
+      kind: z.literal('ssoRedirect'),
+      loginUrl: z.string().optional(),
+      loginButtonSelector: AuthSelectorSchema,
+      idpUsernameSelector: AuthSelectorSchema.optional(),
+      idpPasswordSelector: AuthSelectorSchema.optional(),
+      idpSubmitSelector: AuthSelectorSchema.optional(),
+      usernameEnv: z.string().optional(),
+      passwordEnv: z.string().optional(),
+      successUrlContains: z.string().optional(),
+      successWhen: SuccessWhenSchema.optional(),
+      storageStatePath: z.string(),
+    }),
   ]).default({ kind: 'none' }),
   llm: z.object({
     provider: z.enum(['fake', 'groq', 'openai']).default('fake'),
@@ -139,6 +152,19 @@ export const RunConfigSchema = z.object({
     headRef: z.string().optional(),
     baseRef: z.string().optional(),
   }).optional(),
+  reporting: z.object({
+    manualMinutesPerScenario: z.number().int().positive().default(10),
+  }).optional(),
+  evidence: z.object({
+    video: z.enum(['off', 'on', 'on-failure']).default('off'),
+    trace: z.enum(['off', 'on', 'on-failure']).default('off'),
+  }).optional().default({ video: 'off', trace: 'off' }),
+  projectPath: z.string().optional(),
+  monitor: z.object({
+    enabled: z.boolean().default(false),
+    stallThresholdMs: z.number().int().positive().default(30000),
+    checkIntervalMs: z.number().int().positive().default(3000),
+  }).optional().default({ enabled: false, stallThresholdMs: 30000, checkIntervalMs: 3000 }),
   agentVersion: z.string().default('0.1.0'),
 });
 

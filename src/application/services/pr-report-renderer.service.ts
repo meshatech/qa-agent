@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { QaRunResult } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
+import type { QaValueMetrics } from '../../domain/schemas/qa-value-metrics.schema.js';
 import type { AcceptanceCriterionCoverage } from './acceptance-criteria-coverage.mapper.js';
 import type { EvidenceLink } from './evidence-link.mapper.js';
 import { sortEvidenceLinks } from './evidence-link.mapper.js';
@@ -25,9 +26,12 @@ export interface PRReportInput {
   evidenceMap?: {
     byBugId?: Record<string, EvidenceLink[]>;
     byScenarioId?: Record<string, EvidenceLink[]>;
+    video?: EvidenceLink[];
+    trace?: EvidenceLink[];
   };
   blocks?: BlockItem[];
   publicationStatus?: PRPublicationStatus;
+  qaValueMetrics?: QaValueMetrics;
 }
 
 function extractWarnings(result: QaRunResult): Array<{ stepId?: string; message?: string }> {
@@ -67,6 +71,7 @@ export class PRReportRenderer {
     const lines: string[] = [
       ...this.renderHeader(input),
       ...this.renderSummary(input),
+      ...this.renderValueMetrics(input),
       ...this.renderAcceptanceCriteria(input),
       ...this.renderCoveredCriteria(input),
       ...this.renderUncoveredCriteria(input),
@@ -112,6 +117,20 @@ export class PRReportRenderer {
       `- Bugs: ${m?.totalBugs ?? bugs.length}`,
       `- Warnings: ${warnings.length}`,
     ];
+  }
+
+  private renderValueMetrics(input: PRReportInput): string[] {
+    const m = input.qaValueMetrics;
+    if (!m) return [];
+    const lines: string[] = ['', '## QA Value'];
+    lines.push(`- Manual QA estimate: ${m.estimatedManualMinutes} min`);
+    lines.push(`- Agent execution time: ${m.agentExecutionMinutes} min`);
+    lines.push(`- Estimated time saved: ${m.estimatedMinutesSaved} min`);
+    lines.push(`- Scenarios executed: ${m.scenariosExecuted}`);
+    lines.push(`- Acceptance criteria covered: ${m.acceptanceCriteriaCovered}/${m.acceptanceCriteriaTotal}`);
+    lines.push(`- Bugs found: ${m.bugsFound}`);
+    if (m.evidenceFilesGenerated) lines.push(`- Evidence files generated: ${m.evidenceFilesGenerated}`);
+    return lines;
   }
 
   private renderAcceptanceCriteria(input: PRReportInput): string[] {
@@ -267,6 +286,8 @@ export class PRReportRenderer {
       '- Execution plan: `execution-plan.json`',
     ];
     if (result.runDir) lines.push(`- Run directory: \`${result.runDir}\``);
+    for (const link of input.evidenceMap?.video ?? []) lines.push(`- ${link.label}: \`${link.path}\``);
+    for (const link of input.evidenceMap?.trace ?? []) lines.push(`- ${link.label}: \`${link.path}\``);
     return lines;
   }
 }

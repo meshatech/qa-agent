@@ -9,6 +9,8 @@ import { SelectedScenariosSchema } from '../src/domain/schemas/selected-scenario
 import { ExecutionPlanSchema } from '../src/domain/schemas/execution-plan.schema.js';
 import type { QaScenario } from '../src/domain/models/run.model.js';
 
+const fakeCache = { async get() { return undefined; }, async set() {} } as unknown as import('../src/application/ports/plan-cache.port.js').PlanCachePort;
+
 const MOCK_CONFIG = {
   baseUrl: 'http://127.0.0.1:4173/',
   appDomains: ['127.0.0.1'],
@@ -62,6 +64,7 @@ describe('RunPipelineGeneratePlanUseCase', () => {
       new ExecutionPlanPlannerService(
         { buildPlan: undefined } as unknown as import('../src/application/ports/decision-provider.port.js').DecisionProviderPort,
         { fromScenarios: async () => ({ schemaVersion: 'execution-plan.v1', planId: 'plan_test', version: 1, goal: 'Test', mode: 'HYBRID_GUARDED', runtime: { maxAttemptsPerStep: 2, maxReplansPerScenario: 2, destructiveActionPolicy: 'BLOCK' }, steps: [{ id: 'step1', description: 'navigate', preconditions: [], action: { type: 'navigate', to: 'http://127.0.0.1:4173/', reason: 'test' }, postconditions: [{ type: 'route_state', expected: 'matches', expectedUrlPattern: 'http://127.0.0.1:4173/' }] }], assertions: [] }) } as unknown as import('../src/application/services/execution-plan-factory.service.js').ExecutionPlanFactoryService,
+        fakeCache,
       ),
       { load: async (_path: string) => MOCK_CONFIG } as unknown as import('../src/application/ports/config-loader.port.js').ConfigLoaderPort,
     );
@@ -92,7 +95,7 @@ describe('RunPipelineGeneratePlanUseCase', () => {
     await writeFile(join(dir, 'agent-qa.config.json'), JSON.stringify(MOCK_CONFIG), 'utf8');
 
     const useCase = new RunPipelineGeneratePlanUseCase(
-      new ExecutionPlanPlannerService({ buildPlan: undefined } as unknown as import('../src/application/ports/decision-provider.port.js').DecisionProviderPort, { fromScenarios: async () => undefined } as unknown as import('../src/application/services/execution-plan-factory.service.js').ExecutionPlanFactoryService),
+      new ExecutionPlanPlannerService({ buildPlan: undefined } as unknown as import('../src/application/ports/decision-provider.port.js').DecisionProviderPort, { fromScenarios: async () => undefined } as unknown as import('../src/application/services/execution-plan-factory.service.js').ExecutionPlanFactoryService, fakeCache),
       { load: async (_path: string) => MOCK_CONFIG } as unknown as import('../src/application/ports/config-loader.port.js').ConfigLoaderPort,
     );
 

@@ -38,11 +38,18 @@ export interface LlmStats {
   breakdown?: Record<string, unknown>;
 }
 
+export interface DeepThinkInput {
+  config: RunConfig;
+  observation: ScreenObservation;
+  runData: Record<string, string>;
+}
+
 export interface DecisionProviderPort {
   plan?(config: RunConfig): Promise<QaScenario[]>;
   buildPlan?(config: RunConfig, scenarios?: QaScenario[]): Promise<ExecutionPlan>;
   replan?(input: ReplanInput): Promise<PlanPatch>;
   decide(input: DecisionInput): Promise<QaActionEnvelope>;
+  deepThink?(input: DeepThinkInput): Promise<QaActionEnvelope>;
   stats?(): LlmStats;
   classifyOutcome?(config: RunConfig, task: QaTask): Promise<ExpectedOutcome>;
   classifyOutcomes?(config: RunConfig, tasks: QaTask[]): Promise<ExpectedOutcome[]>;

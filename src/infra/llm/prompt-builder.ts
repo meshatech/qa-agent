@@ -201,6 +201,51 @@ export function buildExecutionPlanUserMessage(config: RunConfig, scenarios: QaSc
   });
 }
 
+export const DEEPTHINK_SYSTEM_PROMPT = [
+  'You are Agent QA DeepThink — an emergency reasoning engine.',
+  'The executor is STUCK. A planned step has failed. You must reason from compressed context, criticize your own assumptions, and decide the safest next action.',
+  'Return ONLY valid JSON. No markdown, no commentary outside JSON.',
+  'JSON must include extra fields: "thought" (chain-of-thought reasoning), "criticism" (self-critique of why previous attempts may have failed), plus standard action envelope fields.',
+  'thought MUST be 1-3 sentences showing your reasoning process.',
+  'criticism MUST be 1 sentence questioning why the original plan failed and what assumption was wrong.',
+  'You have access to: current URL, page title, visible interactive elements, the error message, and previous failed actions.',
+  'Choose exactly one safe action using a targetElementId from the provided observation.elements.',
+  'targetElementId MUST be copied exactly from observation.elements.id, e.g. "el_001". Never return "1", "001", CSS selectors, labels, or element names as targetElementId.',
+  'When the intended element is not visible, consider: (1) a different visible element with similar role/text, (2) pressing Escape to close overlays, (3) clicking a parent/container, (4) using clickAtCoordinates with element bounds center.',
+  'If the page changed completely (e.g. after SSO redirect), re-evaluate: maybe the goal is already achieved, or a different path is needed.',
+  'Never invent CSS selectors. Never write Playwright code. Never reference element ids from past observations.',
+  'observationId in your response MUST equal the observationId provided.',
+  'Always include a fallback_action (e.g. press Escape or clickOutside) for fluctuating UI states.',
+  'When task is impossible, action.type = "abortScenario" with reason >= 10 chars.',
+  'Allowed action types: click, fill, select, press, clickOutside, clickAtCoordinates, waitForStable, navigate, assertVisible, assertText, abortScenario.',
+  'JSON shape:',
+  '{"schemaVersion":"action.v1","observationId":"<same>","thought":"your reasoning here","criticism":"self-critique here","thought_summary":"short 1-2 sentences","action":{...},"expected_after_action":{...},"fallback_action":{"type":"press","key":"Escape","reason":"close popup"},"confidence":0.0..1.0}',
+].join('\n');
+
+export function buildDeepThinkUserMessage(input: import('../../application/ports/decision-provider.port.js').DeepThinkInput): string {
+  return JSON.stringify({
+    emergency: true,
+    stepDescription: input.runData.stepDescription ?? '',
+    stepIntent: input.runData.stepIntent ?? '',
+    error: input.runData.error ?? '',
+    previousActions: input.runData.previousActions ?? '[]',
+    compressedContext: input.runData.compressedContext ?? '',
+    observation: {
+      observationId: input.observation.observationId,
+      url: input.observation.url,
+      title: input.observation.title,
+      elements: input.observation.elements.slice(0, 15).map((e) => ({
+        id: e.id,
+        role: e.role,
+        name: e.name,
+        text: e.text,
+        bounds: e.bounds,
+      })),
+      pageState: input.observation.pageState,
+    },
+  });
+}
+
 function taskTemplateHint(scenarioId: string, task: QaScenario['tasks'][number]): Record<string, unknown> {
   const kind = task.expectedOutcome?.kind;
   const base = {

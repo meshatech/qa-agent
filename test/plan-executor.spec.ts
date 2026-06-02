@@ -34,24 +34,30 @@ const config = RunConfigSchema.parse({ baseUrl: 'https://app.local', appDomains:
 
 const fakeDecision = { async decide() { return { action: { type: 'waitForStable', reason: 'fallback' }, expected_after_action: { type: 'no_console_errors' }, fallback_action: { type: 'waitForStable', reason: 'fallback' }, confidence: 0.5, thought_summary: 'fallback', observationId: 'obs_1', schemaVersion: 'action.v1' } as import('../src/domain/schemas/action.schema.js').QaActionEnvelope; } } as unknown as import('../src/application/ports/decision-provider.port.js').DecisionProviderPort;
 
+const fakeDeepThink = { async think() { return { thought: 'fake', criticism: 'fake', action: { type: 'waitForStable', reason: 'fallback' } as import('../src/domain/schemas/action.schema.js').QaAction, confidence: 0.5 }; } } as unknown as import('../src/application/services/deep-think.service.js').DeepThinkService;
+
+const fakeMonitor = { start() {}, stop() {}, setStepDescription() {}, markActionStarted() {} } as unknown as import('../src/application/services/execution-monitor.service.js').ExecutionMonitorService;
+const fakeNetworkValidator = { validate() { return undefined; } } as unknown as import('../src/application/services/network-state-validator.service.js').NetworkStateValidatorService;
+const fakeGraphService = { enrichPlan(plan: ExecutionPlan) { return Promise.resolve(plan); }, recordRunResult() { return Promise.resolve(); }, getHintsForOutcome() { return Promise.resolve([]); } } as unknown as import('../src/application/services/project-graph.service.js').ProjectGraphService;
+
 function executor(browser: BrowserHarnessPort): PlanExecutorService {
   const recovery = new RecoveryPolicyService(browser);
   const replanner = { replan: async () => { throw new Error('no replanner in unit test'); } } as unknown as PlanReplannerService;
   const locators = new LocatorResolverService();
-  return new PlanExecutorService(browser, locators, new DataHarnessService(), new ActionPolicyService(), new ElementAvailabilityResolver(browser, locators), recovery, new TaskMemoryService(), replanner, fakeDecision);
+  return new PlanExecutorService(browser, locators, new DataHarnessService(), new ActionPolicyService(), new ElementAvailabilityResolver(browser, locators), recovery, new TaskMemoryService(), replanner, fakeDecision, fakeDeepThink, fakeMonitor, fakeNetworkValidator, fakeGraphService);
 }
 
 function executorWithReplanner(browser: BrowserHarnessPort, replanner: PlanReplannerService): PlanExecutorService {
   const recovery = new RecoveryPolicyService(browser);
   const locators = new LocatorResolverService();
-  return new PlanExecutorService(browser, locators, new DataHarnessService(), new ActionPolicyService(), new ElementAvailabilityResolver(browser, locators), recovery, new TaskMemoryService(), replanner, fakeDecision);
+  return new PlanExecutorService(browser, locators, new DataHarnessService(), new ActionPolicyService(), new ElementAvailabilityResolver(browser, locators), recovery, new TaskMemoryService(), replanner, fakeDecision, fakeDeepThink, fakeMonitor, fakeNetworkValidator, fakeGraphService);
 }
 
 function executorWithDecision(browser: BrowserHarnessPort, decision: DecisionProviderPort): PlanExecutorService {
   const recovery = new RecoveryPolicyService(browser);
   const replanner = { replan: async () => { throw new Error('no replanner in unit test'); } } as unknown as PlanReplannerService;
   const locators = new LocatorResolverService();
-  return new PlanExecutorService(browser, locators, new DataHarnessService(), new ActionPolicyService(), new ElementAvailabilityResolver(browser, locators), recovery, new TaskMemoryService(), replanner, decision);
+  return new PlanExecutorService(browser, locators, new DataHarnessService(), new ActionPolicyService(), new ElementAvailabilityResolver(browser, locators), recovery, new TaskMemoryService(), replanner, decision, fakeDeepThink, fakeMonitor, fakeNetworkValidator, fakeGraphService);
 }
 
 describe('PlanExecutorService', () => {

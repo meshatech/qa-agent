@@ -1,0 +1,47 @@
+{
+  "cookies": [
+    {
+      "name": "JSESSIONID",
+      "value": "5D60EC66DDDDFAEE2A22EDBB668310CA2CD3C5C8A642F5AE144D264F385257CE14F7EC66DEDC0350BF1036BF523B569E9303A6A23D979177CEBCD28BF2090D4153DA2DD54D953E44F170C597ED258160F918D6C6498E1717F5F8C69592779C839D222CCF1E487517733F7E0D3DE2EB9A7E39ACCC64E429A7A6F985A6643AF900",
+      "domain": "login.mesha.com.br",
+      "path": "/authenticationendpoint",
+      "expires": -1,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "Lax"
+    },
+    {
+      "name": "cf_clearance",
+      "value": "KM511URdnqjNNvW7nzbA.1R9xRqfbbSPa3EiVDCkwrU-1780349418-1.2.1.1-pt9VfXBBKgDxI72IYTD_3.wgtsPTNGYbH.ga1UfN_qU8_6CVabjuFwU5j956dPt_q8LbjsAG_YyoNUzr52l_tYHjOp8ihJz9Mpu4nNFtCMzt59vhAWSH0d1824fPkewGof2zTO7kntlBKE3KXn5viZUZpfmyFIYpz32FUjoZeYgjpGGcpuknrm9CilgqqWQuOQm4vjRY655ZNozl7fccI5liMi8BrvGiYpDQywwFymYSr7UB6cfPcGHXp8bYVzHos.tIKoUTWNjKgGX06KWpTHL3YvsrVq_OUHjP03htT3wlAWThuTYGy0PPwehM0roiylXYabVGuWWTTcl5ua8Njg",
+      "domain": ".mesha.com.br",
+      "path": "/",
+      "expires": 1811885282.264434,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None",
+      "partitionKey": "https://mesha.com.br",
+      "_crHasCrossSiteAncestor": false
+    },
+    {
+      "name": "sessionNonceCookie-289b6a02-2f7a-4efc-9f8a-04df6cbf394f",
+      "value": "766abea0-4415-4f2b-b89f-a070fef52ff4",
+      "domain": "login.mesha.com.br",
+      "path": "/",
+      "expires": 1780354086.25807,
+      "httpOnly": true,
+      "secure": true,
+      "sameSite": "None"
+    },
+    {
+      "name": "ui_lang",
+      "value": "pt_BR",
+      "domain": ".mesha.com.br",
+      "path": "/",
+      "expires": 1782941286,
+      "httpOnly": false,
+      "secure": true,
+      "sameSite": "Lax"
+    }
+  ],
+  "origins": []
+}

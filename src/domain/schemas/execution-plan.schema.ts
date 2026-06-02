@@ -39,6 +39,7 @@ export const PlanConditionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('route_state'), expected: z.enum(['changed', 'same', 'matches']), expectedUrl: z.string().optional(), expectedUrlPattern: z.string().optional() }).strict(),
   z.object({ type: z.literal('attribute_state'), target: LocatorDescriptorSchema, attribute: z.string().min(1), expected: z.union([z.string(), z.boolean(), z.enum(['changed', 'exists', 'not_exists'])]) }).strict(),
   z.object({ type: z.literal('storage_state'), storage: z.enum(['localStorage', 'sessionStorage']), key: z.string().min(1), expected: z.union([z.string(), z.boolean(), z.enum(['changed', 'exists', 'not_exists'])]) }).strict(),
+  z.object({ type: z.literal('network_state'), expected: z.enum(['no_errors', 'no_4xx', 'no_5xx', 'has_request_to']), urlPattern: z.string().optional(), minStatus: z.number().int().min(100).max(599).optional(), maxStatus: z.number().int().min(100).max(599).optional() }).strict(),
 ]);
 
 export const PreconditionSchema = PlanConditionSchema;

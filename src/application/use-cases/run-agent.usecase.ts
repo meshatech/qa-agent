@@ -199,6 +199,26 @@ export class RunAgentUseCase {
 
       result.status = this.runStatus(result);
       return await this.finalize(result, config, attempts, startedAt, runId, true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`Run crashed: ${message}`, error instanceof Error ? error.stack : undefined);
+      result.status = 'BLOCKED';
+      result.bugs!.push({
+        bugId: `BUG-CRASH-${runId}`,
+        stepId: 'crash',
+        scenarioId: result.scenarios?.[0]?.id,
+        taskId: result.scenarios?.[0]?.tasks[0]?.id,
+        classification: { isBug: true, severity: 'CRITICAL', category: 'APP_FAULT', reason: 'Unhandled runtime error during test execution' },
+        path: runDir,
+        url: undefined,
+        expected: 'Run completes without crash',
+        actual: message,
+        signalType: 'ASSERTION_FAILURE',
+        rawMessage: error instanceof Error ? error.stack : message,
+        capturedAt: new Date().toISOString(),
+      });
+      await this.finalize(result, config, attempts, startedAt, runId, false);
+      return result;
     } finally {
       await this.browser.close().catch(() => undefined);
     }
@@ -321,6 +341,26 @@ export class RunAgentUseCase {
       result.toolRuntime = { enabled: true, usedTools };
       result.status = this.runStatus(result);
       return await this.finalize(result, config, attempts, startedAt, runId, true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`Run crashed: ${message}`, error instanceof Error ? error.stack : undefined);
+      result.status = 'BLOCKED';
+      result.bugs!.push({
+        bugId: `BUG-CRASH-${runId}`,
+        stepId: 'crash',
+        scenarioId: result.scenarios?.[0]?.id,
+        taskId: result.scenarios?.[0]?.tasks[0]?.id,
+        classification: { isBug: true, severity: 'CRITICAL', category: 'APP_FAULT', reason: 'Unhandled runtime error during test execution' },
+        path: runDir,
+        url: undefined,
+        expected: 'Run completes without crash',
+        actual: message,
+        signalType: 'ASSERTION_FAILURE',
+        rawMessage: error instanceof Error ? error.stack : message,
+        capturedAt: new Date().toISOString(),
+      });
+      await this.finalize(result, config, attempts, startedAt, runId, false);
+      return result;
     } finally {
       await this.browser.close().catch(() => undefined);
     }
@@ -981,9 +1021,17 @@ export class RunAgentUseCase {
       }
     }
 
+    const hasFailure = result.status !== 'PASSED';
+    const shouldSaveVideo = config.evidence.video === 'on' || (hasFailure && config.evidence.video === 'on-failure');
+    const shouldSaveTrace = config.evidence.trace === 'on' || (hasFailure && config.evidence.trace === 'on-failure');
+
+    if (shouldSaveVideo) {
+      await this.browser.saveVideo(`${result.runDir}/artifacts/videos/run-video.webm`).catch(() => undefined);
+    }
+    if (shouldSaveTrace) {
+      await this.browser.saveTrace(`${result.runDir}/artifacts/traces/run-trace.zip`).catch(() => undefined);
+    }
     if (capturePassArtifacts && result.status === 'PASSED') {
-      if (config.output.keepTraceOnPass) await this.browser.saveTrace(`${result.runDir}/artifacts/traces/run-trace.zip`).catch(() => undefined);
-      if (config.output.keepVideoOnPass) await this.browser.saveVideo(`${result.runDir}/artifacts/videos/run-video.webm`).catch(() => undefined);
       if (config.output.keepScreenshotOnPass) {
         const screenshot = await this.browser.screenshot().catch(() => undefined);
         if (screenshot) await this.repo.writeFile(result.runDir, 'artifacts/screenshots/final.png', screenshot);

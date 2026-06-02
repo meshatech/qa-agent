@@ -54,6 +54,8 @@ export class FormLoginService {
     await usernameLocator.fill(username);
     await passwordLocator.waitFor({ state: 'visible', timeout: config.timeouts.actionMs });
     await passwordLocator.fill(password);
+
+    const urlBefore = page.url();
     await submitLocator.click();
 
     await Promise.race([
@@ -70,13 +72,33 @@ export class FormLoginService {
     }
 
     const success = auth.successWhen ?? (auth.successUrlContains ? { urlContains: auth.successUrlContains } : undefined);
-    if (!success) return;
+    if (!success) {
+      await this.assertNotStillOnLogin(page, urlBefore);
+      return;
+    }
 
     if (success.urlContains) {
+      const urlBeforeSubmit = urlBefore;
       await page.waitForURL((url) => url.toString().includes(success.urlContains!), { timeout: config.timeouts.navigationMs });
+      const urlAfter = page.url();
+      if (urlAfter === urlBeforeSubmit) {
+        throw new HarnessFatalError(`Login appears to have failed: URL did not change after submit (still ${urlAfter}). The submit button may have clicked the wrong element, or the success condition (urlContains: "${success.urlContains}") matches the login page itself.`);
+      }
     }
     if (success.textVisible) {
       await page.getByText(success.textVisible).first().waitFor({ state: 'visible', timeout: config.timeouts.actionMs });
+    }
+
+    await this.assertNotStillOnLogin(page, urlBefore);
+  }
+
+  private async assertNotStillOnLogin(page: Page, urlBefore: string): Promise<void> {
+    const urlAfter = page.url();
+    if (urlAfter === urlBefore) {
+      const stillHasPassword = await page.locator('input[type="password"], input[name*="password"], input[id*="password"]').count().catch(() => 0);
+      if (stillHasPassword > 0) {
+        throw new HarnessFatalError(`Login failed: still on login page (password field still visible). URL did not change: ${urlAfter}`);
+      }
     }
   }
 

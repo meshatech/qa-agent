@@ -14,6 +14,10 @@ import { LocatorResolverService } from './locator-resolver.service.js';
 import { PlanReplannerService } from './plan-replanner.service.js';
 import { RecoveryPolicyService } from './recovery-policy.service.js';
 import { TaskMemoryService } from './task-memory.service.js';
+import { DeepThinkService } from './deep-think.service.js';
+import { ExecutionMonitorService } from './execution-monitor.service.js';
+import { NetworkStateValidatorService } from './network-state-validator.service.js';
+import { ProjectGraphService } from './project-graph.service.js';
 
 export interface LocatorTelemetryEvent {
   stepId: string;
@@ -63,22 +67,44 @@ export class PlanExecutorService {
     @Inject(TaskMemoryService) private readonly memory: TaskMemoryService,
     @Inject(PlanReplannerService) private readonly replanner: PlanReplannerService,
     @Inject('DecisionProviderPort') private readonly decision: DecisionProviderPort,
+    @Inject(DeepThinkService) private readonly deepThink: DeepThinkService,
+    @Inject(ExecutionMonitorService) private readonly monitor: ExecutionMonitorService,
+    @Inject(NetworkStateValidatorService) private readonly networkValidator: NetworkStateValidatorService,
+    @Inject(ProjectGraphService) private readonly graphService: ProjectGraphService,
   ) {}
 
   async execute(plan: ExecutionPlan, config: RunConfig): Promise<PlanExecutionResult> {
+    this.monitor.start(config);
+    const enriched = config.projectPath ? await this.graphService.enrichPlan(plan, config.projectPath) : plan;
+    try {
+      const result = await this.runExecution(enriched, config);
+      if (config.projectPath) await this.graphService.recordRunResult(result, config.projectPath);
+      return result;
+    } finally {
+      this.monitor.stop();
+    }
+  }
+
+  private async runExecution(plan: ExecutionPlan, config: RunConfig): Promise<PlanExecutionResult> {
     let currentPlan = plan;
     let stepIndex = 0;
     let replans = 0;
     const iterations = new Map<string, number>();
     const result: PlanExecutionResult = { ok: true, steps: [], attempts: [], warnings: [], finalPlan: currentPlan, patchHistory: [], evaluations: [], locatorTelemetry: [] };
+    let lastObs: ScreenObservation | undefined;
     while (stepIndex < currentPlan.steps.length) {
       const step = currentPlan.steps[stepIndex]!;
+      this.monitor.setStepDescription(step.description);
       const attempts = step.maxAttempts ?? currentPlan.runtime.maxAttemptsPerStep;
       let passed = false;
       let patchedStep = false;
       let repeatStep = false;
       for (let attempt = 0; attempt < attempts && !passed; attempt++) {
         let before = await this.observe(step);
+        if (lastObs && this.isStalled(lastObs, before, config)) {
+          result.warnings.push({ stepId: step.id, message: `Stalled: page unchanged for ${config.monitor?.stallThresholdMs ?? 30000}ms` });
+        }
+        lastObs = before;
         const beforeState = await this.runtimeState(before, [...step.preconditions, ...step.postconditions, ...step.assertions]);
         const pre = await this.checkAll(step.preconditions, before, beforeState);
         result.evaluations.push(...this.conditionEvaluations(step, 'precondition', step.preconditions, pre, beforeState, beforeState));
@@ -114,21 +140,36 @@ export class PlanExecutorService {
             action = this.resolveAction(step, before, result);
           } else {
             const message = error instanceof Error ? error.message : String(error);
-            const patched = await this.tryReplan({ result, config, currentPlan, step, before, reason: 'LOCATOR_NOT_FOUND', message, replans });
-            if (patched) {
-              currentPlan = patched;
-              result.finalPlan = currentPlan;
-              replans++;
-              patchedStep = true;
-              passed = true;
-              break;
-            }
-            // Fallback: ask LLM to resolve the concrete action from current observation
             try {
+              // Fallback ladder step 3 (cheap): single LLM decide() to resolve the action inline.
               action = await this.resolveViaLlm(step, before, config);
               result.locatorTelemetry.push({ stepId: step.id, type: 'llm_decide', timestamp: new Date().toISOString() });
             } catch {
-              throw error;
+              // Fallback ladder step 4 (medium): replan rewrites the plan.
+              const patched = await this.tryReplan({ result, config, currentPlan, step, before, reason: 'LOCATOR_NOT_FOUND', message, replans });
+              if (patched) {
+                currentPlan = patched;
+                result.finalPlan = currentPlan;
+                replans++;
+                patchedStep = true;
+                passed = true;
+                break;
+              }
+              // Fallback ladder step 5 (last resort): DeepThink emergency reasoning.
+              try {
+                const thinkResult = await this.deepThink.think({
+                  config,
+                  step,
+                  observation: before,
+                  error: error instanceof Error ? error.message : String(error),
+                  previousActions: result.attempts.slice(-5).map((a) => ({ action: a.actionType as unknown as QaAction, result: a.result, reason: a.reason })),
+                  attempts: result.attempts,
+                });
+                action = thinkResult.action;
+                result.locatorTelemetry.push({ stepId: step.id, type: 'llm_decide', timestamp: new Date().toISOString() });
+              } catch {
+                throw error;
+              }
             }
           }
         }
@@ -139,6 +180,7 @@ export class PlanExecutorService {
           return this.fail(result, this.planStep(step, before, action, action, { type: 'no_console_errors' }, { ok: false, type: 'policy', actual: message, durationMs: 0 }, undefined, message), before, message);
         }
 
+        this.monitor.markActionStarted();
         const exec = await this.browser.execute(action);
         if (exec.ok && action.type === 'extract' && exec.data !== undefined) this.data.storeValue(action.key, exec.data);
         const record: AttemptRecord = { actionType: action.type, result: exec.ok ? 'PASSED' : 'FAILED', reason: exec.error?.message, ts: new Date().toISOString() };
@@ -289,6 +331,13 @@ export class PlanExecutorService {
   private async checkAll(conditions: PlanCondition[], obs: ScreenObservation, beforeState?: RuntimeStateSnapshot, afterState?: RuntimeStateSnapshot): Promise<AssertionResult> {
     for (const condition of conditions) {
       const resolved = this.data.resolveObject(condition, 'assertion');
+      if (resolved.type === 'network_state') {
+        const networkResult = this.networkValidator.validate(resolved, obs);
+        if (networkResult) {
+          if (!networkResult.ok) return networkResult;
+          continue;
+        }
+      }
       const runtime = this.checkRuntimeCondition(resolved, obs, beforeState, afterState);
       if (runtime) {
         if (!runtime.ok) return runtime;
@@ -510,5 +559,16 @@ export class PlanExecutorService {
 
   private waitAction(reason: string): QaAction {
     return { type: 'waitForStable', timeoutMs: 1000, reason };
+  }
+
+  private isStalled(prev: ScreenObservation, curr: ScreenObservation, _config: RunConfig): boolean {
+    if (prev.url !== curr.url) return false;
+    if (prev.title !== curr.title) return false;
+    if (prev.elements.length !== curr.elements.length) return false;
+    const prevTexts = prev.visibleTexts.join('|');
+    const currTexts = curr.visibleTexts.join('|');
+    if (prevTexts !== currTexts) return false;
+    if (prev.pageState.isLoading || curr.pageState.isLoading) return false;
+    return true;
   }
 }

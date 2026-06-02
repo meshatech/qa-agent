@@ -6,6 +6,8 @@ import { RunConfigSchema } from '../src/domain/schemas/config.schema.js';
 import type { DecisionProviderPort } from '../src/application/ports/decision-provider.port.js';
 import type { QaScenario } from '../src/domain/models/run.model.js';
 
+const fakeCache = { async get() { return undefined; }, async set() {} } as unknown as import('../src/application/ports/plan-cache.port.js').PlanCachePort;
+
 const config = RunConfigSchema.parse({
   baseUrl: 'https://app.local',
   appDomains: ['app.local'],
@@ -56,7 +58,7 @@ describe('ExecutionPlanPlannerService', () => {
     };
 
     const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
-    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, scenarios);
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver), fakeCache).build(config, scenarios);
 
     expect(result.source).toBe('llm');
     expect(result.plan?.planId).toBe('llm-plan');
@@ -90,7 +92,7 @@ describe('ExecutionPlanPlannerService', () => {
     };
 
     const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
-    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, scenarios);
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver), fakeCache).build(config, scenarios);
 
     expect(result.source).toBe('factory');
     expect(result.fallbackReason).toContain('has no state-changing postcondition');
@@ -124,7 +126,7 @@ describe('ExecutionPlanPlannerService', () => {
     };
 
     const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
-    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, scenarios);
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver), fakeCache).build(config, scenarios);
 
     expect(result.source).toBe('llm');
     expect(result.plan?.planId).toBe('menu-click-plan');
@@ -143,7 +145,7 @@ describe('ExecutionPlanPlannerService', () => {
     };
 
     const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
-    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, scenarios);
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver), fakeCache).build(config, scenarios);
 
     expect(result.source).toBe('factory');
     expect(result.fallbackReason).toContain('targetElementId');
@@ -178,7 +180,7 @@ describe('ExecutionPlanPlannerService', () => {
     };
 
     const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
-    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(authenticatedConfig, scenarios);
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver), fakeCache).build(authenticatedConfig, scenarios);
 
     expect(result.source).toBe('factory');
     expect(result.fallbackReason).toContain('auth is already handled');
@@ -212,7 +214,7 @@ describe('ExecutionPlanPlannerService', () => {
     };
 
     const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
-    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(authenticatedConfig, scenarios);
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver), fakeCache).build(authenticatedConfig, scenarios);
 
     expect(result.source).toBe('factory');
     expect(result.fallbackReason).toContain('auth is already handled');
@@ -244,7 +246,7 @@ describe('ExecutionPlanPlannerService', () => {
     };
 
     const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
-    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, []);
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver), fakeCache).build(config, []);
 
     expect(result.source).toBe('llm');
   });
@@ -275,7 +277,7 @@ describe('ExecutionPlanPlannerService', () => {
     };
 
     const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
-    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, scenarios);
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver), fakeCache).build(config, scenarios);
 
     expect(result.source).toBe('factory');
     expect(result.fallbackReason).toContain('scenarioId/taskId');
@@ -310,7 +312,7 @@ describe('ExecutionPlanPlannerService', () => {
     };
 
     const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
-    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, scenarios);
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver), fakeCache).build(config, scenarios);
 
     expect(result.source).toBe('factory');
     expect(result.fallbackReason).toContain('scenarioId/taskId');
@@ -346,7 +348,7 @@ describe('ExecutionPlanPlannerService', () => {
     };
 
     const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
-    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, scenarios);
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver), fakeCache).build(config, scenarios);
 
     expect(result.source).toBe('factory');
     expect(result.fallbackReason).toContain('cannot expect runtime state changed');
@@ -379,7 +381,7 @@ describe('ExecutionPlanPlannerService', () => {
     };
 
     const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
-    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, scenarios);
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver), fakeCache).build(config, scenarios);
 
     expect(result.source).toBe('factory');
     expect(result.fallbackReason).toContain('appearance ui_state uses invalid expected value');
@@ -397,7 +399,7 @@ describe('ExecutionPlanPlannerService', () => {
       async fromScenarios() { return undefined; },
     } as unknown as ExecutionPlanFactoryService;
 
-    await expect(new ExecutionPlanPlannerService(provider, stubFactory).build(factoryOnlyConfig, scenarios))
+    await expect(new ExecutionPlanPlannerService(provider, stubFactory, fakeCache).build(factoryOnlyConfig, scenarios))
       .rejects.toThrow(/factory_first produced no steps and no LLM fallback available/);
   });
 
@@ -436,7 +438,7 @@ describe('ExecutionPlanPlannerService', () => {
     };
 
     const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
-    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver)).build(config, logoutScenarios);
+    const result = await new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver), fakeCache).build(config, logoutScenarios);
 
     expect(result.source).toBe('factory');
     expect(result.fallbackReason).toContain('logout');
@@ -454,7 +456,7 @@ describe('ExecutionPlanPlannerService', () => {
       async fromScenarios() { return undefined; },
     } as unknown as ExecutionPlanFactoryService;
 
-    const result = await new ExecutionPlanPlannerService(provider, stubFactory).build(emergencyConfig, scenarios);
+    const result = await new ExecutionPlanPlannerService(provider, stubFactory, fakeCache).build(emergencyConfig, scenarios);
 
     expect(result.plan).toBeDefined();
     expect(result.source).toBe('factory');

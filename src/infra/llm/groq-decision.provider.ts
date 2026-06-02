@@ -5,7 +5,7 @@ import { QaActionEnvelopeSchema, type ExpectedAfterAction, type QaAction, type Q
 import type { QaScenario, QaTask } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
 import type { ExecutionPlan, PlanPatch } from '../../domain/schemas/execution-plan.schema.js';
-import { CLASSIFY_OUTCOME_SYSTEM_PROMPT, DECISION_SYSTEM_PROMPT, EXECUTION_PLAN_SYSTEM_PROMPT, PLAN_SYSTEM_PROMPT, REPLAN_SYSTEM_PROMPT, buildClassifyOutcomeUserMessage, buildClassifyOutcomesUserMessage, buildDecisionUserMessage, buildExecutionPlanUserMessage, buildPlanUserMessage, buildReplanUserMessage } from './prompt-builder.js';
+import { CLASSIFY_OUTCOME_SYSTEM_PROMPT, DEEPTHINK_SYSTEM_PROMPT, DECISION_SYSTEM_PROMPT, EXECUTION_PLAN_SYSTEM_PROMPT, PLAN_SYSTEM_PROMPT, REPLAN_SYSTEM_PROMPT, buildClassifyOutcomeUserMessage, buildClassifyOutcomesUserMessage, buildDecisionUserMessage, buildDeepThinkUserMessage, buildExecutionPlanUserMessage, buildPlanUserMessage, buildReplanUserMessage } from './prompt-builder.js';
 import { ExpectedOutcomeSchema, type ExpectedOutcome } from '../../domain/schemas/expected-outcome.schema.js';
 import { LlmPlanPatchNormalizer } from './llm-output-normalizer.js';
 
@@ -169,11 +169,29 @@ export class GroqDecisionProvider implements DecisionProviderPort {
     return this.abortEnvelope(input, lastError);
   }
 
+  async deepThink(input: import('../../application/ports/decision-provider.port.js').DeepThinkInput): Promise<QaActionEnvelope> {
+    this.callCounts.decide++;
+    const key = process.env[input.config.llm.apiKeyEnv];
+    if (!key) throw new Error(`Missing env ${input.config.llm.apiKeyEnv}`);
+    const json = await this.chatJson(input.config, key, 'deep-think', {
+      model: input.config.llm.model,
+      temperature: Math.min(input.config.llm.temperature + 0.1, 0.3),
+      max_tokens: input.config.llm.maxTokens,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: DEEPTHINK_SYSTEM_PROMPT },
+        { role: 'user', content: buildDeepThinkUserMessage(input) },
+      ],
+    });
+    const parsed = JSON.parse(json.choices[0]?.message.content ?? '{}');
+    return this.parseDecision(parsed, { config: input.config, observation: input.observation, runData: input.runData });
+  }
+
   stats() {
     return { calls: this.calls, wrappers: this.wrappers.slice(-20), breakdown: { ...this.callCounts } };
   }
 
-  private async chatJson(config: RunConfig, key: string, kind: 'plan' | 'decision' | 'execution-plan' | 'replan' | 'classify-outcome', body: unknown): Promise<GroqChatResponse> {
+  private async chatJson(config: RunConfig, key: string, kind: 'plan' | 'decision' | 'deep-think' | 'execution-plan' | 'replan' | 'classify-outcome', body: unknown): Promise<GroqChatResponse> {
     let lastError = '';
     for (let attempt = 0; attempt <= config.llm.rateLimitRetries; attempt++) {
       this.calls++;

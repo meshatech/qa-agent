@@ -4,6 +4,7 @@ import type { RunConfig } from '../../domain/schemas/config.schema.js';
 import type { RunRepositoryPort } from '../ports/run-repository.port.js';
 import type { GitHubCommentPort } from '../ports/github-comment.port.js';
 import { PRReportRenderer } from './pr-report-renderer.service.js';
+import { QaValueMetricsCalculatorService } from './qa-value-metrics-calculator.service.js';
 import { buildAcceptanceCriteriaCoverageMap, buildUncoveredCriteria } from './acceptance-criteria-coverage.mapper.js';
 import { mapFileToEvidenceLink } from './evidence-link.mapper.js';
 import type { EvidenceLink } from './evidence-link.mapper.js';
@@ -30,6 +31,7 @@ export class PRReporterService {
     @Inject('GitHubCommentPort') private readonly githubComment: GitHubCommentPort,
     @Inject('RunRepositoryPort') private readonly runRepository: RunRepositoryPort,
     private readonly renderer: PRReportRenderer,
+    private readonly metricsCalculator: QaValueMetricsCalculatorService,
   ) {}
 
   private finalSanitize(message: string): string {
@@ -64,6 +66,7 @@ export class PRReporterService {
     }
 
     const blocks = extractBlocksFromResult(input.result);
+    const qaValueMetrics = this.metricsCalculator.compute(input.result, input.config);
 
     const renderInput = {
       result: input.result,
@@ -77,6 +80,7 @@ export class PRReporterService {
       uncoveredCriteria,
       evidenceMap,
       blocks,
+      qaValueMetrics,
     };
 
     let publicationStatus: PRPublicationStatus;
@@ -137,7 +141,7 @@ export class PRReporterService {
   private async discoverEvidence(
     runDir: string,
     result: QaRunResult,
-  ): Promise<{ byBugId?: Record<string, EvidenceLink[]> }> {
+  ): Promise<{ byBugId?: Record<string, EvidenceLink[]>; video?: EvidenceLink[]; trace?: EvidenceLink[] }> {
     const byBugId: Record<string, EvidenceLink[]> = {};
     const bugsWithPath = (result.bugs ?? []).filter((bug) => Boolean(bug.path));
     const discovered = await Promise.all(
@@ -154,6 +158,19 @@ export class PRReporterService {
         byBugId[bugId] = links;
       }
     }
-    return { byBugId };
+
+    const video: EvidenceLink[] = [];
+    const trace: EvidenceLink[] = [];
+    try {
+      const artifacts = await this.runRepository.listFiles(runDir, 'artifacts');
+      for (const file of artifacts) {
+        if (file.endsWith('.webm')) video.push({ path: `artifacts/${file}`, type: 'video', label: 'Execution video' });
+        if (file.endsWith('.zip')) trace.push({ path: `artifacts/${file}`, type: 'trace', label: 'Execution trace' });
+      }
+    } catch {
+      // artifacts dir may not exist
+    }
+
+    return { byBugId, video: video.length ? video : undefined, trace: trace.length ? trace : undefined };
   }
 }

@@ -20,18 +20,16 @@
     }
   },
   "auth": {
-    "kind": "formLogin",
-    "loginUrl": "/",
-    "usernameSelector": "#login-email",
-    "passwordSelector": "#login-password",
-    "submitSelector": "button[type='submit']",
+    "kind": "ssoRedirect",
+    "loginUrl": "/login",
+    "loginButtonSelector": { "strategy": "role", "role": "button", "name": "Login Mesha" },
+    "idpUsernameSelector": { "strategy": "placeholder", "text": "Insira seu identificador" },
+    "idpPasswordSelector": { "strategy": "placeholder", "text": "Digite sua senha" },
+    "idpSubmitSelector": { "strategy": "testid", "value": "login-page-continue-login-button" },
     "usernameEnv": "MESHA_EMAIL",
     "passwordEnv": "MESHA_PASSWORD",
-    "successWhen": {
-      "urlContains": "meshamail.mesha.com.br"
-    },
-    "errorTextSelector": "[role='alert'], .alert, .error, .invalid-feedback",
-    "maxRetries": 1
+    "successWhen": { "urlContains": "/dashboard" },
+    "storageStatePath": "./meshamail-auth.json"
   },
   "llm": {
     "provider": "groq",
