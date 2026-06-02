@@ -107,10 +107,15 @@ npm run check
 - [x] **2.4** typecheck + lint verdes (mudança comentário-only). Commit: pendente (agrupar com Fase 4.1).
 
 ### Fase 3 — Percepção acionável (MÉDIO)
-- [ ] **3.1** Conectar `isStalled` à escada: stall confirmado → `decide()` com contexto "página não mudou".
-- [ ] **3.2** `ScreenObservation` como fonte única passada a todos os degraus de LLM.
-- [ ] **3.3** Manter monitor de background desabilitado (I2).
-- [ ] **3.4** `npm run check` verde + commit.
+> **Revisão por evidência (run codeshare):** o `isStalled` disparava warning "Stalled ... 30000ms"
+> num passo que PASSOU (T002 no editor). Era **falso-positivo** (comparava 2 observações sem medir
+> tempo) e conectá-lo a `decide()` geraria chamada LLM cara numa página acionável → contra o custo.
+> O sinal real de "travado" já é coberto por: escada de fallback + postconditions + esgotamento de tentativas.
+- [x] **3.1** REVISADO: NÃO conectar stall→decide (geraria custo em falso-positivo). Removido o warning
+  enganoso e o código morto (`isStalled` + `lastObs`) em `plan-executor.service.ts`. Relatório agora confiável.
+- [x] **3.2** `ScreenObservation` já é a fonte única (retorno de `observe()` usado em todos os degraus).
+- [x] **3.3** Monitor de background mantido desabilitado (I2).
+- [x] **3.4** typecheck + lint verdes; `plan-executor.spec` 8/8. Commit: pendente.
 
 ### Fase 4 — Controle de custo (MÉDIO)
 - [x] **4.1** `executionPlanStrategy: 'factory_first'` adicionado em `agent-qa.codeshare.config.json`
@@ -160,3 +165,10 @@ npm run check
 > - Fase 4.1: `factory_first` na config codeshare (esperado 4→3 chamadas LLM). typecheck+lint verdes.
 > - Pendente: commit das Fases 2+4.1; validar 4→3 em run real; Fase 3.1 (stall acionável, behavior-change, risco).
 > **Próxima ação sugerida:** validar run codeshare (confirmar 3 chamadas) → commitar Fases 2+4.1 → decidir Fase 3.
+>
+> **ATUALIZAÇÃO Iteração 4:**
+> - Run codeshare com factory_first: **2 chamadas LLM** (plan+classifyOutcome), buildPlan=0, decide=0.
+>   Melhor que o esperado (4→2). PASSED_WITH_WARNINGS, 3/3 steps PASSED. Commit `81ed583` (Fases 2+4.1).
+> - Fase 3 REVISADA por evidência: stall era falso-positivo. Removido warning enganoso + código morto.
+>   typecheck+lint verdes; plan-executor 8/8. **Commit Fase 3: pendente.**
+> **Próxima ação:** rodar suite completa → commitar Fase 3 → Fase 4.3 (log do degrau) / 4.4 (smoke 2 sites).

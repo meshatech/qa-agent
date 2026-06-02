@@ -91,7 +91,6 @@ export class PlanExecutorService {
     let replans = 0;
     const iterations = new Map<string, number>();
     const result: PlanExecutionResult = { ok: true, steps: [], attempts: [], warnings: [], finalPlan: currentPlan, patchHistory: [], evaluations: [], locatorTelemetry: [] };
-    let lastObs: ScreenObservation | undefined;
     while (stepIndex < currentPlan.steps.length) {
       const step = currentPlan.steps[stepIndex]!;
       this.monitor.setStepDescription(step.description);
@@ -101,10 +100,6 @@ export class PlanExecutorService {
       let repeatStep = false;
       for (let attempt = 0; attempt < attempts && !passed; attempt++) {
         let before = await this.observe(step);
-        if (lastObs && this.isStalled(lastObs, before, config)) {
-          result.warnings.push({ stepId: step.id, message: `Stalled: page unchanged for ${config.monitor?.stallThresholdMs ?? 30000}ms` });
-        }
-        lastObs = before;
         const beforeState = await this.runtimeState(before, [...step.preconditions, ...step.postconditions, ...step.assertions]);
         const pre = await this.checkAll(step.preconditions, before, beforeState);
         result.evaluations.push(...this.conditionEvaluations(step, 'precondition', step.preconditions, pre, beforeState, beforeState));
@@ -559,16 +554,5 @@ export class PlanExecutorService {
 
   private waitAction(reason: string): QaAction {
     return { type: 'waitForStable', timeoutMs: 1000, reason };
-  }
-
-  private isStalled(prev: ScreenObservation, curr: ScreenObservation, _config: RunConfig): boolean {
-    if (prev.url !== curr.url) return false;
-    if (prev.title !== curr.title) return false;
-    if (prev.elements.length !== curr.elements.length) return false;
-    const prevTexts = prev.visibleTexts.join('|');
-    const currTexts = curr.visibleTexts.join('|');
-    if (prevTexts !== currTexts) return false;
-    if (prev.pageState.isLoading || curr.pageState.isLoading) return false;
-    return true;
   }
 }
