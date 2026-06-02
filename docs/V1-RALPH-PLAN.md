@@ -82,20 +82,29 @@ npm run check
 - [x] **0.3** Fazer `test/plan-executor.spec.ts` passar (incluindo o caso "uses decision provider
   fallback when a locator cannot be resolved") **sem alterar a expectativa** (I1).
 - [x] **0.4** Garantir que no modo `PLAN_AND_EXECUTE` o degrau `decide()` exista (tryReplan retorna undefined cedo).
-- [x] **0.5** `npx tsc --noEmit` limpo. (Commit Fase 0: PENDENTE — aguardando usuário.)
+- [x] **0.5** `npx tsc --noEmit` limpo. Commit `b3452b1` (Fases 0-1 + universalidade).
 
 ### Fase 1 — Verde e portabilidade (ALTO)
 - [x] **1.1** Corrigir normalização de path cross-platform em `load-clickup-config-settings` (I1).
 - [x] **1.2** typecheck + lint + `npm test` 100% verde (1484 passed, 3 skipped, 0 falhas).
-- [ ] **1.3** Commit incremental isolado (PENDENTE — aguardando usuário).
+- [x] **1.3** Commit `b3452b1` na branch `prj-experimental` (checkpoint estável, suite verde).
 
 ### Fase 2 — Unificar comportamento entre rotas (ALTO)
-- [ ] **2.1** Centralizar toda a escada de fallback (degraus 1-5) **dentro** do `PlanExecutorService`,
-  para as 3 rotas (tools/plano/reativo) herdarem o mesmo comportamento.
-- [ ] **2.2** Mover inteligência de `decideWithSemanticRetry` (promoção de expectativas, autocorreção
-  de intent) do `run-agent.usecase.ts` para o `PlanExecutorService`.
-- [ ] **2.3** Documentar tabela config→rota e garantir resultado idêntico por site.
-- [ ] **2.4** `npm run check` verde + commit.
+> **Descoberta:** defaults são `mode: HYBRID_GUARDED` + `tools.enabled: false`.
+> Tabela config→rota (verificada):
+> | Config | Rota | Núcleo |
+> |--------|------|--------|
+> | `tools.enabled=true` & mode≠FULL_REACTIVE | Tools (`runWithTools`) | `PlanExecutorService` |
+> | `tools.enabled=false` & mode≠FULL_REACTIVE | Plano (`runWithBrowser`+plan) | `PlanExecutorService` |
+> | `mode=FULL_REACTIVE` | Reativa (`runScenario`/`runTask`) | `decideWithSemanticRetry` (opt-in) |
+>
+> **Rotas 1 e 2 JÁ convergem** no `PlanExecutorService` e herdam a escada validada na Fase 0.
+> `FULL_REACTIVE` é usado por **1 config experimental** (`agent-qa.i18n.config.json`) e já usa `decide()`
+> como mecanismo primário. Forçar merge da lógica reativa = risco alto sem valor → **NÃO fazer** (I: simples).
+- [x] **2.1** Avaliado: rotas 1+2 já centralizadas no `PlanExecutorService`; merge da reativa descartado por risco/baixo valor.
+- [x] **2.2** Avaliado: `decideWithSemanticRetry` é o paradigma da rota reativa (opt-in), mantido isolado de propósito.
+- [x] **2.3** Documentada a tabela config→rota (comentário em `run-agent.usecase.ts:92-98` + esta tabela).
+- [x] **2.4** typecheck + lint verdes (mudança comentário-only). Commit: pendente (agrupar com Fase 4.1).
 
 ### Fase 3 — Percepção acionável (MÉDIO)
 - [ ] **3.1** Conectar `isStalled` à escada: stall confirmado → `decide()` com contexto "página não mudou".
@@ -104,7 +113,8 @@ npm run check
 - [ ] **3.4** `npm run check` verde + commit.
 
 ### Fase 4 — Controle de custo (MÉDIO)
-- [ ] **4.1** `executionPlanStrategy: 'factory_first'` nas configs simples (codeshare).
+- [x] **4.1** `executionPlanStrategy: 'factory_first'` adicionado em `agent-qa.codeshare.config.json`
+  (elimina a chamada `buildPlan` rejeitada por policy → esperado 4→3 chamadas LLM). Validar em run real.
 - [ ] **4.2** Manter cache de plano (`PlanCachePort`) ativo.
 - [ ] **4.3** Logar qual degrau resolveu cada passo (auditoria de custo).
 - [ ] **4.4** Smoke em 2 sites (meshamail + codeshare) + commit final.
@@ -142,3 +152,11 @@ npm run check
 > **Bloqueios:** Fase 2 é refatoração arquitetural de risco (mexe em run-agent.usecase + 3 rotas).
 >   Recomendado COMMITAR Fases 0-1 antes de iniciar a Fase 2.
 > **Commits pendentes:** Fase 0 (reconexão decide) e Fase 1 (path + lint) — aguardando ok do usuário.
+>
+> **ATUALIZAÇÃO Iteração 3 (pós-commit b3452b1):**
+> - Commit `b3452b1` feito (Fases 0-1 + universalidade). Suite verde.
+> - Fase 2 RESOLVIDA por documentação: rotas 1+2 já convergem no PlanExecutorService;
+>   FULL_REACTIVE (rota 3) é opt-in experimental (1 config). Comentário em `run-agent.usecase.ts:92-98`.
+> - Fase 4.1: `factory_first` na config codeshare (esperado 4→3 chamadas LLM). typecheck+lint verdes.
+> - Pendente: commit das Fases 2+4.1; validar 4→3 em run real; Fase 3.1 (stall acionável, behavior-change, risco).
+> **Próxima ação sugerida:** validar run codeshare (confirmar 3 chamadas) → commitar Fases 2+4.1 → decidir Fase 3.

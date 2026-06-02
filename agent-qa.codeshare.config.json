@@ -48,6 +48,9 @@
   },
   "runtime": {
     "maxActionsPerTask": 2,
+    "planning": {
+      "executionPlanStrategy": "factory_first"
+    },
     "elementAvailability": {
       "enabled": true,
       "maxOpenAttempts": 1,

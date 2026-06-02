@@ -89,6 +89,13 @@ export class RunAgentUseCase {
 
     const scenarios = await this.planner.plan(config);
     const filtered = dto.scenarioId ? scenarios.filter((s) => s.id === dto.scenarioId) : scenarios.slice(0, dto.maxScenarios ?? scenarios.length);
+    // Execution routes (config -> route):
+    //   1. tools.enabled=true & mode!=FULL_REACTIVE -> Tools route (runWithTools) -> PlanExecutorService
+    //   2. tools.enabled=false & mode!=FULL_REACTIVE -> Plan route (runWithBrowser+plan) -> PlanExecutorService
+    //   3. mode=FULL_REACTIVE -> Reactive route (runScenario/runTask) -> decideWithSemanticRetry (opt-in/experimental)
+    // Routes 1 and 2 converge on PlanExecutorService and share the same fallback ladder
+    // (locator -> ensureAvailable -> decide() -> replan() -> deepThink()). Route 3 is a distinct
+    // fully-reactive paradigm driven by decide() per action; keep it explicit/opt-in.
     const useTools = config.runtime.tools?.enabled && config.runtime.mode !== 'FULL_REACTIVE';
     const planned = config.runtime.mode === 'FULL_REACTIVE'
       ? { plan: undefined, source: 'manual' as ExecutionPlanSource }
