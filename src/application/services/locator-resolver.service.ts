@@ -50,7 +50,15 @@ export class LocatorResolverService {
     const found = obs.elements.find((element) => this.sameLocator(element.locator, locator))
       ?? obs.elements.find((element) => this.sameElement(element, locator))
       ?? this.bestTokenOverlap(obs, locator);
-    if (!found) throw new DomainError('LOCATOR_NOT_FOUND', `Element not found for locator: ${JSON.stringify(locator)}`);
+    if (!found) {
+      // Smart fallback: when no semantic match, try heuristics for common interactive elements
+      const fallback = this.smartFallback(obs, locator);
+      if (fallback) {
+        this.logger.warn(`Smart fallback used for locator ${JSON.stringify(locator)} → ${fallback.id}`);
+        return fallback.id;
+      }
+      throw new DomainError('LOCATOR_NOT_FOUND', `Element not found for locator: ${JSON.stringify(locator)}`);
+    }
     return found.id;
   }
 
@@ -121,6 +129,7 @@ export class LocatorResolverService {
     if (locator.strategy === 'label' || locator.strategy === 'placeholder') return [locator.text];
     if (locator.strategy === 'role' && locator.name) return [locator.name];
     if (locator.strategy === 'testid') return [locator.value];
+    if (locator.strategy === 'semantic') return [locator.semanticKey, locator.intent];
     return [];
   }
 
@@ -156,5 +165,72 @@ export class LocatorResolverService {
 
   private actionableScore(element: ScreenObservation['elements'][number]): number {
     return ACTIONABLE_ROLES.has(element.role.toLowerCase()) ? 1 : 0;
+  }
+
+  /**
+   * Smart fallback when no semantic locator matches.
+   * Uses heuristics to find the most likely interactive element:
+   * 1. For fill/data_entry: largest editable element in viewport (contenteditable, input, textarea, generic div with large area)
+   * 2. For click: largest clickable element in viewport center
+   * 3. Default: element with largest area in viewport
+   */
+  private smartFallback(obs: ScreenObservation, locator: LocatorDescriptor): ScreenObservation['elements'][number] | undefined {
+    const inViewport = obs.elements.filter((e) => e.inViewport);
+    if (!inViewport.length) return undefined;
+
+    const expectedTexts = this.expectedTexts(locator);
+    const isDataEntry = expectedTexts.some((t) => /fill|type|input|enter|digitar|preencher|texto|campo/i.test(t));
+    const isClick = expectedTexts.some((t) => /click|press|botão|button|link|menu/i.test(t));
+
+    if (isDataEntry) {
+      // Find largest editable element: textbox, combobox, or generic element with large area
+      const editable = inViewport.filter((e) =>
+        e.role === 'textbox' ||
+        e.role === 'combobox' ||
+        e.tagName === 'textarea' ||
+        e.tagName === 'input' ||
+        e.editable === true
+      );
+      if (editable.length) {
+        return editable.sort((a, b) => this.area(b) - this.area(a))[0];
+      }
+      // Fallback: largest generic div/element that might be a custom editor
+      const generic = inViewport.filter((e) => e.tagName === 'div' || e.tagName === 'section');
+      if (generic.length) {
+        return generic.sort((a, b) => this.area(b) - this.area(a))[0];
+      }
+    }
+
+    if (isClick) {
+      const clickable = inViewport.filter((e) =>
+        ACTIONABLE_ROLES.has(e.role.toLowerCase()) || e.tagName === 'button' || e.tagName === 'a'
+      );
+      if (clickable.length) {
+        // Sort by proximity to center + area
+        const viewportCenter = { x: 683, y: 384 }; // approximate for 1366x768
+        return clickable.sort((a, b) => {
+          const scoreA = this.proximityScore(a, viewportCenter) + this.area(a) * 0.001;
+          const scoreB = this.proximityScore(b, viewportCenter) + this.area(b) * 0.001;
+          return scoreB - scoreA;
+        })[0];
+      }
+    }
+
+    // Default: largest element in viewport
+    return inViewport.sort((a, b) => this.area(b) - this.area(a))[0];
+  }
+
+  private area(element: ScreenObservation['elements'][number]): number {
+    const b = element.bounds;
+    if (!b) return 0;
+    return b.width * b.height;
+  }
+
+  private proximityScore(element: ScreenObservation['elements'][number], center: { x: number; y: number }): number {
+    const b = element.bounds;
+    if (!b) return 0;
+    const elCenter = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+    const dist = Math.sqrt((elCenter.x - center.x) ** 2 + (elCenter.y - center.y) ** 2);
+    return Math.max(0, 1000 - dist);
   }
 }

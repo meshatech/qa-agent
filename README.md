@@ -11,6 +11,7 @@ Runtime de QA guiado por LLM para executar fluxos web via Playwright, com observ
 - Providers LLM disponiveis hoje: `fake`, `groq`, `openai`
 - Engines de browser suportadas: `chromium`, `firefox`, `webkit`
 - Execucao: sequencial, um cenario por vez
+- **v2 simplificado:** runtime enxugado. Removidos `ExecutionMonitorService`, `DeepThinkService`, `RedisPlanCacheAdapter`, `FilePlanCacheAdapter`. Arquivado `ProjectGraphService` (experimental/). Isolada rota `FULL_REACTIVE` em `ReactiveRunnerService`. Ver [`docs/V2-SIMPLIFICATION-PLAN.md`](docs/V2-SIMPLIFICATION-PLAN.md).
 
 O projeto ja entrega hoje:
 
@@ -388,7 +389,10 @@ Em alto nivel, a execucao atual faz:
 3. executa preflight de envs e `HEAD` no `baseUrl`
 4. gera plano de cenarios
 5. abre o browser e observa a tela
-6. pede decisao ao provider
+6. **escolhe a rota de execucao** (config `runtime.mode`):
+   - **Tools** (`tools.enabled=true`, modo != FULL_REACTIVE): usa `qa.plan.build` + `qa.plan.execute` -> `PlanExecutorService`
+   - **Plan** (`tools.enabled=false`, modo != FULL_REACTIVE): gera `ExecutionPlan` -> `PlanExecutorService`
+   - **Reactive** (`mode=FULL_REACTIVE`): `ReactiveRunnerService` decide cada acao com heurísticas semanticas
 7. executa a acao e espera quiescencia
 8. reobserva a tela e valida o esperado
 9. tenta recovery quando necessario

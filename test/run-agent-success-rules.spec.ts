@@ -1,7 +1,7 @@
-import { RunAgentUseCase } from '../src/application/use-cases/run-agent.usecase.js';
+import { ReactiveRunnerService } from '../src/application/services/reactive-runner.service.js';
 import { describe, expect, it } from 'vitest';
 
-const useCase = Object.create(RunAgentUseCase.prototype) as {
+const useCase = Object.create(ReactiveRunnerService.prototype) as {
   stepSucceeded(task: TestTask, action: { type: string; reason?: string }, execOk: boolean, validationOk: boolean, recoveredOk: boolean, expected: { type: string; value?: string; text?: string }, changed: boolean): boolean;
   isPreActionWeakExpected(task: TestTask, action: { type: string; targetElementId?: string }, expected: unknown): boolean;
   semanticDecisionIssue(task: TestTask, action: { type: string; targetElementId?: string }, expected: { type: string; value?: string; text?: string; target?: { originalElementId: string } }, obs: { elements: Array<{ id: string; name: string; text?: string }> }): string | undefined;

@@ -22,7 +22,6 @@ function makeConfig(minutesPerScenario = 10): RunConfig {
     evidence: { video: 'off', trace: 'off' },
     scenarioSelection: { maxScenarios: 5 },
     reporting: { manualMinutesPerScenario: minutesPerScenario },
-    monitor: { enabled: false, stallThresholdMs: 30000, checkIntervalMs: 3000 },
     agentVersion: '0.1.0',
   } as unknown as RunConfig;
 }

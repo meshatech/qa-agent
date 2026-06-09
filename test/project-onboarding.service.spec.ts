@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ProjectOnboardingService } from '../src/application/services/project-onboarding.service.js';
 import { PlanExecutorService } from '../src/application/services/plan-executor.service.js';
-import type { ExecutionPlan } from '../src/domain/schemas/execution-plan.schema.js';
 import { RunHistoryService } from '../src/application/services/run-history.service.js';
 import { DataHarnessService } from '../src/application/services/data-harness.service.js';
 import { SanitizerService } from '../src/application/services/sanitizer.service.js';
@@ -96,10 +95,7 @@ function makePlanExecutor(result: Partial<PlanExecutionResult> = {}): PlanExecut
   const replanner = { replan: async () => { throw new Error('no replanner'); } } as unknown as PlanReplannerService;
   const locators = new LocatorResolverService();
   const fakeDecision = { async decide() { return { action: { type: 'waitForStable', reason: 'fallback' }, expected_after_action: { type: 'no_console_errors' }, fallback_action: { type: 'waitForStable', reason: 'fallback' }, confidence: 0.5, thought_summary: 'fallback', observationId: 'obs_1', schemaVersion: 'action.v1' } as import('../src/domain/schemas/action.schema.js').QaActionEnvelope; } } as unknown as import('../src/application/ports/decision-provider.port.js').DecisionProviderPort;
-  const fakeDeepThink = { async think() { return { thought: 'fake', criticism: 'fake', action: { type: 'waitForStable', reason: 'fallback' } as import('../src/domain/schemas/action.schema.js').QaAction, confidence: 0.5 }; } } as unknown as import('../src/application/services/deep-think.service.js').DeepThinkService;
-  const fakeMonitor = { start() {}, stop() {}, setStepDescription() {}, markActionStarted() {} } as unknown as import('../src/application/services/execution-monitor.service.js').ExecutionMonitorService;
   const fakeNetworkValidator = { validate() { return undefined; } } as unknown as import('../src/application/services/network-state-validator.service.js').NetworkStateValidatorService;
-  const fakeGraphService = { enrichPlan(plan: ExecutionPlan) { return Promise.resolve(plan); }, recordRunResult() { return Promise.resolve(); }, getHintsForOutcome() { return Promise.resolve([]); } } as unknown as import('../src/application/services/project-graph.service.js').ProjectGraphService;
   const executor = new PlanExecutorService(
     browser,
     locators,
@@ -110,10 +106,7 @@ function makePlanExecutor(result: Partial<PlanExecutionResult> = {}): PlanExecut
     new TaskMemoryService(),
     replanner,
     fakeDecision,
-    fakeDeepThink,
-    fakeMonitor,
     fakeNetworkValidator,
-    fakeGraphService,
   );
 
   vi.spyOn(executor, 'execute').mockResolvedValue({

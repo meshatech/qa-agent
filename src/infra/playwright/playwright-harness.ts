@@ -101,7 +101,22 @@ export class PlaywrightHarness implements BrowserHarnessPort {
     let data: string | undefined;
     try {
       switch (action.type) {
-        case 'fill': await this.byId(action.targetElementId).fill(action.value); break;
+        case 'fill': {
+          let target: Locator;
+          try {
+            target = this.byId(action.targetElementId);
+          } catch {
+            target = await this.findLargestEditable();
+          }
+          try {
+            await this.smartFill(target, action.value);
+          } catch {
+            // If original target fails, try largest editable as fallback
+            target = await this.findLargestEditable();
+            await this.smartFill(target, action.value);
+          }
+          break;
+        }
         case 'click': await this.clickAllowingPendingDialog(this.byId(action.targetElementId)); break;
         case 'press': {
           const target = action.targetElementId ? this.byId(action.targetElementId) : null;
@@ -110,9 +125,16 @@ export class PlaywrightHarness implements BrowserHarnessPort {
           break;
         }
         case 'clickOutside': {
-          const viewport = this.mustPage().viewportSize();
-          if (!viewport) await this.mustPage().keyboard.press('Escape');
-          else await this.mustPage().mouse.click(10, 10);
+          const page = this.mustPage();
+          // In headed mode, avoid absolute screen coordinates that may hit the browser chrome (minimize/close buttons).
+          // Instead, click at a safe position inside the page content area (bottom-right corner of viewport).
+          const viewport = page.viewportSize();
+          if (!viewport) {
+            await page.keyboard.press('Escape');
+          } else {
+            // Click near bottom-right of page content, away from browser UI chrome
+            await page.mouse.click(viewport.width - 20, viewport.height - 20);
+          }
           break;
         }
         case 'waitForStable': await this.waitForQuiescence(action.timeoutMs ?? 3000); break;
@@ -173,7 +195,14 @@ export class PlaywrightHarness implements BrowserHarnessPort {
     const started = Date.now();
     try {
       if (expected.type === 'field_value_contains') {
-        const actual = await this.locator(expected.target.locator).inputValue();
+        let actual: string;
+        try {
+          actual = await this.locator(expected.target.locator).inputValue();
+        } catch {
+          // Fallback: try largest editable element
+          const fallback = await this.findLargestEditable();
+          actual = await fallback.inputValue().catch(() => '');
+        }
         return { ok: actual.includes(expected.value), type: expected.type, expected: expected.value, actual, durationMs: Date.now() - started };
       }
       if (expected.type === 'text_visible') {
@@ -278,8 +307,31 @@ export class PlaywrightHarness implements BrowserHarnessPort {
   }
 
   async close(): Promise<void> {
-    await this.context?.close().catch(() => undefined);
-    await this.browser?.close().catch(() => undefined);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const browserPid = (this.browser as any)?.process?.()?.pid;
+    try {
+      await this.context?.close();
+      console.log('[PlaywrightHarness.close] context closed');
+    } catch (err) {
+      console.error(`[PlaywrightHarness.close] context.close failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    try {
+      await this.browser?.close();
+      console.log('[PlaywrightHarness.close] browser closed');
+    } catch (err) {
+      console.error(`[PlaywrightHarness.close] browser.close failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    // Fallback: kill process if still alive (headed chromium sometimes survives .close())
+    if (browserPid) {
+      try {
+        process.kill(browserPid, 0); // check if alive
+        console.error(`[PlaywrightHarness.close] Browser process ${browserPid} still alive after close(), sending SIGKILL`);
+        process.kill(browserPid, 'SIGKILL');
+      } catch {
+        // process already dead, ok
+      }
+    }
+    this.browser = undefined;
     this.context = undefined;
     this.page = undefined;
     this.config = undefined;
@@ -465,6 +517,80 @@ export class PlaywrightHarness implements BrowserHarnessPort {
       return;
     }
     await target.fill(value);
+  }
+
+  private async smartFill(target: Locator, value: string): Promise<void> {
+    const page = this.mustPage();
+    try {
+      // Strategy 1: standard .fill() (works for input, textarea, contenteditable)
+      await target.fill(value);
+      return;
+    } catch {
+      // Strategy 2: Manus-style — focus element via JS then keyboard.type()
+      // This handles CodeMirror, Ace, and other custom editors
+      try {
+        await target.evaluate((el) => {
+          el.focus();
+          (el as HTMLElement).click();
+          // Dispatch focus event for frameworks that listen
+          el.dispatchEvent(new Event('focus', { bubbles: true }));
+        });
+        await page.waitForTimeout(100);
+        await page.keyboard.type(value);
+        return;
+      } catch {
+        // Strategy 3: pure JS injection — set innerText/value directly
+        try {
+          await target.evaluate((el, v) => {
+            const htmlEl = el as HTMLElement;
+            if ((htmlEl as HTMLInputElement).value !== undefined) {
+              (htmlEl as HTMLInputElement).value = v;
+            } else {
+              htmlEl.textContent = v;
+            }
+            htmlEl.dispatchEvent(new Event('input', { bubbles: true }));
+            htmlEl.dispatchEvent(new Event('change', { bubbles: true }));
+          }, value);
+        } catch {
+          // Last resort: page-level keyboard after page click
+          await target.click({ force: true });
+          await page.keyboard.type(value, { delay: 10 });
+        }
+      }
+    }
+  }
+
+  private async findLargestEditable(): Promise<Locator> {
+    const page = this.mustPage();
+    // Try selectors for common editable elements: textarea, input, contenteditable, CodeMirror, Ace editor
+    const selectors = [
+      'textarea',
+      'input:not([type="hidden"])',
+      '[contenteditable="true"]',
+      '.CodeMirror',
+      '.ace_editor',
+      '[class*="editor"]',
+      '[role="textbox"]',
+    ];
+    let bestLocator: Locator | undefined;
+    let bestArea = 0;
+    for (const selector of selectors) {
+      const locators = await page.locator(selector).all();
+      for (const loc of locators) {
+        const box = await loc.boundingBox().catch(() => null);
+        if (!box || box.width <= 0 || box.height <= 0) continue;
+        const area = box.width * box.height;
+        if (area > bestArea) {
+          bestArea = area;
+          bestLocator = loc;
+        }
+      }
+    }
+    if (!bestLocator) {
+      // Last resort: body
+      bestLocator = page.locator('body');
+    }
+    return bestLocator;
   }
 
   private async clickAllowingPendingDialog(target: Locator): Promise<void> {

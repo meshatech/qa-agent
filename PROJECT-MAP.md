@@ -1,6 +1,7 @@
 # De/Para — agent-qa (Estado Atual)
 
 > Mapeamento completo da arquitetura, fluxos, componentes e status de implementação.
+> **Nota (v2 simplificado):** Runtime enxugado nas Fases 1-5. Removidos: `ExecutionMonitorService`, `DeepThinkService`, `RedisPlanCacheAdapter`, `FilePlanCacheAdapter`, `redis.d.ts`. Arquivado: `ProjectGraphService` (experimental/). Isolado: rota reativa (`FULL_REACTIVE`) em `ReactiveRunnerService`. Veja `docs/V2-SIMPLIFICATION-PLAN.md`.
 
 ---
 
@@ -32,6 +33,7 @@
 | `DecisionProviderPort` | `src/application/ports/decision-provider.port.ts` | `GroqDecisionProvider`, `FakeDecisionProvider` | LLM: planejar, decidir, replanear, classificar outcomes |
 | `RunRepositoryPort` | `src/application/ports/run-repository.port.ts` | `FileSystemRunRepository` | Persistir runs, screenshots, JSONs, relatórios |
 | `ConfigLoaderPort` | `src/application/ports/config-loader.port.ts` | `JsonFileConfigLoader` | Carregar `agent-qa.config.json` |
+| `PlanCachePort` | `src/application/ports/plan-cache.port.ts` | `InMemoryPlanCacheAdapter` | Cache efêmero de planos de execução |
 
 ---
 
@@ -55,16 +57,19 @@ RunAgentUseCase.execute()
    │      ├── LLM "buildPlan" (modo HYBRID_GUARDED)
    │      └── Fallback: ExecutionPlanFactoryService (factory_first)
    │
-   ├──▶ PlanExecutorService ──▶ Executa step a step
+   ├──▶ PlanExecutorService ──▶ Executa step a step (modo HYBRID_GUARDED / PLAN_AND_EXECUTE)
    │      ├── BrowserHarnessPort.observe() ──▶ ScreenObservation
-   │      ├── (modo FULL_REACTIVE: LLM decide cada ação)
-   │      ├── (modo HYBRID_GUARDED: segue ExecutionPlan)
    │      ├── BrowserHarnessPort.execute(QaAction)
    │      ├── BrowserHarnessPort.validate(Postcondition)
    │      └── RecoveryPolicyService (se falhar)
    │           ├── Fallback action
    │           ├── Replan (LLM "replan")
    │           └── Emergency action
+   │
+   ├──▶ ReactiveRunnerService ──▶ Rota FULL_REACTIVE (opt-in/experimental)
+   │      ├── decide() por ação com heurísticas semânticas
+   │      ├── trySemanticTheme / trySemanticLogout (shortcuts para outcomes conhecidos)
+   │      └── RecoveryPolicyService (se falhar)
    │
    └──▶ EvidenceService ──▶ Report, screenshots, traces, video
 ```
@@ -184,6 +189,7 @@ RunAgentUseCase.execute()
 | Serviço | O que faz |
 |---|---|
 | `PlanExecutorService` | Orquestra execução do plano: precondições → resolver locators → executar → validar pós-condições → recovery |
+| `ReactiveRunnerService` | Rota `FULL_REACTIVE`: loop reativo com decide() por ação + heurísticas semânticas (theme/logout/menu) |
 | `ScenarioPlannerService` | Gera cenários a partir da demanda (LLM ou catálogo) |
 | `ExecutionPlanPlannerService` | Gera `ExecutionPlan`: tenta LLM → valida → fallback factory |
 | `ExecutionPlanFactoryService` | Factory determinística: converte `ExpectedOutcome` em steps concretos (sem LLM) |
@@ -198,6 +204,8 @@ RunAgentUseCase.execute()
 | `MemorySearchService` | Busca em memória persistente (BM25) para reutilizar conhecimento |
 | `SemanticLocatorMemoryResolver` | Resolve locators semânticos usando memória de runs anteriores |
 | `PlaywrightQuiescenceGuard` | Detecta quando a página está estável (DOM + network idle) |
+
+**Removidos (v2 simplificação):** `ExecutionMonitorService` (inerte), `DeepThinkService` (fallback caro, não justificava custo), `ProjectGraphService` (arquivado em `experimental/project-graph/`) |
 
 ---
 
@@ -217,6 +225,9 @@ RunAgentUseCase.execute()
 | `LlmPlanPatchNormalizer` | Custom + Zod | Normalizar e validar saída do LLM |
 | `AxeBuilder` | `@axe-core/playwright` | Auditoria WCAG |
 | `pixelmatch` + `pngjs` | Node.js | Comparação pixel-a-pixel de screenshots |
+| `InMemoryPlanCacheAdapter` | In-memory (Map) | Cache efêmero de planos de execução |
+
+**Removidos (v2 simplificação):** `RedisPlanCacheAdapter`, `FilePlanCacheAdapter`, `src/types/redis.d.ts` |
 
 ---
 
@@ -257,7 +268,7 @@ RunAgentUseCase.execute()
 | `auth` | `none`, `storageState`, `formLogin` |
 | `llm` | Provider (fake/groq/openai), model, temperatura, tokens, retries |
 | `timeouts` | Quiescence, ação, navegação, cenário, run |
-| `runtime` | Modo (`FULL_REACTIVE`/`HYBRID_GUARDED`/`PLAN_AND_EXECUTE`), max actions, replans, destructive policy, semantic keys/aliases, element availability, tools, observation, planning strategy |
+| `runtime` | Modo (`FULL_REACTIVE`/`HYBRID_GUARDED`/`PLAN_AND_EXECUTE`), max actions, replans, destructive policy, semantic keys/aliases, element availability, tools, planning strategy |
 | `recovery` | Max attempts, fallbacks, emergency actions |
 | `classifier` | Regex de noise, domínios de terceiro, tracking |
 | `privacy` | Mask emails, JWT, cookies |
@@ -266,6 +277,8 @@ RunAgentUseCase.execute()
 | `output` | Diretório de runs, keep video/screenshot/trace on pass |
 | `scenarioSelection` | Max cenários a executar |
 | `pr` | Metadata do PR para pipeline |
+
+**Removidos (v2 simplificação):** `monitor` (Fase 2), `projectPath` (Fase 4) |
 
 ---
 
@@ -290,6 +303,29 @@ RunAgentUseCase.execute()
 ## 15. Status da v1
 
 ✅ **v1 FECHADA** — todos os 11 itens do roadmap estão implementados.
+
+## 16. Status da v2 (Simplificação)
+
+✅ **v2 CONCLUÍDA** — 5 fases de enxugamento executadas. Ver `docs/V2-SIMPLIFICATION-PLAN.md`.
+
+| Fase | O que foi feito | Risco |
+|---|---|---|
+| **0** | Baseline registrado (smoke codeshare Docker) | — |
+| **1** | Removidos `RedisPlanCacheAdapter`, `FilePlanCacheAdapter`, `redis.d.ts` | ~zero |
+| **2** | Removido `ExecutionMonitorService` (inerte) + chave `monitor` do config | ~zero |
+| **3** | Removido `DeepThinkService` + `deepThink()` do plan executor + do `DecisionProviderPort` | médio (fallback encurtado) |
+| **4** | Arquivado `ProjectGraphService` + adapters/schemas para `experimental/project-graph/` | médio (nenhuma config usava) |
+| **5** | Isolada rota `FULL_REACTIVE` em `ReactiveRunnerService` | médio (rota permanece, mas isolada) |
+
+### Build após v2
+
+| Build | Status |
+|---|---|
+| TypeScript typecheck | ✅ Passa |
+| ESLint | ✅ Sem erros |
+| Testes unitários | ✅ ~1454/1465 passam (11 falhas pré-existentes: Playwright local não instalado) |
+| Smoke codeshare (Docker) | ✅ Readiness: READY |
+| Smoke i18n FULL_REACTIVE (Docker) | ✅ Executou sem crash |
 
 ### Correções de robustez aplicadas (bug MeshaMail)
 

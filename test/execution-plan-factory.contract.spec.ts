@@ -21,7 +21,6 @@ function makeConfig(): RunConfig {
     output: { runsDir: './qa-agent-runs', keepVideoOnPass: false, keepScreenshotOnPass: false, keepTraceOnPass: false },
     evidence: { video: 'off', trace: 'off' },
     scenarioSelection: { maxScenarios: 5 },
-    monitor: { enabled: false, stallThresholdMs: 30000, checkIntervalMs: 3000 },
     agentVersion: '0.1.0',
   };
 }

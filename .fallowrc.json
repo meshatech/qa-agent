@@ -1,0 +1,14 @@
+{
+  "ignorePatterns": [
+    ".agent-qa/**",
+    "experimental/**",
+    "dist/**",
+    "node_modules/**",
+    "qa-agent-runs/**",
+    "coverage/**",
+    "doc/**",
+    "docs/historico/**",
+    "scripts/**",
+    "test/fixtures/**"
+  ]
+}

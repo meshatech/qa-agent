@@ -159,12 +159,6 @@ export const RunConfigSchema = z.object({
     video: z.enum(['off', 'on', 'on-failure']).default('off'),
     trace: z.enum(['off', 'on', 'on-failure']).default('off'),
   }).optional().default({ video: 'off', trace: 'off' }),
-  projectPath: z.string().optional(),
-  monitor: z.object({
-    enabled: z.boolean().default(false),
-    stallThresholdMs: z.number().int().positive().default(30000),
-    checkIntervalMs: z.number().int().positive().default(3000),
-  }).optional().default({ enabled: false, stallThresholdMs: 30000, checkIntervalMs: 3000 }),
   agentVersion: z.string().default('0.1.0'),
 });
 

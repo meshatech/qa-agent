@@ -6,7 +6,7 @@ import type { QaScenario, QaTask } from '../../domain/models/run.model.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
 import type { ExecutionPlan, PlanPatch } from '../../domain/schemas/execution-plan.schema.js';
 import { ExpectedOutcomeSchema, type ExpectedOutcome } from '../../domain/schemas/expected-outcome.schema.js';
-import { CLASSIFY_OUTCOME_SYSTEM_PROMPT, DEEPTHINK_SYSTEM_PROMPT, DECISION_SYSTEM_PROMPT, EXECUTION_PLAN_SYSTEM_PROMPT, PLAN_SYSTEM_PROMPT, REPLAN_SYSTEM_PROMPT, buildClassifyOutcomeUserMessage, buildClassifyOutcomesUserMessage, buildDecisionUserMessage, buildDeepThinkUserMessage, buildExecutionPlanUserMessage, buildPlanUserMessage, buildReplanUserMessage } from './prompt-builder.js';
+import { CLASSIFY_OUTCOME_SYSTEM_PROMPT, DECISION_SYSTEM_PROMPT, EXECUTION_PLAN_SYSTEM_PROMPT, PLAN_SYSTEM_PROMPT, REPLAN_SYSTEM_PROMPT, buildClassifyOutcomeUserMessage, buildClassifyOutcomesUserMessage, buildDecisionUserMessage, buildExecutionPlanUserMessage, buildPlanUserMessage, buildReplanUserMessage } from './prompt-builder.js';
 import { LlmPlanPatchNormalizer } from './llm-output-normalizer.js';
 
 @Injectable()
@@ -94,27 +94,6 @@ export class OpenAiLangChainDecisionProvider implements DecisionProviderPort {
       }
     }
     throw last;
-  }
-
-  async deepThink(input: import('../../application/ports/decision-provider.port.js').DeepThinkInput): Promise<QaActionEnvelope> {
-    const apiKey = process.env[input.config.llm.apiKeyEnv];
-    if (!apiKey) throw new Error(`Missing env ${input.config.llm.apiKeyEnv}`);
-    this.calls++;
-    this.callCounts.decide++;
-    const model = new ChatOpenAI({
-      apiKey,
-      model: input.config.llm.model,
-      temperature: Math.min(input.config.llm.temperature + 0.1, 0.3),
-      maxTokens: input.config.llm.maxTokens,
-      modelKwargs: { response_format: { type: 'json_object' } },
-    });
-    const res = await model.invoke([
-      ['system', DEEPTHINK_SYSTEM_PROMPT],
-      ['user', buildDeepThinkUserMessage(input)],
-    ]);
-    const parsed = JSON.parse(this.extractContent(res.content));
-    parsed.observationId = input.observation.observationId;
-    return QaActionEnvelopeSchema.parse(parsed);
   }
 
   async classifyOutcome(config: RunConfig, task: QaTask): Promise<ExpectedOutcome> {

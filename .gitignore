@@ -146,3 +146,6 @@ vite.config.ts.timestamp-*
 tasks-clickup/
 .specify/
 specs/
+.agent-qa/*
+.devin/
+.cursor/
