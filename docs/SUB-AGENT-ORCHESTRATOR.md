@@ -1,69 +1,84 @@
-# Single Orchestrator Prompt + Typed Macro Tools
+# Single Orchestrator + Typed Tool Queue (v2)
 
 ## Objetivo
 
-Criar uma arquitetura simples em que **um único prompt orquestrador** decide quais ferramentas/macro-agentes usar para transformar uma tarefa de QA em uma sequência executável, sem hardcoded flow e sem múltiplos prompts especializados.
+Criar uma arquitetura simples e robusta para orquestração de QA onde **um único prompt LLM** gera uma fila tipada de ferramentas, mas **não executa ações diretamente**.
 
-A ideia central é:
+A arquitetura final deve ser:
 
 ```
-LLM = orquestrador/planejador
-Sub-agents = tools determinísticas
-Runtime = executor seguro
-Validação = contrato de estado
+Single Orchestrator Prompt
+→ ToolQueueSchema
+→ ToolQueueToExecutionPlanMapper
+→ ExecutionPlanSchema
+→ PlanExecutorService
+→ Evidence / Report / Learning
 ```
 
-O LLM não executa ações diretamente. Ele apenas retorna um plano tipado. O runtime valida o plano e executa usando tools registradas.
+A regra central é:
+
+```
+LLM planeja.
+Schema limita.
+Mapper converte.
+PlanExecutor executa.
+Validators provam.
+Evidence registra.
+```
 
 ---
 
-## Decisão arquitetural
+## Decisão arquitetural principal
 
-### Nome
+### Não criar um runtime paralelo
 
-```
-Single Orchestrator Prompt Architecture
-```
+A `ToolQueue` **não deve ser o runtime principal**.
 
-ou, mais precisamente:
+Ela deve ser uma representação intermediária, ou IR:
 
 ```
-Single Orchestrator + Typed Tool Queue
+ToolQueue = plano proposto pela LLM em formato simples
+ExecutionPlan = contrato oficial executável pelo runtime
 ```
 
-### Por que ajustar o nome
-
-"Sub-agent" pode dar a entender que cada agente tem seu próprio prompt/LLM. Para esta versão, isso aumenta complexidade.
-
-Nesta arquitetura:
+Portanto, o fluxo correto é:
 
 ```
-NavigatorAgent = tool/macro determinística
-ObserverAgent = tool/macro determinística
-ActorAgent = tool/macro determinística
-ValidatorAgent = tool/macro determinística
-ExplorerAgent = tool/macro determinística
+LLM
+→ ToolQueue JSON
+→ validação por ToolQueueSchema
+→ ToolQueueToExecutionPlanMapper
+→ validação por ExecutionPlanSchema
+→ PlanExecutorService
 ```
 
-O único componente com raciocínio LLM é o **Orchestrator**.
+Isso evita duplicar o que o projeto já tem:
+
+```
+ExecutionPlan
+PlanExecutorService
+QaToolRegistry
+ExpectedOutcome
+PlanCondition
+EvidenceService
+PRReporterService
+```
 
 ---
 
-## 1. Core Idea
+# 1. Core Idea
 
-Em vez de múltiplos prompts especializados, enviar ao LLM um prompt único contendo:
+Enviar um prompt único ao LLM contendo:
 
-1. Descrição da tarefa.
+1. Descrição da task.
 2. Estado atual da página, quando disponível.
-3. Definição dos tools/macro-agents disponíveis.
+3. Lista de tools/macro-agents disponíveis.
 4. Regras de orquestração.
 5. Schema de saída obrigatório.
-6. Limites de segurança.
-7. Contratos de sucesso esperados.
+6. Contratos de validação.
+7. Política de fallback honesto.
 
-O LLM retorna uma **task queue tipada**.
-
-Exemplo:
+O LLM retorna apenas JSON válido:
 
 ```json
 {
@@ -83,7 +98,8 @@ Exemplo:
       "step": 2,
       "tool": "observer.capture",
       "params": {
-        "includeAccessibilityTree": true
+        "includeAccessibilityTree": true,
+        "includeScreenshot": true
       }
     },
     {
@@ -109,97 +125,95 @@ Exemplo:
       }
     }
   ],
-  "reasoning": "The flow opens the page, observes the editor, fills it, and validates visible state."
+  "reasoning": "Open the page, observe available elements, fill the editor, and validate the text state."
 }
 ```
 
 ---
 
-## 2. Princípio mais importante
+# 2. Nome recomendado
 
-O LLM pode decidir a sequência, mas não pode executar ação sem contrato.
-
-Regra:
+Use:
 
 ```
-LLM propõe.
-Schema valida.
-Runtime executa.
-Validator prova.
-Evidence registra.
+Single Orchestrator + Typed Tool Queue
 ```
 
-O Orchestrator nunca deve retornar comandos livres como:
+Evitar chamar os componentes de "sub-agentes inteligentes" nesta versão.
+
+Melhor interpretação:
 
 ```
-click on the logout button
-```
-
-Ele deve retornar uma ação tipada:
-
-```json
-{
-  "tool": "actor.click",
-  "params": {
-    "target": {
-      "strategy": "text_any",
-      "texts": ["Sair", "Logout", "Sign out"]
-    }
-  }
-}
+Navigator = macro tool determinística
+Observer = macro tool determinística
+Actor = macro tool determinística
+Validator = macro tool determinística
+Explorer = macro tool determinística
+Orchestrator = único componente LLM
 ```
 
 ---
 
-## 3. Por que isso funciona
+# 3. Princípios
 
-### 3.1 Menos chamadas LLM
+## 3.1 LLM não executa browser
 
-A arquitetura reduz o número de chamadas porque usa um prompt orquestrador para montar o plano inicial.
-
-Mas é importante não prometer "uma única chamada para tudo", porque páginas mudam após cada ação.
-
-Melhor regra:
+O LLM nunca executa:
 
 ```
-1 chamada LLM para plano inicial.
-Nova chamada LLM apenas em replan/falha/contexto novo.
+click
+fill
+type
+navigate
+assert
 ```
 
-### 3.2 Fluxo dinâmico
+Ele apenas retorna uma queue tipada.
 
-O LLM pode escolher granularidade:
+## 3.2 Tools não raciocinam com LLM
 
-```
-tarefa simples → poucos steps
-tarefa complexa → mais observe/validate/replan
-```
-
-### 3.3 Sem grafo fixo de agentes
-
-O código não precisa ter fluxo rígido:
+Cada tool deve ser uma função determinística ou adapter do harness.
 
 ```
-login sempre faz A → B → C
-logout sempre faz X → Y → Z
+navigator.open
+observer.capture
+actor.click
+actor.fill
+validator.state
+explorer.scan
 ```
 
-O LLM escolhe tools disponíveis, mas dentro de um schema fechado.
+## 3.3 Runtime valida estado, não texto livre
 
-### 3.4 Fallback natural
-
-Se uma ação falha:
+A validação deve usar:
 
 ```
-failure context
-→ replan prompt
-→ Explorer/Observer
-→ nova task queue
+ExpectedOutcome
+PlanCondition
+StateValidator
 ```
+
+Não usar regex para inferir intenção.
+
+## 3.4 Fallback honesto
+
+Se a task não puder ser traduzida com confiança:
+
+```
+NO_REGRESSION
+```
+
+Se nem isso for possível:
+
+```
+BLOCKED
+```
+
+Nunca voltar para regex.
 
 ---
 
-## 4. Arquitetura ajustada
+# 4. Arquitetura final
 
 ```
 User Request / RequiredScenario
@@ -212,20 +226,24 @@ LLM returns ToolQueue JSON
         ↓
 ToolQueueSchema validation
         ↓
-ToolQueueExecutor
+ToolQueueToExecutionPlanMapper
         ↓
-QaToolRegistry
+ExecutionPlanSchema validation
         ↓
-Navigator / Observer / Actor / Validator / Explorer
+PlanExecutorService
         ↓
-Evidence + Report + Learning
+EvidenceService
+        ↓
+PRReporterService
+        ↓
+Learning / Graph-lite
 ```
 
 ---
 
-## 5. Tools disponíveis
+# 5. Tools disponíveis
 
-### 5.1 `navigator.open`
+## 5.1 `navigator.open`
 
 Abre uma URL e valida carregamento inicial.
 
@@ -253,9 +271,9 @@ quando task exige navegação
 
 ---
 
-### 5.2 `observer.capture`
+## 5.2 `observer.capture`
 
-Captura estado da página.
+Captura o estado atual da página.
 
 ```ts
 input: {
@@ -276,12 +294,12 @@ output: {
 Regra:
 
 ```
-Nunca agir sem observar antes.
+nunca agir sem observar antes
 ```
 
 ---
 
-### 5.3 `actor.click`
+## 5.3 `actor.click`
 
 Executa click seguro.
 
@@ -295,16 +313,16 @@ input: {
 Regras:
 
 ```
+preferir role/text/label/semanticKey/testId
 não usar coordenadas por padrão
-preferir role/text/label/semanticKey
-usar coordenadas só como último recurso e com evidência
+coordenadas só como último recurso e com evidência
 ```
 
 ---
 
-### 5.4 `actor.fill`
+## 5.4 `actor.fill`
 
-Preenche campo.
+Preenche campo com valor sintético.
 
 ```ts
 input: {
@@ -316,16 +334,16 @@ input: {
 Regras:
 
 ```
-usar valores sintéticos
-não gerar dados pessoais reais
 não gerar CPF/RG/cartão/endereço real
+não gerar dados pessoais reais
+usar safe-test-value quando incerto
 ```
 
 ---
 
-### 5.5 `actor.type`
+## 5.5 `actor.type`
 
-Digita texto em foco atual.
+Digita texto no foco atual.
 
 ```ts
 input: {
@@ -344,9 +362,9 @@ campo onde fill não funciona
 
 ---
 
-### 5.6 `actor.press`
+## 5.6 `actor.press`
 
-Pressiona tecla.
+Pressiona uma tecla.
 
 ```ts
 input: {
@@ -365,7 +383,7 @@ atalhos simples
 
 ---
 
-### 5.7 `validator.state`
+## 5.7 `validator.state`
 
 Valida condição tipada.
 
@@ -390,9 +408,9 @@ console_state
 
 ---
 
-### 5.8 `explorer.scan`
+## 5.8 `explorer.scan`
 
-Explora página quando a ação planejada falha.
+Explora a página quando o fluxo normal falha.
 
 ```ts
 input: {
@@ -408,20 +426,18 @@ input: {
 Uso:
 
 ```
-quando locator não é encontrado
-quando validação falha
-quando a página mudou de forma inesperada
+locator não encontrado
+validação falhou
+estado da página mudou
 ```
 
 ---
 
-## 6. Prompt Orchestrator
+# 6. Prompt Orchestrator
 
-### Estrutura
+## System prompt recomendado
 
 ```
-# SYSTEM: QA Orchestrator
-
 You are the QA Orchestrator.
 
 Your job is to convert a QA task into a typed tool queue.
@@ -429,23 +445,22 @@ Your job is to convert a QA task into a typed tool queue.
 You do not execute browser actions.
 You do not invent unavailable tools.
 You must return JSON only.
-You must use the provided tools.
+You must use only the provided tools.
 You must validate after meaningful actions.
 You must not use regex.
 You must not rely on hardcoded app-specific words.
 You must prefer ExpectedOutcome and PlanCondition.
-
-If you are unsure, choose NO_REGRESSION or request observation/exploration.
+If you are unsure, use NO_REGRESSION or request observation/exploration.
 ```
 
-### Available Tools
+---
 
-O prompt deve listar tools em formato compacto, não muito longo.
+## Tools no prompt
 
-Exemplo:
+Manter compacto:
 
 ```
-Tools:
+Available tools:
 - navigator.open({url})
 - observer.capture({includeScreenshot, includeAccessibilityTree})
 - actor.click({target})
@@ -456,7 +471,9 @@ Tools:
 - explorer.scan({mode})
 ```
 
-### Rules
+---
+
+## Regras no prompt
 
 ```
 1. Start with navigator.open if no page is loaded.
@@ -469,98 +486,199 @@ Tools:
 8. If classification is uncertain, use NO_REGRESSION.
 9. Never output free-form browser commands.
 10. Return JSON only.
+11. Keep the queue short: 3 to 8 steps.
+12. Prefer replanning over producing a giant fragile plan.
 ```
 
 ---
 
-## 7. Schema de saída
+# 7. ToolQueue Schema
+
+## ToolNameSchema
+
+O fallback também deve usar tool tipada, não string livre.
+
+```ts
+export const ToolNameSchema = z.enum([
+  'navigator.open',
+  'observer.capture',
+  'actor.click',
+  'actor.fill',
+  'actor.type',
+  'actor.press',
+  'validator.state',
+  'explorer.scan',
+]);
+```
+
+## ToolQueueSchema
 
 ```ts
 export const ToolQueueSchema = z.object({
   taskQueue: z.array(z.object({
     step: z.number().int().positive(),
-    tool: z.enum([
-      'navigator.open',
-      'observer.capture',
-      'actor.click',
-      'actor.fill',
-      'actor.type',
-      'actor.press',
-      'validator.state',
-      'explorer.scan'
-    ]),
+    tool: ToolNameSchema,
     params: z.record(z.unknown()),
     expectedOutcome: ExpectedOutcomeSchema.optional(),
     fallback: z.object({
-      tool: z.string(),
-      params: z.record(z.unknown())
-    }).optional()
+      tool: ToolNameSchema,
+      params: z.record(z.unknown()),
+    }).optional(),
   })),
-  reasoning: z.string().max(800)
+  reasoning: z.string().max(800),
 });
 ```
 
-Regra:
+## Regras
 
 ```
-Se JSON inválido → reparse/repair uma vez.
-Se continuar inválido → BLOCKED com erro SCHEMA_INVALID.
-```
-
----
-
-## 8. Executor
-
-### `ToolQueueExecutor`
-
-Responsabilidade:
-
-```
-receber taskQueue validada
-executar step a step
-registrar resultado
-acionar replan quando necessário
-coletar evidências
-```
-
-Fluxo:
-
-```
-for step in taskQueue:
-  validate tool exists
-  validate params
-  execute tool
-  record result
-  if step failed:
-     call replan
+JSON inválido → tentar repair uma vez
+JSON ainda inválido → BLOCKED com SCHEMA_INVALID
+tool inexistente → BLOCKED com TOOL_NOT_ALLOWED
+params inválidos → BLOCKED com TOOL_PARAMS_INVALID
 ```
 
 ---
 
-## 9. Replanning
+# 8. ToolQueueToExecutionPlanMapper
 
-Quando falhar:
+## Objetivo
+
+Converter `ToolQueue` validada em `ExecutionPlan`.
+
+Este é o ponto mais importante do desenho.
 
 ```
-failure context
-+ last observation
-+ executed steps
-+ failed step
-+ error
-→ LLM replan prompt
+ToolQueue não executa.
+ToolQueue vira ExecutionPlan.
+ExecutionPlan é executado pelo PlanExecutorService.
 ```
 
-O replan não deve retornar o plano inteiro sempre. Melhor retornar:
+## Arquivo sugerido
+
+```
+src/application/services/tool-queue-to-execution-plan.mapper.ts
+```
+
+## Responsabilidade
+
+```
+receber ToolQueue validada
+converter cada tool em step de ExecutionPlan
+preservar expectedOutcome
+preservar fallback
+preservar metadata para evidence/report
+validar resultado com ExecutionPlanSchema
+```
+
+## Interface sugerida
+
+```ts
+class ToolQueueToExecutionPlanMapper {
+  map(input: {
+    queue: ToolQueue;
+    config: RunConfig;
+    scenarioId?: string;
+  }): ExecutionPlan;
+}
+```
+
+## Regras de mapeamento
+
+### `navigator.open`
+
+Vira step com ação de navegação.
+
+### `observer.capture`
+
+Vira step de observação ou metadata de evidência, conforme o modelo atual.
+
+### `actor.click`
+
+Vira step de action click.
+
+### `actor.fill`
+
+Vira step de action fill.
+
+### `actor.type`
+
+Vira step de action type.
+
+### `actor.press`
+
+Vira step de action press.
+
+### `validator.state`
+
+Vira postcondition ou assertion tipada.
+
+### `explorer.scan`
+
+Vira step exploratório controlado, nunca ação livre.
+
+## Critérios de aceite
+
+- ToolQueue válida vira ExecutionPlan válido.
+- ExecutionPlanSchema valida o resultado.
+- PlanExecutorService executa o plano.
+- Não existe browser execution dentro do mapper.
+- Não existe LLM call dentro do mapper.
+- Não existe regex no mapper.
+- Fallbacks são preservados com tools tipadas.
+
+---
+
+# 9. Replanning
+
+## Quando replanejar
+
+Replan deve ocorrer quando:
+
+```
+locator não encontrado
+action falhou
+validator falhou
+schema da queue inicial não cobriu o estado atual
+explorer encontrou novo contexto útil
+```
+
+## Replan prompt
+
+Entrada:
+
+```
+task original
+ExpectedOutcome
+última observation
+steps executados
+step que falhou
+erro sanitizado
+evidências disponíveis
+```
+
+## Saída esperada
+
+Não retornar sempre o plano inteiro. Preferir plano incremental:
 
 ```json
 {
   "action": "replace_remaining_steps",
   "fromStep": 4,
-  "taskQueue": [...]
+  "taskQueue": [
+    {
+      "step": 4,
+      "tool": "explorer.scan",
+      "params": {
+        "mode": "scan_inputs"
+      }
+    }
+  ],
+  "reasoning": "The previous textbox locator failed, so scan inputs before choosing a new target."
 }
 ```
 
-Ou:
+Ou abort:
 
 ```json
 {
@@ -569,28 +687,40 @@ Ou:
 }
 ```
 
+## Regras
+
+```
+máximo de replans por scenario
+máximo de falhas por step
+sem loop infinito
+falha repetida → BLOCKED
+```
+
 ---
 
-## 10. Plano inteiro vs plano incremental
+# 10. Plano inicial curto
 
-O plano inicial: LLM monta uma queue curta.
-Durante execução: replan apenas quando houver falha ou estado novo importante.
+Evitar queue gigante.
 
-Tamanho recomendado:
+Regra:
 
 ```
 3 a 8 steps por queue
 ```
 
-Evitar plano gigante com 30 steps, porque fica frágil.
+Motivo:
+
+```
+browser muda estado após cada ação
+plano longo fica frágil
+replan incremental é mais confiável
+```
 
 ---
 
-## 11. Integração com arquitetura atual
+# 11. Integração com arquitetura atual
 
-### Reutilizar o que já existe
-
-Este plano deve reutilizar:
+## Reutilizar
 
 ```
 QaToolRegistry
@@ -601,45 +731,47 @@ StateContractTranslatorService
 LocatorResolverService
 EvidenceService
 PRReporterService
+Graph-lite futuramente
 ```
 
-Não criar um runtime paralelo se o atual já executa `ExecutionPlan`.
-
-### Caminho recomendado
-
-Converter `ToolQueue` em `ExecutionPlan`.
+## Não criar
 
 ```
-LLM ToolQueue
-→ ToolQueueToExecutionPlanMapper
-→ PlanExecutorService
+runtime paralelo
+tool executor separado completo
+multiagente com vários prompts
+sub-agentes LLM independentes
 ```
-
-Assim evita dois executores diferentes.
 
 ---
 
-## 12. Fallback honesto
+# 12. Fallback honesto
 
-Se o Orchestrator não conseguir montar plano confiável:
+Se não houver plano confiável:
 
 ```
 NO_REGRESSION
 ```
 
-Se nem `NO_REGRESSION` puder rodar:
+Se nem `NO_REGRESSION` for possível:
 
 ```
 BLOCKED
 ```
 
-Nunca usar regex para tentar adivinhar intenção.
+Regras:
+
+```
+nunca usar regex para inferir intenção
+nunca fingir cobertura específica
+nunca marcar PASS completo quando só rodou fallback
+```
 
 ---
 
-## 13. Graph-lite como enriquecimento futuro
+# 13. Graph-lite como enriquecimento futuro
 
-O prompt pode receber contexto do graph-lite:
+O Orchestrator pode receber contexto do graph-lite:
 
 ```
 Known aliases:
@@ -650,9 +782,9 @@ Known locators:
 - logout-button worked 3 times
 ```
 
-Mas o graph-lite não deve ser obrigatório.
+Mas graph-lite deve ser opcional.
 
-Ordem:
+Ordem de prioridade:
 
 ```
 config.semanticAliases
@@ -663,14 +795,15 @@ config.semanticAliases
 
 ---
 
-## 14. Fases de implementação
+# 14. Fases de implementação
 
-### Fase 1 — Schema + Prompt Builder
+## Fase 1 — Prompt Builder + Schema
 
 Criar:
 
 ```
 SingleOrchestratorPromptBuilder
+ToolNameSchema
 ToolQueueSchema
 ToolQueueRepairService
 ```
@@ -679,15 +812,17 @@ Critérios:
 
 ```
 prompt gera JSON válido
-JSON inválido vira BLOCKED/repair
+schema bloqueia tool inexistente
+fallback.tool também é tipado
+JSON inválido tenta repair uma vez
 sem execução ainda
 ```
 
 ---
 
-### Fase 2 — Tool Registry
+## Fase 2 — Tool Definitions
 
-Criar ou mapear tools:
+Mapear tools existentes ou criar adapters:
 
 ```
 navigator.open
@@ -703,44 +838,40 @@ explorer.scan
 Critérios:
 
 ```
-todas as tools têm schema
-todas retornam SubAgentResult/ToolResult
+todas as tools têm input schema
+todas retornam resultado tipado
 nenhuma tool chama LLM
+nenhuma tool interpreta intenção por regex
 ```
 
 ---
 
-### Fase 3 — Queue Executor
+## Fase 3 — ToolQueueToExecutionPlanMapper
 
 Criar:
 
 ```
-ToolQueueExecutor
-```
-
-ou mapear para:
-
-```
-ExecutionPlan
+ToolQueueToExecutionPlanMapper
 ```
 
 Critérios:
 
 ```
-executa queue validada
-observa antes de agir
-valida após ação
-registra evidências
+ToolQueue vira ExecutionPlan válido
+ExecutionPlanSchema valida o resultado
+PlanExecutorService continua único executor
+não criar runtime paralelo
 ```
 
 ---
 
-### Fase 4 — Replanning
+## Fase 4 — Replanning
 
 Criar:
 
 ```
 OrchestratorReplanService
+ReplanQueueSchema
 ```
 
 Critérios:
@@ -748,12 +879,13 @@ Critérios:
 ```
 falha de locator aciona observe/explorer
 falha repetida vira BLOCKED
-replan não perde histórico
+replan preserva histórico
+não entra em loop infinito
 ```
 
 ---
 
-### Fase 5 — Relatório
+## Fase 5 — Reports e Evidence
 
 Integrar com:
 
@@ -772,23 +904,64 @@ Critérios:
 cada step executado aparece no report
 falhas de tool aparecem como block ou bug
 evidências são linkadas
+fallback aparece como cobertura limitada
 ```
 
 ---
 
-## 15. Critérios de aceite finais
+# 15. Testes
+
+## Unit tests
+
+```
+ToolQueueSchema rejeita tool inválida
+ToolQueueSchema rejeita fallback.tool inválido
+PromptBuilder inclui tools e regras
+Mapper converte navigator.open
+Mapper converte actor.click
+Mapper converte validator.state
+Mapper não chama browser
+Mapper não chama LLM
+```
+
+## Integration tests
+
+```
+fixture sintética fora do MeshaMail
+task simples de navegação
+task de preenchimento em contenteditable
+falha de locator aciona explorer
+replan gera nova queue
+fallback NO_REGRESSION quando classificação falha
+```
+
+## Regression tests
+
+```
+não quebra ExecutionPlan atual
+não quebra PlanExecutorService atual
+não quebra PRReporter
+não reintroduz regex de intenção
+```
+
+---
+
+# 16. Critérios de aceite finais
 
 A arquitetura estará pronta quando:
 
-* Um único prompt orquestrador conseguir gerar `ToolQueue` válida.
-* A queue for validada por schema.
-* Nenhuma ação for executada sem observation anterior.
-* Toda ação relevante tiver validator depois.
-* Falha de locator gerar replan/explorer.
-* Falha repetida gerar `BLOCKED`, não loop infinito.
-* Nenhum regex for usado para inferir intenção.
-* O runtime continuar baseado em contrato tipado.
-* Evidências forem registradas.
-* O PR report mostrar steps, bugs, blocks e evidências.
-* O fluxo funcionar em fixture sintética fora do MeshaMail.
-
+- Um único prompt orquestrador gerar `ToolQueue` válida.
+- A queue for validada por schema.
+- `fallback.tool` for tipado.
+- `ToolQueue` for convertida para `ExecutionPlan`.
+- `ExecutionPlanSchema` validar o plano convertido.
+- `PlanExecutorService` continuar sendo o executor oficial.
+- Nenhuma ação for executada sem observation anterior quando aplicável.
+- Toda ação relevante tiver validator depois.
+- Falha de locator gerar replan/explorer.
+- Falha repetida gerar `BLOCKED`.
+- Nenhum regex for usado para inferir intenção.
+- O runtime continuar baseado em contrato tipado.
+- Evidências forem registradas.
+- O PR report mostrar steps, bugs, blocks, fallback e evidências.
+- O fluxo funcionar em fixture sintética fora do MeshaMail.
