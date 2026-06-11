@@ -5,6 +5,7 @@ import {
   classifyError,
   classifyPreflightReport,
   classifyResult,
+  mostSevereExitCode,
 } from '../src/interfaces/cli/exit-codes.js';
 import {
   ConfigError,
@@ -132,5 +133,33 @@ describe('CLI exit codes', () => {
     expect(classifyCorrelationResult(createBlockedCorrelationResult('missing token'))).toBe(
       ExitCodes.PREFLIGHT_BLOCKED,
     );
+  });
+
+  it('mostSevereExitCode returns OK for empty list', () => {
+    expect(mostSevereExitCode([])).toBe(ExitCodes.OK);
+  });
+
+  it('mostSevereExitCode prefers BUGS_FOUND over CONFIG_ERROR', () => {
+    expect(mostSevereExitCode([ExitCodes.OK, ExitCodes.CONFIG_ERROR, ExitCodes.BUGS_FOUND])).toBe(
+      ExitCodes.BUGS_FOUND,
+    );
+  });
+
+  it('mostSevereExitCode prefers PREFLIGHT_BLOCKED over BUGS_FOUND', () => {
+    expect(mostSevereExitCode([ExitCodes.BUGS_FOUND, ExitCodes.PREFLIGHT_BLOCKED])).toBe(
+      ExitCodes.PREFLIGHT_BLOCKED,
+    );
+  });
+
+  it('mostSevereExitCode prefers HARNESS_FATAL over all others', () => {
+    expect(
+      mostSevereExitCode([
+        ExitCodes.OK,
+        ExitCodes.CONFIG_ERROR,
+        ExitCodes.BUGS_FOUND,
+        ExitCodes.PREFLIGHT_BLOCKED,
+        ExitCodes.HARNESS_FATAL,
+      ]),
+    ).toBe(ExitCodes.HARNESS_FATAL);
   });
 });

@@ -140,6 +140,28 @@ program
 
 const pipeline = program.command('pipeline').description('Pipeline orchestration commands');
 
+import { formatPipelineAllSummary } from './application/helpers/format-pipeline-all-summary.js';
+
+pipeline
+  .command('all')
+  .description('Run full QA pipeline with fail-fast gates (prepare→correlate→risk→generate-plan→execute→report→learning→promote-learning)')
+  .option('--output-dir <path>', 'pipeline artifacts directory', './.agent-qa/pipeline')
+  .option('--config <path>', 'config path', './agent-qa.config.json')
+  .option('--project-dir <path>', 'project root', process.cwd())
+  .action(async (opts) => {
+    try {
+      const result = await withApp((c) =>
+        c.pipelineAll(opts.outputDir, opts.config, opts.projectDir),
+      );
+      console.log(JSON.stringify(result, null, 2));
+      console.log(formatPipelineAllSummary(result));
+      process.exitCode = result.exitCode;
+    } catch (err) {
+      console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err), kind: err instanceof Error ? err.constructor.name : 'Error' }, null, 2));
+      process.exitCode = classifyError(err);
+    }
+  });
+
 pipeline
   .command('prepare')
   .description('Run preflight checks then read PR diff context into the pipeline output dir')

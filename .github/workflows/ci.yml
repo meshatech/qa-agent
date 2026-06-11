@@ -78,6 +78,8 @@ jobs:
         run: docker run --rm qa-agent:ci qa-agent --version
       - name: pipeline help
         run: docker run --rm qa-agent:ci qa-agent pipeline --help
+      - name: pipeline all help
+        run: docker run --rm qa-agent:ci qa-agent pipeline all --help
       - name: validate-config (fixture, fake LLM)
         run: |
           docker run --rm \

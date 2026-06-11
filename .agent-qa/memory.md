@@ -1,5 +1,14 @@
 # Memória do Projeto — qa-agent fixture
 
+## Pipeline all (comando agregado)
+
+<!-- type: flow | id: pipeline-all -->
+- **Comando**: `qa-agent pipeline all --config ./agent-qa.config.json`
+- **Sequência**: prepare → correlate → generate-plan → execute → report → learning → promote-learning (`--auto-approve`)
+- **Gates**: prepare/correlate BLOCKED → para pipeline, comenta no PR (se `GITHUB_REPOSITORY` + PR number + token), exit 6
+- **Exit final**: mais severo entre etapas (`mostSevereExitCode`); learning/promote 0-count = OK
+- **Log**: JSON `steps[]` + linha `[pipeline all] prepare=OK correlate=OK …`
+
 ## Distribuição Docker (release)
 
 <!-- type: project | id: docker-release -->
@@ -39,3 +48,14 @@
 - **Impacto**: exposição de credencial no histórico permanente do repositório até purge + rotação
 - **Mitigação atual**: `.gitignore` (`*-auth.json`, `meshamail-auth.json`); auth de run via env (`MESHA_EMAIL`, `MESHA_PASSWORD`) e sessão efêmera `{runDir}/.auth/storage-state.json`
 - **Pendente**: commit da remoção, purge de histórico, rotação da credencial — ver `.cursor/memory/decisions.md`
+
+
+## Execution plan used fallback
+
+<!-- type: runtime_learning | id: LC-AGENT-QA-PIPELINE-ALL-E2E-GSR895-1781211056418-PLAN-FALLBACK -->
+- **Description**: Execution plan used fallback
+- **Content**: LLM buildPlan returned semantically unsafe ExecutionPlan: plan steps must preserve scenarioId/taskId from scenarioCatalog
+- **Source**: confirmed
+- **Confidence**: 0.9
+- **Risk**: low
+- **Generated**: 2026-06-11T20:50:56.419Z
