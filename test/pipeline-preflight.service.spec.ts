@@ -20,6 +20,7 @@ import { FileConfigLoader } from '../src/infra/config/file-config.loader.js';
 import { FilePreflightReportWriterAdapter } from '../src/infra/persistence/file-preflight-report-writer.adapter.js';
 import { FileGitHubEventContextAdapter } from '../src/infra/github/file-github-event-context.adapter.js';
 import * as githubPrContextMapper from '../src/infra/github/github-actions-pr-context.mapper.js';
+import { clearCiInjectedEnv } from './helpers/ci-env-isolation.js';
 
 let tempDirs: string[] = [];
 let originalEnv: NodeJS.ProcessEnv;
@@ -33,6 +34,7 @@ const VALID_CONFIG = {
 
 beforeEach(() => {
   originalEnv = { ...process.env };
+  clearCiInjectedEnv();
 });
 
 afterEach(async () => {

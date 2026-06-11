@@ -4,12 +4,14 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import { FileGitHubEventContextAdapter } from '../src/infra/github/file-github-event-context.adapter.js';
+import { clearCiInjectedEnv } from './helpers/ci-env-isolation.js';
 
 let tempDirs: string[] = [];
 let originalEnv: NodeJS.ProcessEnv;
 
 beforeEach(() => {
   originalEnv = { ...process.env };
+  clearCiInjectedEnv();
 });
 
 afterEach(async () => {

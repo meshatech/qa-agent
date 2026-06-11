@@ -6,6 +6,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 PLAYWRIGHT_IMAGE="${CI_PLAYWRIGHT_IMAGE:-mcr.microsoft.com/playwright:v1.60.0-noble}"
+NODE_IMAGE="${CI_NODE_IMAGE:-node:22-bookworm-slim}"
 RELEASE_TAG="${CI_RELEASE_TAG:-qa-agent:ci}"
 
 step() {
@@ -15,24 +16,37 @@ step() {
   echo "════════════════════════════════════════════════════════════"
 }
 
-step "job: check (container ${PLAYWRIGHT_IMAGE})"
-# Isolated node_modules volume — avoids root-owned files on the host workspace
-# (GitHub Actions gets a fresh checkout per job; locally we must not pollute node_modules).
+run_in_node_volume() {
+  local label="$1"
+  shift
+  step "job: ${label}"
+  docker run --rm \
+    -v "${ROOT}:/work" \
+    -v "qa-agent-ci-${label}-node-modules:/work/node_modules" \
+    -w /work \
+    "${NODE_IMAGE}" \
+    bash -lc "npm ci --no-audit --no-fund && $*"
+}
+
+run_in_node_volume typecheck npm run typecheck
+run_in_node_volume lint npm run lint
+
+step "job: test (container ${PLAYWRIGHT_IMAGE})"
 docker run --rm \
   -v "${ROOT}:/work" \
-  -v qa-agent-ci-node-modules:/work/node_modules \
+  -v qa-agent-ci-test-node-modules:/work/node_modules \
   -w /work \
   "${PLAYWRIGHT_IMAGE}" \
-  bash -lc 'npm ci --no-audit --no-fund && npm run check'
+  bash -lc 'npm ci --no-audit --no-fund && npm test'
+
+run_in_node_volume validate-agent-config npm run validate:agent-config
 
 step "job: docker-smoke (npm ci + build)"
-# CI gets a fresh checkout; locally we build in an isolated node_modules volume so a
-# prior root-owned node_modules on the host cannot break the simulation.
 docker run --rm \
   -v "${ROOT}:/work" \
   -v qa-agent-smoke-node-modules:/work/node_modules \
   -w /work \
-  node:22-bookworm-slim \
+  "${NODE_IMAGE}" \
   bash -lc 'npm ci --no-audit --no-fund && npm run build'
 
 step "job: docker-smoke (image + CLI checks)"
