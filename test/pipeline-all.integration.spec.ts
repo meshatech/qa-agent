@@ -230,6 +230,7 @@ describe('Pipeline all E2E', () => {
         expect(result.steps.map((step) => step.name)).toEqual([
           'prepare',
           'correlate',
+          'risk',
           'generate-plan',
           'execute',
           'report',

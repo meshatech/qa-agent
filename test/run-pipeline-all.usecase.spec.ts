@@ -58,6 +58,7 @@ afterEach(() => {
 function makeUseCase(overrides: {
   prepare?: { execute: ReturnType<typeof vi.fn> };
   correlate?: { execute: ReturnType<typeof vi.fn> };
+  risk?: { execute: ReturnType<typeof vi.fn> };
   generatePlan?: { execute: ReturnType<typeof vi.fn> };
   execute?: { execute: ReturnType<typeof vi.fn> };
   report?: { execute: ReturnType<typeof vi.fn> };
@@ -74,6 +75,13 @@ function makeUseCase(overrides: {
     tokensMasked: true,
   });
   const correlateExecute = overrides.correlate?.execute ?? vi.fn().mockResolvedValue(okCorrelation);
+  const riskExecute = overrides.risk?.execute ?? vi.fn().mockResolvedValue({
+    riskScorePath: '/tmp/pipeline/risk-score.json',
+    value: 0.3,
+    level: 'LOW',
+    factorCount: 2,
+    explanation: 'Low risk',
+  });
   const generatePlanExecute = overrides.generatePlan?.execute ?? vi.fn().mockResolvedValue({
     executionPlanPath: '/tmp/pipeline/execution-plan.json',
     qualityAudit: {
@@ -126,6 +134,7 @@ function makeUseCase(overrides: {
   const useCase = new RunPipelineAllUseCase(
     { execute: prepareExecute } as never,
     { execute: correlateExecute } as never,
+    { execute: riskExecute } as never,
     { execute: generatePlanExecute } as never,
     { execute: executeExecute } as never,
     { execute: reportExecute } as never,
@@ -139,6 +148,7 @@ function makeUseCase(overrides: {
     useCase,
     prepareExecute,
     correlateExecute,
+    riskExecute,
     generatePlanExecute,
     executeExecute,
     reportExecute,
@@ -156,7 +166,7 @@ describe('RunPipelineAllUseCase', () => {
     const result = await useCase.execute('/tmp/pipeline', { configPath: './agent-qa.config.json' });
 
     expect(result.exitCode).toBe(ExitCodes.OK);
-    expect(result.steps).toHaveLength(7);
+    expect(result.steps).toHaveLength(8);
     expect(result.steps.every((step) => step.status === 'OK')).toBe(true);
     expect(result.blockedAt).toBeUndefined();
     expect(result.commentPosted).toBeUndefined();

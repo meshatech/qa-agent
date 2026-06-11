@@ -1,0 +1,70 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    name: Build and push Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build
+        run: npm run build
+
+      - name: Extract tag
+        id: meta
+        run: |
+          TAG=${GITHUB_REF_NAME}
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          # Extract v2 from v2.0.0 for the major tag
+          MAJOR=$(echo "$TAG" | cut -d. -f1)
+          echo "major=${MAJOR}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/mesha/qa-agent:${{ steps.meta.outputs.tag }}
+            ghcr.io/mesha/qa-agent:${{ steps.meta.outputs.major }}
+            ghcr.io/mesha/qa-agent:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify image
+        run: |
+          docker pull ghcr.io/mesha/qa-agent:${{ steps.meta.outputs.tag }}
+          docker run --rm ghcr.io/mesha/qa-agent:${{ steps.meta.outputs.tag }} qa-agent --version

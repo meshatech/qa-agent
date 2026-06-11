@@ -19,6 +19,7 @@ import { RunPipelineLearningUseCase } from './run-pipeline-learning.usecase.js';
 import { RunPipelinePrepareUseCase } from './run-pipeline-prepare.usecase.js';
 import { RunPipelinePromoteLearningUseCase } from './run-pipeline-promote-learning.usecase.js';
 import { RunPipelineReportUseCase } from './run-pipeline-report.usecase.js';
+import { RunPipelineRiskUseCase } from './run-pipeline-risk.usecase.js';
 import { describePreflightBlockedMessage } from '../helpers/describe-preflight-blocked-message.js';
 
 @Injectable()
@@ -26,6 +27,7 @@ export class RunPipelineAllUseCase {
   constructor(
     @Inject(RunPipelinePrepareUseCase) private readonly prepare: RunPipelinePrepareUseCase,
     @Inject(RunPipelineCorrelateUseCase) private readonly correlate: RunPipelineCorrelateUseCase,
+    @Inject(RunPipelineRiskUseCase) private readonly risk: RunPipelineRiskUseCase,
     @Inject(RunPipelineGeneratePlanUseCase) private readonly generatePlan: RunPipelineGeneratePlanUseCase,
     @Inject(RunPipelineExecuteUseCase) private readonly pipelineExecute: RunPipelineExecuteUseCase,
     @Inject(RunPipelineReportUseCase) private readonly report: RunPipelineReportUseCase,
@@ -86,6 +88,11 @@ export class RunPipelineAllUseCase {
       steps.push(this.recordStep('correlate', this.toStepStatus(exitCode), exitCode, this.errorMessage(err)));
       return this.finish(steps);
     }
+
+    await this.runStep(steps, 'risk', async () => {
+      await this.risk.execute(outputDir, { projectPath });
+      return ExitCodes.OK;
+    });
 
     await this.runStep(steps, 'generate-plan', async () => {
       const result = await this.generatePlan.execute(outputDir, { configPath, projectPath });
