@@ -169,11 +169,27 @@ export class GroqDecisionProvider implements DecisionProviderPort {
     return this.abortEnvelope(input, lastError);
   }
 
+  async orchestrator(input: import('../../application/ports/decision-provider.port.js').OrchestratorInput): Promise<string> {
+    const key = process.env[input.config.llm.apiKeyEnv];
+    if (!key) throw new Error(`Missing env ${input.config.llm.apiKeyEnv}`);
+    const json = await this.chatJson(input.config, key, 'orchestrator', {
+      model: input.config.llm.model,
+      temperature: input.config.llm.temperature,
+      max_tokens: input.config.llm.maxTokens,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: input.systemPrompt },
+        { role: 'user', content: input.userMessage },
+      ],
+    });
+    return json.choices[0]?.message.content ?? '{}';
+  }
+
   stats() {
     return { calls: this.calls, wrappers: this.wrappers.slice(-20), breakdown: { ...this.callCounts } };
   }
 
-  private async chatJson(config: RunConfig, key: string, kind: 'plan' | 'decision' | 'execution-plan' | 'replan' | 'classify-outcome', body: unknown): Promise<GroqChatResponse> {
+  private async chatJson(config: RunConfig, key: string, kind: 'plan' | 'decision' | 'execution-plan' | 'replan' | 'classify-outcome' | 'orchestrator', body: unknown): Promise<GroqChatResponse> {
     let lastError = '';
     for (let attempt = 0; attempt <= config.llm.rateLimitRetries; attempt++) {
       this.calls++;

@@ -2,6 +2,25 @@
 
 > Log de decisões sobre configuração Cursor/agente. Estabilidade média — atualizar quando houver mudança de política.
 
+## 2026-06 — Known security gap (MESHAP-3975, documentado — sem purge)
+
+- **`meshamail-auth.json`** foi removido do índice (`git rm --cached`) e está no `.gitignore`, mas **ainda existe em `HEAD` e no histórico** (ex.: commit `b3452b1`) até um commit de remoção + eventual purge
+- `git rm --cached` **não** apaga o histórico permanente — credencial pode permanecer exposta em clones antigos
+- **Pendências futuras** (fora do escopo atual): (a) commitar a remoção definitiva, (b) purgar histórico (`git filter-repo` / BFG, reescrita destrutiva + force-push), (c) rotacionar credencial exposta
+- Nunca armazenar tokens/senhas literais em memory files ou configs versionados
+
+## 2026-06 — G9 Tool Queue (MESHAP-3975)
+
+- **Tool Queue** (`runtime.tools.enabled`) permanece **opt-in** com default `false`
+- Caminho canônico da v2: `HYBRID_GUARDED` + factory fallback
+- Branch `feature/sub-agent-orchestrator` contém o código; merge para main é decisão operacional separada
+
+## 2026-06 — URL dinâmica em CI (MESHAP-3975)
+
+- **`QA_AGENT_BASE_URL`** tem precedência sobre `config.baseUrl` após parse Zod
+- **`QA_AGENT_PREVIEW_DOMAIN`** (ex. `*.preview.meshamail.dev`) injeta o domínio base (sem `*.`) em `appDomains`
+- Helper central: `src/application/helpers/apply-base-url-override.ts`
+
 ## 2026-05 — Configuração inicial `.cursor/`
 
 - **Rules em inglês**, memory files em **português**

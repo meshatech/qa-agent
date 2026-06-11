@@ -63,7 +63,7 @@ describe('qa.memory.search', () => {
     const registry = new QaToolRegistry([SearchProjectMemoryTool]);
 
     const result = await registry.execute('search_project_memory', {
-      query: 'login',
+      query: 'smoke',
       projectPath: process.cwd(),
       limit: 2,
     }, {});

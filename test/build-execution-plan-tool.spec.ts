@@ -8,6 +8,8 @@ import { QaToolRegistry } from '../src/application/tools/qa-tool-registry.js';
 import type { QaScenario } from '../src/domain/models/run.model.js';
 import { RunConfigSchema } from '../src/domain/schemas/config.schema.js';
 
+const fakeCache = { async get() { return undefined; }, async set() {} } as unknown as import('../src/application/ports/plan-cache.port.js').PlanCachePort;
+
 const config = RunConfigSchema.parse({
   baseUrl: 'https://app.local',
   appDomains: ['app.local'],
@@ -150,7 +152,7 @@ describe('qa.plan.build', () => {
       async decide() { throw new Error('not used'); },
     };
     const stubOutcomeResolver = { async resolve() { return { kind: 'NO_REGRESSION' as const, description: 'x' }; } } as unknown as import('../src/application/services/expected-outcome-resolver.service.js').ExpectedOutcomeResolverService;
-    const planner = new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver));
+    const planner = new ExecutionPlanPlannerService(provider, new ExecutionPlanFactoryService(stubOutcomeResolver), fakeCache);
     const registry = new QaToolRegistry([PlanBuildTool]);
 
     await expect(registry.execute('qa.plan.build', { config, scenarios }, {

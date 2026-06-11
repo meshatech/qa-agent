@@ -3,6 +3,7 @@ import { ZodError } from 'zod';
 import type { ConfigLoaderPort } from '../ports/config-loader.port.js';
 import { RunConfigSchema, type RunConfig } from '../../domain/schemas/config.schema.js';
 import { ConfigError } from '../../domain/errors.js';
+import { applyBaseUrlOverride } from '../helpers/apply-base-url-override.js';
 
 @Injectable()
 export class ValidateConfigUseCase {
@@ -18,6 +19,7 @@ export class ValidateConfigUseCase {
     let config: RunConfig;
     try {
       config = RunConfigSchema.parse(raw);
+      config = applyBaseUrlOverride(config);
     } catch (error) {
       throw new ConfigError(error instanceof ZodError ? error.message : String(error), error);
     }

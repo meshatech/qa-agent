@@ -50,6 +50,30 @@ describe('ElementAvailabilityResolver', () => {
     expect(result.reason).toBe('FOUND_AFTER_OPEN_CONTAINER');
   });
 
+  it('uses target directly when it is already visible in the open menu', async () => {
+    const current = obs(true);
+    const locators = new LocatorResolverService();
+    locators.rebuild(current);
+    const browser: Partial<BrowserHarnessPort> = {
+      async execute() { throw new Error('should not open container'); },
+      async waitForQuiescence() { return { stable: true, reason: 'NETWORK_AND_DOM_IDLE', elapsedMs: 1 }; },
+      async observe() { return current; },
+    };
+    const result = await new ElementAvailabilityResolver(browser as BrowserHarnessPort, locators).ensureAvailable({
+      target: { strategy: 'text_any', texts: ['Sair', 'Logout'] },
+      observation: current,
+      config,
+      policy: {
+        enabled: true,
+        maxOpenAttempts: 1,
+        allowedContainers: [{ semanticKey: 'account_menu', openAction: { type: 'click', target: { strategy: 'role', role: 'button', name: 'Conta e opções' }, reason: 'open menu' } }],
+      },
+    });
+
+    expect(result.available).toBe(true);
+    expect(result.reason).toBe('FOUND_DIRECTLY');
+  });
+
   it('does not open containers when policy is disabled', async () => {
     const current = obs(false);
     const locators = new LocatorResolverService();

@@ -124,6 +124,18 @@ export class OpenAiLangChainDecisionProvider implements DecisionProviderPort {
     return items.map((item, index) => this.parseOutcome(item, tasks[index]!));
   }
 
+  async orchestrator(input: import('../../application/ports/decision-provider.port.js').OrchestratorInput): Promise<string> {
+    const apiKey = process.env[input.config.llm.apiKeyEnv];
+    if (!apiKey) throw new Error(`Missing env ${input.config.llm.apiKeyEnv}`);
+    this.calls++;
+    const model = this.model(input.config, apiKey);
+    const res = await model.invoke([
+      ['system', input.systemPrompt],
+      ['user', input.userMessage],
+    ]);
+    return this.extractContent(res.content);
+  }
+
   stats() {
     return { calls: this.calls, wrappers: this.wrappers.slice(-20), breakdown: { ...this.callCounts } };
   }

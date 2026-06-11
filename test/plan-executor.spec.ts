@@ -34,24 +34,25 @@ const config = RunConfigSchema.parse({ baseUrl: 'https://app.local', appDomains:
 
 const fakeDecision = { async decide() { return { action: { type: 'waitForStable', reason: 'fallback' }, expected_after_action: { type: 'no_console_errors' }, fallback_action: { type: 'waitForStable', reason: 'fallback' }, confidence: 0.5, thought_summary: 'fallback', observationId: 'obs_1', schemaVersion: 'action.v1' } as import('../src/domain/schemas/action.schema.js').QaActionEnvelope; } } as unknown as import('../src/application/ports/decision-provider.port.js').DecisionProviderPort;
 
+const fakeNetworkValidator = { validate() { return undefined; } } as unknown as import('../src/application/services/network-state-validator.service.js').NetworkStateValidatorService;
 function executor(browser: BrowserHarnessPort): PlanExecutorService {
   const recovery = new RecoveryPolicyService(browser);
   const replanner = { replan: async () => { throw new Error('no replanner in unit test'); } } as unknown as PlanReplannerService;
   const locators = new LocatorResolverService();
-  return new PlanExecutorService(browser, locators, new DataHarnessService(), new ActionPolicyService(), new ElementAvailabilityResolver(browser, locators), recovery, new TaskMemoryService(), replanner, fakeDecision);
+  return new PlanExecutorService(browser, locators, new DataHarnessService(), new ActionPolicyService(), new ElementAvailabilityResolver(browser, locators), recovery, new TaskMemoryService(), replanner, fakeDecision, fakeNetworkValidator);
 }
 
 function executorWithReplanner(browser: BrowserHarnessPort, replanner: PlanReplannerService): PlanExecutorService {
   const recovery = new RecoveryPolicyService(browser);
   const locators = new LocatorResolverService();
-  return new PlanExecutorService(browser, locators, new DataHarnessService(), new ActionPolicyService(), new ElementAvailabilityResolver(browser, locators), recovery, new TaskMemoryService(), replanner, fakeDecision);
+  return new PlanExecutorService(browser, locators, new DataHarnessService(), new ActionPolicyService(), new ElementAvailabilityResolver(browser, locators), recovery, new TaskMemoryService(), replanner, fakeDecision, fakeNetworkValidator);
 }
 
 function executorWithDecision(browser: BrowserHarnessPort, decision: DecisionProviderPort): PlanExecutorService {
   const recovery = new RecoveryPolicyService(browser);
   const replanner = { replan: async () => { throw new Error('no replanner in unit test'); } } as unknown as PlanReplannerService;
   const locators = new LocatorResolverService();
-  return new PlanExecutorService(browser, locators, new DataHarnessService(), new ActionPolicyService(), new ElementAvailabilityResolver(browser, locators), recovery, new TaskMemoryService(), replanner, decision);
+  return new PlanExecutorService(browser, locators, new DataHarnessService(), new ActionPolicyService(), new ElementAvailabilityResolver(browser, locators), recovery, new TaskMemoryService(), replanner, decision, fakeNetworkValidator);
 }
 
 describe('PlanExecutorService', () => {
@@ -328,7 +329,21 @@ describe('PlanExecutorService', () => {
   });
 
   it('uses decision provider fallback when a locator cannot be resolved', async () => {
-    let current = obs(['Fallback target']);
+    let current: ScreenObservation = {
+      observationId: 'obs-fallback',
+      createdAt: new Date().toISOString(),
+      url: 'https://app.local/',
+      title: 'App',
+      visibleTexts: ['Fallback target'],
+      elements: [
+        { id: 'el_001', role: 'button', name: 'Salvar', inViewport: false, locator: { strategy: 'role', role: 'button', name: 'Salvar' } },
+        { id: 'el_002', role: 'textbox', name: 'Nome', inViewport: false, locator: { strategy: 'label', text: 'Nome' } },
+      ],
+      pageState: { isLoading: false, hasModal: false, hasToast: false, hasValidationErrors: false },
+      consoleSignals: [],
+      networkSignals: [],
+      meta: { viewport: { width: 1280, height: 720 }, schemaVersion: 'obs.v1' },
+    };
     const actions: QaAction[] = [];
     const decide = vi.fn(async () => ({
       schemaVersion: 'action.v1' as const,
@@ -344,7 +359,7 @@ describe('PlanExecutorService', () => {
       async observe() { return current; },
       async execute(action) {
         actions.push(action);
-        current = obs(['Fallback clicked']);
+        current = { ...current, visibleTexts: ['Fallback clicked'] };
         return { ok: true, actionType: action.type, durationMs: 1 };
       },
       async waitForQuiescence() {

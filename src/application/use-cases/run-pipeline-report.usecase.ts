@@ -6,6 +6,7 @@ import type { PipelineReportRunResult } from '../dto/pipeline-report-result.dto.
 import { PipelineReportRenderer } from '../services/pipeline-report-renderer.service.js';
 import type { ConfigLoaderPort } from '../ports/config-loader.port.js';
 import { RunConfigSchema } from '../../domain/schemas/config.schema.js';
+import { applyBaseUrlOverride } from '../helpers/apply-base-url-override.js';
 
 const PIPELINE_REPORT_FILE = 'pipeline-report.md';
 const PREFLIGHT_REPORT_FILE = 'preflight-report.json';
@@ -98,7 +99,7 @@ export class RunPipelineReportUseCase {
 
   private async loadConfig(configPath: string) {
     const raw = await this.configLoader.load(configPath);
-    return RunConfigSchema.parse(raw);
+    return applyBaseUrlOverride(RunConfigSchema.parse(raw));
   }
 
   private async readJsonSafe<T>(dir: string, filename: string): Promise<T | undefined> {

@@ -54,6 +54,12 @@ export class DecisionRouterProvider implements DecisionProviderPort {
     return this.fake.classifyOutcomes(config, tasks);
   }
 
+  orchestrator(input: import('../../application/ports/decision-provider.port.js').OrchestratorInput): Promise<string> {
+    if (input.config.llm.provider === 'groq') return this.groq.orchestrator!(input);
+    if (input.config.llm.provider === 'openai') return this.openai.orchestrator!(input);
+    return this.fake.orchestrator!(input);
+  }
+
   stats() {
     const fakeStats = this.fake.stats();
     const groqStats = this.groq.stats();

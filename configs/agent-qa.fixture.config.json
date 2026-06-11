@@ -1,0 +1,15 @@
+{
+  "baseUrl": "http://127.0.0.1:4173/",
+  "appDomains": ["127.0.0.1"],
+  "demand": {
+    "id": "fixture-smoke",
+    "title": "Fixture smoke test",
+    "description": "Smoke test no fixture local",
+    "acceptanceCriteria": [
+      "A página inicial deve carregar sem erros de console",
+      "O servidor fixture deve responder com HTTP 200"
+    ]
+  },
+  "auth": { "kind": "none" },
+  "llm": { "provider": "fake" }
+}

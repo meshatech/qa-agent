@@ -179,8 +179,10 @@ export class DomPurifier {
           checked: r.checked,
           selected: r.selected,
           options: r.options,
+          tagName: r.tag,
           inViewport: r.inViewport,
           bounds: r.bounds,
+          editable: r.editable,
           source: 'dom' as const,
           locator,
         };

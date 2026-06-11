@@ -95,6 +95,7 @@ function makePlanExecutor(result: Partial<PlanExecutionResult> = {}): PlanExecut
   const replanner = { replan: async () => { throw new Error('no replanner'); } } as unknown as PlanReplannerService;
   const locators = new LocatorResolverService();
   const fakeDecision = { async decide() { return { action: { type: 'waitForStable', reason: 'fallback' }, expected_after_action: { type: 'no_console_errors' }, fallback_action: { type: 'waitForStable', reason: 'fallback' }, confidence: 0.5, thought_summary: 'fallback', observationId: 'obs_1', schemaVersion: 'action.v1' } as import('../src/domain/schemas/action.schema.js').QaActionEnvelope; } } as unknown as import('../src/application/ports/decision-provider.port.js').DecisionProviderPort;
+  const fakeNetworkValidator = { validate() { return undefined; } } as unknown as import('../src/application/services/network-state-validator.service.js').NetworkStateValidatorService;
   const executor = new PlanExecutorService(
     browser,
     locators,
@@ -105,6 +106,7 @@ function makePlanExecutor(result: Partial<PlanExecutionResult> = {}): PlanExecut
     new TaskMemoryService(),
     replanner,
     fakeDecision,
+    fakeNetworkValidator,
   );
 
   vi.spyOn(executor, 'execute').mockResolvedValue({

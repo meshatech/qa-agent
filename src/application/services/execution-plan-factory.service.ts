@@ -80,12 +80,22 @@ export class ExecutionPlanFactoryService {
         if (!disclosureTarget) {
           return [this.makeSafeCheckStep(scenarioId, task, outcome.description)];
         }
+        const clickTarget = { strategy: 'text_any' as const, texts: [disclosureTarget.texts[0]!] };
+        const openIndicators = [...new Set([
+          ...disclosureTarget.texts,
+          'Perfil',
+          'Assinatura',
+          'Sair',
+          'Logout',
+          'Tema',
+          'Aparência',
+        ])];
         return [
           this.makeStep(
             scenarioId,
             task,
-            { type: 'click', target: disclosureTarget, reason: `Open container: ${outcome.description}` },
-            [{ type: 'menu_state', semanticKey: outcome.target ?? 'menu', expected: 'open' }],
+            { type: 'click', target: clickTarget, reason: `Open container: ${outcome.description}` },
+            [{ type: 'text_any_visible', texts: openIndicators }],
           ),
         ];
       }
@@ -193,13 +203,25 @@ export class ExecutionPlanFactoryService {
     if (!target) {
       return [this.makeSafeCheckStep(scenarioId, task, outcome.description)];
     }
+    const primaryLabel = target.texts[0]!;
+    const clickTarget = {
+      strategy: 'semantic' as const,
+      semanticKey: 'logout_action',
+      intent: 'logout from application',
+      candidates: [
+        { strategy: 'role' as const, role: 'menuitem', name: primaryLabel },
+        { strategy: 'role' as const, role: 'button', name: primaryLabel },
+        { strategy: 'text' as const, text: primaryLabel, exact: true },
+        { strategy: 'text_any' as const, texts: [primaryLabel] },
+      ],
+    };
     const logoutStep: ExecutionStep = {
       id: `${task.id}-logout`,
       scenarioId,
       taskId: task.id,
       description: task.title,
       preconditions: [],
-      action: { type: 'click', target, reason: outcome.description },
+      action: { type: 'click', target: clickTarget, reason: outcome.description },
       postconditions: [{ type: 'auth_state', expected: 'anonymous' }],
       assertions: [],
       onFailure: 'RECOVER',
@@ -212,13 +234,25 @@ export class ExecutionPlanFactoryService {
     if (!target) {
       return [this.makeSafeCheckStep(scenarioId, task, outcome.description)];
     }
+    const primaryLabel = target.texts[0]!;
+    const clickTarget = {
+      strategy: 'semantic' as const,
+      semanticKey: 'appearance_toggle',
+      intent: 'toggle visual theme',
+      candidates: [
+        { strategy: 'role' as const, role: 'switch', name: primaryLabel },
+        { strategy: 'role' as const, role: 'menuitem', name: primaryLabel },
+        { strategy: 'text' as const, text: primaryLabel, exact: true },
+        { strategy: 'text_any' as const, texts: target.texts.slice(0, 3) },
+      ],
+    };
     const themeStep: ExecutionStep = {
       id: `${task.id}-theme`,
       scenarioId,
       taskId: task.id,
       description: task.title,
       preconditions: [],
-      action: { type: 'click', target, reason: outcome.description },
+      action: { type: 'click', target: clickTarget, reason: outcome.description },
       postconditions: [{ type: 'ui_state', semanticKey: 'appearance_mode', expected: 'exists', source: 'dom' }],
       assertions: [],
       onFailure: 'RECOVER',

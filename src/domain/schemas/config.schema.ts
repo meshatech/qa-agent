@@ -51,6 +51,19 @@ export const RunConfigSchema = z.object({
       errorTextSelector: z.string().optional(),
       maxRetries: z.number().int().nonnegative().default(1),
     }),
+    z.object({
+      kind: z.literal('ssoRedirect'),
+      loginUrl: z.string().optional(),
+      loginButtonSelector: AuthSelectorSchema,
+      idpUsernameSelector: AuthSelectorSchema.optional(),
+      idpPasswordSelector: AuthSelectorSchema.optional(),
+      idpSubmitSelector: AuthSelectorSchema.optional(),
+      usernameEnv: z.string().optional(),
+      passwordEnv: z.string().optional(),
+      successUrlContains: z.string().optional(),
+      successWhen: SuccessWhenSchema.optional(),
+      storageStatePath: z.string().optional(),
+    }),
   ]).default({ kind: 'none' }),
   llm: z.object({
     provider: z.enum(['fake', 'groq', 'openai']).default('fake'),
@@ -86,6 +99,7 @@ export const RunConfigSchema = z.object({
       allowClickOutside: z.boolean().default(false),
       allowedContainers: z.array(ElementAvailabilityContainerSchema).default([]),
     }).default({ enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false, allowedContainers: [] }),
+    enforceSingleTab: z.boolean().default(false),
     tools: z.object({
       enabled: z.boolean().default(false),
     }).default({ enabled: false }),
@@ -96,7 +110,7 @@ export const RunConfigSchema = z.object({
       executionPlanStrategy: z.enum(['llm_with_factory_fallback', 'factory_first']).default('llm_with_factory_fallback'),
       allowEmergencyPlan: z.boolean().default(false).optional(),
     }).optional(),
-  }).default({ maxActionsPerTask: 3, mode: 'HYBRID_GUARDED', maxAttemptsPerStep: 2, maxReplansPerScenario: 2, destructiveActionPolicy: 'BLOCK', semanticKeys: {}, semanticAliases: {}, elementAvailability: { enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false, allowedContainers: [] }, tools: { enabled: false } }),
+  }).default({ maxActionsPerTask: 3, mode: 'HYBRID_GUARDED', maxAttemptsPerStep: 2, maxReplansPerScenario: 2, destructiveActionPolicy: 'BLOCK', semanticKeys: {}, semanticAliases: {}, elementAvailability: { enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false, allowedContainers: [] }, enforceSingleTab: false, tools: { enabled: false } }),
   recovery: z.object({
     maxAttemptsPerTask: z.number().int().positive().default(3),
     maxFallbacksPerStep: z.number().int().positive().default(1),
@@ -139,6 +153,13 @@ export const RunConfigSchema = z.object({
     headRef: z.string().optional(),
     baseRef: z.string().optional(),
   }).optional(),
+  reporting: z.object({
+    manualMinutesPerScenario: z.number().int().positive().default(10),
+  }).optional(),
+  evidence: z.object({
+    video: z.enum(['off', 'on', 'on-failure']).default('off'),
+    trace: z.enum(['off', 'on', 'on-failure']).default('off'),
+  }).optional().default({ video: 'off', trace: 'off' }),
   agentVersion: z.string().default('0.1.0'),
 });
 

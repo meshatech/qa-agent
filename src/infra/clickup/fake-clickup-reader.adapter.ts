@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 
 import type {
   ClickUpReaderPort,
@@ -9,7 +9,7 @@ import type {
 export class FakeClickUpReaderAdapter implements ClickUpReaderPort {
   private result: ClickUpTaskReadResult;
 
-  constructor(result?: ClickUpTaskReadResult) {
+  constructor(@Optional() @Inject('CLICKUP_FAKE_RESULT') result?: ClickUpTaskReadResult) {
     this.result = result ?? FakeClickUpReaderAdapter.defaultResult();
   }
 

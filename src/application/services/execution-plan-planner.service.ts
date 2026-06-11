@@ -7,6 +7,7 @@ import type { LocatorDescriptor } from '../../domain/schemas/action.schema.js';
 import type { DecisionProviderPort } from '../ports/decision-provider.port.js';
 import { ExecutionPlanBuildError } from '../../domain/errors.js';
 import { ExecutionPlanFactoryService } from './execution-plan-factory.service.js';
+import type { PlanCachePort } from '../ports/plan-cache.port.js';
 
 export type ExecutionPlanSource = 'llm' | 'factory' | 'manual';
 
@@ -29,10 +30,25 @@ export class ExecutionPlanPlannerService {
   constructor(
     @Inject('DecisionProviderPort') private readonly decision: DecisionProviderPort,
     @Inject(ExecutionPlanFactoryService) private readonly factory: ExecutionPlanFactoryService,
+    @Inject('PlanCachePort') private readonly planCache: PlanCachePort,
   ) {}
 
   async build(config: RunConfig, scenarios: QaScenario[]): Promise<PlannedExecutionPlan> {
-    if (config.runtime.planning?.executionPlanStrategy === 'factory_first') {
+    const cacheKey = `${config.demand.id}:${scenarios.map((s) => s.id).join(',')}:${config.baseUrl}`;
+    const cached = await this.planCache.get(cacheKey);
+    if (cached) {
+      this.logger.log(`Reusing cached execution plan for demand ${config.demand.id}`);
+      return { ...cached, plan: cached.plan ? { ...cached.plan } : undefined };
+    }
+
+    const result = await this.buildPlan(config, scenarios);
+    await this.planCache.set(cacheKey, result);
+    return result;
+  }
+
+  private async buildPlan(config: RunConfig, scenarios: QaScenario[]): Promise<PlannedExecutionPlan> {
+    const strategy = config.runtime.planning?.executionPlanStrategy ?? 'llm_first';
+    if (strategy === 'factory_first') {
       const factoryPlan = await this.factory.fromScenarios(config, scenarios);
       if (factoryPlan) {
         return { plan: factoryPlan, source: 'factory' };

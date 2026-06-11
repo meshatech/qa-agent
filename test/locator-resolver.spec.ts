@@ -149,4 +149,25 @@ describe('LocatorResolverService', () => {
     const locator: LocatorDescriptor = { strategy: 'index', target: { strategy: 'role', role: 'button', name: 'Excluir' }, index: 1 };
     expect(resolver.findByLocator(observation, locator)).toBe('el_002');
   });
+
+  it('does not resolve Tema to the account menu trigger', () => {
+    const resolver = new LocatorResolverService();
+    const observation = obsWithElements([
+      element({ id: 'el_menu', name: 'Conta e opções', role: 'button', locator: { strategy: 'role', role: 'button', name: 'Conta e opções' } }),
+      element({ id: 'el_theme', name: 'Tema', role: 'switch', locator: { strategy: 'role', role: 'switch', name: 'Tema' } }),
+    ]);
+    const locator: LocatorDescriptor = { strategy: 'text_any', texts: ['Tema'] };
+    expect(resolver.findByLocator(observation, locator)).toBe('el_theme');
+  });
+
+  it('prefers the most specific text_any match over shorter aliases', () => {
+    const resolver = new LocatorResolverService();
+    const observation = obsWithElements([
+      element({ id: 'el_menu', name: 'Conta e opções', role: 'button', locator: { strategy: 'role', role: 'button', name: 'Conta e opções' } }),
+      element({ id: 'el_conta', name: 'Conta', role: 'link', locator: { strategy: 'role', role: 'link', name: 'Conta' } }),
+      element({ id: 'el_settings', name: 'Configurações', role: 'button', locator: { strategy: 'role', role: 'button', name: 'Configurações' } }),
+    ]);
+    const locator: LocatorDescriptor = { strategy: 'text_any', texts: ['Conta e opções', 'Conta', 'Perfil'] };
+    expect(resolver.findByLocator(observation, locator)).toBe('el_menu');
+  });
 });

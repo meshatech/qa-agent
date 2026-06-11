@@ -8,12 +8,12 @@ import { MemoryMarkdownLoader } from '../src/application/services/memory-markdow
 import { MemorySearchService } from '../src/application/services/memory-search.service.js';
 
 describe('memory search against repo memory.md', () => {
-  it('finds login, dashboard and form terms in .agent-qa/memory.md', async () => {
+  it('finds smoke, base url and fixture terms in .agent-qa/memory.md', async () => {
     const loader = new MemoryMarkdownLoader();
     const service = new MemorySearchService(new MemoryChunker(loader), new BM25MemoryIndex(), loader);
     const memoryPath = join(process.cwd(), '.agent-qa/memory.md');
 
-    for (const query of ['login', 'dashboard', 'cadastro']) {
+    for (const query of ['smoke', 'base url', 'fixture']) {
       const result = await service.search({ memoryPath, query, limit: 3 });
       expect(result.chunks.length).toBeGreaterThan(0);
     }
@@ -24,7 +24,7 @@ describe('memory search against repo memory.md', () => {
     const service = new MemorySearchService(new MemoryChunker(loader), new BM25MemoryIndex(), loader);
     const memoryPath = join(process.cwd(), '.agent-qa/memory.md');
 
-    const result = await service.search({ memoryPath, query: 'login', limit: 5, types: ['route'] });
+    const result = await service.search({ memoryPath, query: 'base url', limit: 5, types: ['route'] });
     expect(result.chunks.every((item) => item.chunk.type === 'route')).toBe(true);
   });
 });

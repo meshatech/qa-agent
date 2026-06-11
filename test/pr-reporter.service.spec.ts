@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PRReporterService } from '../src/application/services/pr-reporter.service.js';
 import { PRReportRenderer } from '../src/application/services/pr-report-renderer.service.js';
+import { QaValueMetricsCalculatorService } from '../src/application/services/qa-value-metrics-calculator.service.js';
 import type { GitHubCommentPort } from '../src/application/ports/github-comment.port.js';
 import type { RunRepositoryPort } from '../src/application/ports/run-repository.port.js';
 import type { QaRunResult } from '../src/domain/models/run.model.js';
@@ -16,11 +17,12 @@ function makeConfig(overrides?: Partial<RunConfig>): RunConfig {
     llm: { provider: 'fake', model: 'test', apiKeyEnv: 'TEST_KEY', maxSchemaRetries: 1, rateLimitRetries: 1, rateLimitMaxWaitMs: 1000, promptVersion: 'v1', temperature: 0, maxTokens: 100 },
     browser: { engine: 'chromium', headed: false, viewport: { width: 1280, height: 720 }, locale: 'pt-BR', timezone: 'America/Sao_Paulo' },
     timeouts: { quiescenceMs: 1000, actionMs: 5000, navigationMs: 10000, scenarioMs: 60000, runMs: 300000 },
-    runtime: { maxActionsPerTask: 5, mode: 'HYBRID_GUARDED', maxAttemptsPerStep: 2, maxReplansPerScenario: 2, destructiveActionPolicy: 'BLOCK', semanticKeys: {}, semanticAliases: {}, elementAvailability: { enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false, allowedContainers: [] }, tools: { enabled: false } },
+    runtime: { maxActionsPerTask: 5, mode: 'HYBRID_GUARDED', maxAttemptsPerStep: 2, maxReplansPerScenario: 2, destructiveActionPolicy: 'BLOCK', semanticKeys: {}, semanticAliases: {}, elementAvailability: { enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false, allowedContainers: [] }, tools: { enabled: false }, enforceSingleTab: false },
     recovery: { maxAttemptsPerTask: 2, maxFallbacksPerStep: 1, maxEmergencyActionsPerScenario: 1 },
     classifier: { knownNoiseRegexes: [], knownTrackingDomains: [], treatThirdPartyNetwork5xxAsBug: false },
     privacy: { maskEmails: true, maskJwt: true, maskCookies: true },
     output: { runsDir: './qa-agent-runs', keepVideoOnPass: false, keepScreenshotOnPass: false, keepTraceOnPass: false },
+    evidence: { video: 'off', trace: 'off' },
     scenarioSelection: { maxScenarios: 5 },
     agentVersion: '0.1.0',
     ...overrides,
@@ -64,7 +66,7 @@ describe('PRReporterService', () => {
       renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
-    const service = new PRReporterService(github, repo, new PRReportRenderer());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
 
     const result = await service.report({
       result: makeResult(),
@@ -121,7 +123,7 @@ describe('PRReporterService', () => {
       renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn(() => Promise.resolve()) };
-    const service = new PRReporterService(github, repo, new PRReportRenderer());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
 
     const result = await service.report({
       result: makeResult(),
@@ -175,7 +177,7 @@ describe('PRReporterService', () => {
     const github: GitHubCommentPort = {
       postComment: vi.fn(() => Promise.reject(new GitHubCommentError('Forbidden', 403))),
     };
-    const service = new PRReporterService(github, repo, new PRReportRenderer());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
 
     const result = await service.report({
       result: makeResult(),
@@ -224,7 +226,7 @@ describe('PRReporterService', () => {
     const github: GitHubCommentPort = {
       postComment: vi.fn(() => Promise.reject(new GitHubCommentError('Unauthorized', 401))),
     };
-    const service = new PRReporterService(github, repo, new PRReportRenderer());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
 
     const result = await service.report({
       result: makeResult(), config: makeConfig(), runDir: '/tmp/run-001',
@@ -246,7 +248,7 @@ describe('PRReporterService', () => {
     const github: GitHubCommentPort = {
       postComment: vi.fn(() => Promise.reject(new GitHubCommentError('Not Found', 404))),
     };
-    const service = new PRReporterService(github, repo, new PRReportRenderer());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
 
     const result = await service.report({
       result: makeResult(), config: makeConfig(), runDir: '/tmp/run-001',
@@ -267,7 +269,7 @@ describe('PRReporterService', () => {
     const github: GitHubCommentPort = {
       postComment: vi.fn(() => Promise.reject(new Error('Network timeout'))),
     };
-    const service = new PRReporterService(github, repo, new PRReportRenderer());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
 
     const result = await service.report({
       result: makeResult(), config: makeConfig(), runDir: '/tmp/run-001',
@@ -288,7 +290,7 @@ describe('PRReporterService', () => {
       renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn(() => Promise.resolve()) };
-    const service = new PRReporterService(github, repo, new PRReportRenderer());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
 
     await service.report({
       result: makeResult(), config: makeConfig(), runDir: '/tmp/run-001',
@@ -322,7 +324,7 @@ describe('PRReporterService', () => {
       renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
-    const service = new PRReporterService(github, repo, new PRReportRenderer());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
 
     const runResult = makeResult({
       status: 'FAILED',
@@ -405,7 +407,7 @@ describe('PRReporterService', () => {
     const github: GitHubCommentPort = {
       postComment: vi.fn(() => Promise.reject(new GitHubCommentError('ghp_secret_123 failed', 418))),
     };
-    const service = new PRReporterService(github, repo, new PRReportRenderer());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
 
     const result = await service.report({
       result: makeResult(),
@@ -449,7 +451,7 @@ describe('PRReporterService', () => {
     const github: GitHubCommentPort = {
       postComment: vi.fn(() => Promise.reject(new GitHubCommentError('pk_test_abc123 failed', 418))),
     };
-    const service = new PRReporterService(github, repo, new PRReportRenderer());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
 
     const result = await service.report({
       result: makeResult(),
@@ -494,7 +496,7 @@ describe('PRReporterService', () => {
       renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
-    const service = new PRReporterService(github, repo, new PRReportRenderer());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
 
     await service.report({
       result: makeResult({
@@ -537,7 +539,7 @@ describe('PRReporterService', () => {
       renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
-    const service = new PRReporterService(github, repo, new PRReportRenderer());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
 
     await service.report({
       result: makeResult(),
@@ -575,7 +577,7 @@ describe('PRReporterService', () => {
       renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
-    const service = new PRReporterService(github, repo, new PRReportRenderer());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
 
     await service.report({
       result: makeResult({
@@ -619,7 +621,7 @@ describe('PRReporterService', () => {
       renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
-    const service = new PRReporterService(github, repo, new PRReportRenderer());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
 
     await service.report({
       result: makeResult({
@@ -669,7 +671,7 @@ describe('PRReporterService', () => {
       renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
-    const service = new PRReporterService(github, repo, new PRReportRenderer());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
 
     await service.report({
       result: makeResult({
@@ -714,7 +716,7 @@ describe('PRReporterService', () => {
       renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
-    const service = new PRReporterService(github, repo, new PRReportRenderer());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
 
     await service.report({
       result: makeResult(),

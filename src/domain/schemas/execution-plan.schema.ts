@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { LocatorDescriptorSchema } from './action.schema.js';
 
-export const RuntimeModeSchema = z.enum(['HYBRID_GUARDED', 'FULL_REACTIVE', 'PLAN_AND_EXECUTE']);
+export const RuntimeModeSchema = z.enum(['HYBRID_GUARDED', 'FULL_REACTIVE', 'PLAN_AND_EXECUTE', 'ORCHESTRATOR']);
 export const StepFailurePolicySchema = z.enum(['ASK_LLM_TO_REPLAN', 'RECOVER', 'BLOCK', 'CONTINUE_WITH_WARNING']);
 export const DestructiveActionPolicySchema = z.enum(['ALLOW', 'BLOCK', 'ASK_APPROVAL', 'ALLOW_ONLY_IN_TEST_ENV']);
 export const ReplanReasonSchema = z.enum([
@@ -39,6 +39,7 @@ export const PlanConditionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('route_state'), expected: z.enum(['changed', 'same', 'matches']), expectedUrl: z.string().optional(), expectedUrlPattern: z.string().optional() }).strict(),
   z.object({ type: z.literal('attribute_state'), target: LocatorDescriptorSchema, attribute: z.string().min(1), expected: z.union([z.string(), z.boolean(), z.enum(['changed', 'exists', 'not_exists'])]) }).strict(),
   z.object({ type: z.literal('storage_state'), storage: z.enum(['localStorage', 'sessionStorage']), key: z.string().min(1), expected: z.union([z.string(), z.boolean(), z.enum(['changed', 'exists', 'not_exists'])]) }).strict(),
+  z.object({ type: z.literal('network_state'), expected: z.enum(['no_errors', 'no_4xx', 'no_5xx', 'has_request_to']), urlPattern: z.string().optional(), minStatus: z.number().int().min(100).max(599).optional(), maxStatus: z.number().int().min(100).max(599).optional() }).strict(),
 ]);
 
 export const PreconditionSchema = PlanConditionSchema;
@@ -61,6 +62,7 @@ export const PlanActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('auditAccessibility'), reason }).strict(),
   z.object({ type: z.literal('acceptDialog'), text: z.string().optional(), reason }).strict(),
   z.object({ type: z.literal('dismissDialog'), reason }).strict(),
+  z.object({ type: z.literal('typeText'), target: LocatorDescriptorSchema.optional(), text: z.string().min(1), delayMs: z.number().int().positive().optional(), reason }).strict(),
   z.object({ type: z.literal('richTextFill'), target: LocatorDescriptorSchema, value: z.string(), reason }).strict(),
   z.object({ type: z.literal('extract'), target: LocatorDescriptorSchema, key: z.string().min(1), source: z.enum(['text', 'value']).default('text'), reason }).strict(),
   z.object({ type: z.literal('assertVisible'), target: LocatorDescriptorSchema.optional(), text: z.string().optional(), reason }).strict().refine((a) => a.target || a.text, 'assertVisible requires target or text'),

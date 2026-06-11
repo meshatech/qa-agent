@@ -11,6 +11,7 @@ Runtime de QA guiado por LLM para executar fluxos web via Playwright, com observ
 - Providers LLM disponiveis hoje: `fake`, `groq`, `openai`
 - Engines de browser suportadas: `chromium`, `firefox`, `webkit`
 - Execucao: sequencial, um cenario por vez
+- **v2 simplificado:** runtime enxugado. Removidos `ExecutionMonitorService`, `DeepThinkService`, `RedisPlanCacheAdapter`, `FilePlanCacheAdapter`. Arquivado `ProjectGraphService` (experimental/). Isolada rota `FULL_REACTIVE` em `ReactiveRunnerService`. Ver [`docs/V2-SIMPLIFICATION-PLAN.md`](docs/V2-SIMPLIFICATION-PLAN.md).
 
 O projeto ja entrega hoje:
 
@@ -108,6 +109,30 @@ Campos importantes do config atual:
 - `recovery.maxAttemptsPerTask`: tentativas por task
 - `output.keepTraceOnPass`: salva trace da run quando passar
 - `output.keepVideoOnPass`: salva video da run quando passar
+
+### Override de baseUrl por PR/preview
+
+Em pipelines onde cada PR sobe em uma URL dinâmica (ex.: `https://pr-<N>.preview.<dominio>`), use variáveis de ambiente em vez de editar o JSON:
+
+| Variável | Efeito |
+|----------|--------|
+| `QA_AGENT_BASE_URL` | Substitui `config.baseUrl` após o parse Zod |
+| `QA_AGENT_PREVIEW_DOMAIN` | Injeta o domínio base (sem prefixo `*.`) em `appDomains` — ex.: `*.preview.meshamail.dev` → `preview.meshamail.dev` |
+
+Exemplo para preview de PR:
+
+```bash
+export QA_AGENT_BASE_URL="https://pr-42.preview.meshamail.dev"
+export QA_AGENT_PREVIEW_DOMAIN="*.preview.meshamail.dev"
+npm run qa-agent -- run --config ./configs/agent-qa.meshamail.config.json
+```
+
+Implementação: [`src/application/helpers/apply-base-url-override.ts`](src/application/helpers/apply-base-url-override.ts) (wired em `ValidateConfigUseCase`, `RunAgentUseCase` e use-cases de pipeline).
+
+Configs versionados em `configs/`:
+
+- `configs/agent-qa.fixture.config.json` — smoke local (fixture HTTP)
+- `configs/agent-qa.meshamail.config.json` — smoke autenticado MeshaMail (credenciais via `MESHA_EMAIL` / `MESHA_PASSWORD`)
 
 ## Providers LLM
 
@@ -388,7 +413,10 @@ Em alto nivel, a execucao atual faz:
 3. executa preflight de envs e `HEAD` no `baseUrl`
 4. gera plano de cenarios
 5. abre o browser e observa a tela
-6. pede decisao ao provider
+6. **escolhe a rota de execucao** (config `runtime.mode`):
+   - **Tools** (`tools.enabled=true`, modo != FULL_REACTIVE): usa `qa.plan.build` + `qa.plan.execute` -> `PlanExecutorService`
+   - **Plan** (`tools.enabled=false`, modo != FULL_REACTIVE): gera `ExecutionPlan` -> `PlanExecutorService`
+   - **Reactive** (`mode=FULL_REACTIVE`): `ReactiveRunnerService` decide cada acao com heurísticas semanticas
 7. executa a acao e espera quiescencia
 8. reobserva a tela e valida o esperado
 9. tenta recovery quando necessario
@@ -514,7 +542,7 @@ Use env vars para credenciais e deixe o JSON sem segredo:
 $env:MESHA_EMAIL="seu-email"
 $env:MESHA_PASSWORD="sua-senha"
 $env:GROQ_PROVIDER="sua-chave-groq"
-npm run qa-agent -- run --config agent-qa.meshamail.config.json --headed
+npm run qa-agent -- run --config ./agent-qa.config.json --headed
 ```
 
 Um config de producao/HML deve ser conservador:
@@ -592,8 +620,8 @@ node ./test/fixtures/server.mjs
 Em outro terminal, rode:
 
 ```bash
-npm run qa-agent -- validate-config --config ./agent-qa.fixture.config.json
-npm run qa-agent -- run --config ./agent-qa.fixture.config.json
+npm run qa-agent -- validate-config --config ./configs/agent-qa.fixture.config.json
+npm run qa-agent -- run --config ./configs/agent-qa.fixture.config.json
 ```
 
 ## Testes

@@ -25,6 +25,7 @@ export class RecoveryPolicyService {
     ]).slice(0, input.maxFallbacks + input.maxEmergencyActions);
     let before = input.beforeObservation;
     for (const action of actions) {
+      console.log(`[RecoveryPolicy] executing fallback action=${JSON.stringify({ type: action.type, reason: 'reason' in action ? action.reason : undefined })}`);
       const exec = await this.browser.execute(action);
       input.attempts.push({ actionType: action.type, result: exec.ok ? 'RECOVERED' : 'FAILED', reason: exec.error?.message, ts: new Date().toISOString() });
       await this.browser.waitForQuiescence(input.quiescenceMs);

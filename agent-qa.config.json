@@ -1,0 +1,11 @@
+{
+  "baseUrl": "http://127.0.0.1:4173/",
+  "appDomains": ["127.0.0.1"],
+  "demand": {
+    "id": "PRJ-11366",
+    "title": "Ler CLICKUP_TASK_ID do ambiente/config",
+    "description": "Implementar a leitura do CLICKUP_TASK_ID da variável de ambiente ou da config do projeto"
+  },
+  "auth": { "kind": "none" },
+  "llm": { "provider": "fake" }
+}
