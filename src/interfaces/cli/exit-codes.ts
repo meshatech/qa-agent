@@ -49,3 +49,20 @@ export function classifyOnboardingResult(result: OnboardingResult): ExitCode {
   if (result.readiness === 'ONBOARDING_BLOCKED') return ExitCodes.ONBOARDING_BLOCKED;
   return ExitCodes.OK;
 }
+
+const SEVERITY_RANK: Record<ExitCode, number> = {
+  [ExitCodes.OK]: 0,
+  [ExitCodes.CONFIG_ERROR]: 1,
+  [ExitCodes.BUGS_FOUND]: 2,
+  [ExitCodes.PREFLIGHT_BLOCKED]: 3,
+  [ExitCodes.ONBOARDING_BLOCKED]: 4,
+  [ExitCodes.TIMEOUT]: 4,
+  [ExitCodes.HARNESS_FATAL]: 5,
+};
+
+export function mostSevereExitCode(codes: ExitCode[]): ExitCode {
+  if (codes.length === 0) return ExitCodes.OK;
+  return codes.reduce((worst, code) =>
+    SEVERITY_RANK[code] > SEVERITY_RANK[worst] ? code : worst,
+  );
+}

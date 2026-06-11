@@ -4,11 +4,14 @@
 
 ## Foco atual
 
-**Task 2 (G3 distribuição + G1 CI)** — Empacotamento Docker/CI/release **concluída** (2026-06-11): `Dockerfile` release, `scripts/wait-for-ready.sh`, `qa-agent --version`, workflows `.github/workflows/ci.yml` (check em container Playwright + docker-smoke) e `release.yml` (tag `v*` → `ghcr.io/${{ github.repository }}`). Build local: `npm run docker:build:release`; smoke `--version`, `pipeline --help`, `validate-config` fixture OK.
+**Task 3 — `pipeline all`** — Comando agregado com gates fail-fast **concluído** (2026-06-11). Lacunas menores fechadas na mesma sessão:
+- Docker/CI smoke valida `pipeline all --help` (além de `pipeline --help`)
+- E2E em `test/pipeline-all.integration.spec.ts`: fixture server + ClickUp fake (happy path) e preflight BLOCKED com mensagem específica
+- Mensagem de bloqueio no prepare usa `describePreflightBlockedMessage` (ex.: `CLICKUP_TOKEN is missing`) em vez de texto genérico fixo
 
 Branch de trabalho: `feature/sub-agent-orchestrator` (Tool Queue já na árvore; merge para main pendente — ver G9).
 
-**MESHAP-3975 (Task 1 v2)** — Fundação repo limpo + URL dinâmica concluída anteriormente.
+**Task 2 (G3 + G1 CI)** e **MESHAP-3975 (Task 1)** — concluídas anteriormente.
 
 ## Decisões recentes
 
@@ -40,6 +43,6 @@ Nenhum no momento.
 
 ## Próximo passo sugerido
 
-**Task 3** — `pipeline all` + integração preview (fora do escopo da Task 2). Depois: template `qa-agent.yml` para repos alvo (Task 4).
+**Task 4** — template `qa-agent.yml` para repos alvo (workflow único com `pipeline all`). Opcional: incluir `risk` no agregado.
 
 Roadmap V1 local: `docs/architecture/23-pipeline-v1-roadmap.md`.

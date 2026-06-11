@@ -61,6 +61,10 @@ echo "→ smoke: qa-agent pipeline --help"
 docker run --rm "${RELEASE_TAG}" qa-agent pipeline --help >/dev/null
 
 echo ""
+echo "→ smoke: qa-agent pipeline all --help"
+docker run --rm "${RELEASE_TAG}" qa-agent pipeline all --help >/dev/null
+
+echo ""
 echo "→ smoke: validate-config (fixture, fake LLM)"
 docker run --rm \
   -e GROQ_PROVIDER=fake \

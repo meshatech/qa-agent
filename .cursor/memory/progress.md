@@ -209,9 +209,24 @@ Epic PRJ-11319 entregue (11376–11391 + PRJ-11550 + PRJ-11552).
 - [x] `.github/workflows/release.yml` — tag `v*` → push `ghcr.io/${{ github.repository }}`
 - [x] Validação local: `npm run check`, `docker build`, smoke `--version` / `pipeline --help` / `validate-config`
 
+## Concluído (Task 3 — pipeline all + gates fail-fast, 2026-06-11)
+
+- [x] `RunPipelineAllUseCase` — sequência prepare → correlate → generate-plan → execute → report → learning → promote-learning (`autoApprove: true`)
+- [x] Gates fail-fast: prepare/correlate BLOCKED param pipeline; comentário no PR via `GitHubCommentPort`
+- [x] `mostSevereExitCode` em `exit-codes.ts` — agregação semântica de exit codes
+- [x] CLI `qa-agent pipeline all` com log resumo `[pipeline all] prepare=OK …`
+- [x] Testes: `run-pipeline-all.usecase.spec.ts` (happy path, gates, severidade, comentário) + `pipeline-all.integration.spec.ts`
+- [x] `npm run check` verde; smoke `pipeline all --help`
+
+## Concluído (Task 3 — lacunas menores, 2026-06-11)
+
+- [x] CI/docker-smoke: `qa-agent pipeline all --help` em `.github/workflows/ci.yml` e `scripts/ci-local.sh`
+- [x] `describePreflightBlockedMessage` — mensagem BLOCKED com checks falhos do `preflight-report.json`; fallback genérico só se vazio
+- [x] E2E integração: fixture server (4173) + stubs ClickUp/GitHub + cenário selecionado; path BLOCKED sem `CLICKUP_TOKEN` valida mensagem e ausência de artefatos downstream
+- [x] Testes: `describe-preflight-blocked-message.spec.ts`; `npm run check` verde
+
 ## Em progresso / backlog pipeline V1
 
-- [ ] `pipeline all` (Task 3)
 - [ ] Template `qa-agent.yml` para repos alvo (Task 4)
 - [ ] Seleção de cenários e execution plan para PR (PRJ-11321+)
 - [ ] PR reporter e learning extractor

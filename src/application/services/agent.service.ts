@@ -17,6 +17,7 @@ import { RunPipelineLearningUseCase } from '../use-cases/run-pipeline-learning.u
 import { RunPipelineGenerateMemoryUseCase } from '../use-cases/run-pipeline-generate-memory.usecase.js';
 import { RunPipelineRiskUseCase } from '../use-cases/run-pipeline-risk.usecase.js';
 import { RunPipelinePromoteLearningUseCase } from '../use-cases/run-pipeline-promote-learning.usecase.js';
+import { RunPipelineAllUseCase } from '../use-cases/run-pipeline-all.usecase.js';
 import type { PipelinePreflightRunResult } from '../dto/pipeline-preflight-result.dto.js';
 import type { PrDiffContextRunResult } from '../dto/pr-diff-context-result.dto.js';
 import type { PipelinePrepareRunResult } from '../dto/pipeline-prepare-result.dto.js';
@@ -27,6 +28,7 @@ import type { PipelineLearningRunResult } from '../dto/pipeline-learning-result.
 import type { PipelineGenerateMemoryRunResult } from '../dto/pipeline-generate-memory-result.dto.js';
 import type { PipelineRiskRunResult } from '../dto/pipeline-risk-result.dto.js';
 import type { PipelinePromoteLearningRunResult } from '../dto/pipeline-promote-learning-result.dto.js';
+import type { PipelineAllRunResult } from '../dto/pipeline-all-result.dto.js';
 import type { OnboardingResult } from '../../domain/models/readiness.model.js';
 
 @Injectable()
@@ -49,6 +51,7 @@ export class AgentService {
     @Inject(RunPipelineGenerateMemoryUseCase) private readonly runPipelineGenerateMemory: RunPipelineGenerateMemoryUseCase,
     @Inject(RunPipelineRiskUseCase) private readonly runPipelineRisk: RunPipelineRiskUseCase,
     @Inject(RunPipelinePromoteLearningUseCase) private readonly runPipelinePromoteLearning: RunPipelinePromoteLearningUseCase,
+    @Inject(RunPipelineAllUseCase) private readonly runPipelineAll: RunPipelineAllUseCase,
   ) {}
 
   execute(dto: RunAgentDto) {
@@ -121,5 +124,9 @@ export class AgentService {
 
   pipelinePromoteLearning(outputDir: string, projectPath?: string, autoApprove?: boolean): Promise<PipelinePromoteLearningRunResult> {
     return this.runPipelinePromoteLearning.execute(outputDir, { projectPath, autoApprove });
+  }
+
+  pipelineAll(outputDir: string, configPath?: string, projectPath?: string): Promise<PipelineAllRunResult> {
+    return this.runPipelineAll.execute(outputDir, { configPath, projectPath });
   }
 }
