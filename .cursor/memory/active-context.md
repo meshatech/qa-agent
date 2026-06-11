@@ -4,9 +4,11 @@
 
 ## Foco atual
 
-**MESHAP-3975 (Task 1 v2)** — Fundação: repo limpo + URL dinâmica **gaps fechados** (2026-06-11): `configs/agent-qa.meshamail.config.json` versionado; `QA_AGENT_BASE_URL` / `QA_AGENT_PREVIEW_DOMAIN` documentados em `.env.example` + README; known security gap registrado (credencial em HEAD/histórico — purge pendente). `.gitignore` de auth; experimentais apagados; helper `applyBaseUrlOverride` wired nos 6 pontos.
+**Task 2 (G3 distribuição + G1 CI)** — Empacotamento Docker/CI/release **concluída** (2026-06-11): `Dockerfile` release, `scripts/wait-for-ready.sh`, `qa-agent --version`, workflows `.github/workflows/ci.yml` (check em container Playwright + docker-smoke) e `release.yml` (tag `v*` → `ghcr.io/${{ github.repository }}`). Build local: `npm run docker:build:release`; smoke `--version`, `pipeline --help`, `validate-config` fixture OK.
 
 Branch de trabalho: `feature/sub-agent-orchestrator` (Tool Queue já na árvore; merge para main pendente — ver G9).
+
+**MESHAP-3975 (Task 1 v2)** — Fundação repo limpo + URL dinâmica concluída anteriormente.
 
 ## Decisões recentes
 
@@ -38,6 +40,6 @@ Nenhum no momento.
 
 ## Próximo passo sugerido
 
-Epic PRJ-11320 concluída (11392–11405). Próximo: `ScenarioSelector` / `execution-plan.json` (PRJ-11321+).
+**Task 3** — `pipeline all` + integração preview (fora do escopo da Task 2). Depois: template `qa-agent.yml` para repos alvo (Task 4).
 
 Roadmap V1 local: `docs/architecture/23-pipeline-v1-roadmap.md`.

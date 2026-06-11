@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'feature/**']
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck:
+    name: typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.60.0-noble
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+
+  validate-agent-config:
+    name: validate agent config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run validate:agent-config
+
+  docker-smoke:
+    name: release image smoke
+    runs-on: ubuntu-latest
+    needs: [typecheck, lint, test, validate-agent-config]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - run: docker build -t qa-agent:ci .
+      - name: qa-agent --version
+        run: docker run --rm qa-agent:ci qa-agent --version
+      - name: pipeline help
+        run: docker run --rm qa-agent:ci qa-agent pipeline --help
+      - name: validate-config (fixture, fake LLM)
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/configs:/configs:ro" \
+            -e GROQ_PROVIDER=fake \
+            qa-agent:ci \
+            qa-agent validate-config --config /configs/agent-qa.fixture.config.json

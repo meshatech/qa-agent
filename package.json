@@ -17,6 +17,8 @@
     "lint": "eslint .",
     "validate:agent-config": "node scripts/validate-agent-config.mjs",
     "docker:build": "docker build -f Dockerfile.playwright -t qa-agent-playwright .",
+    "docker:build:release": "npm run build && docker build -t qa-agent:local .",
+    "ci:local": "bash scripts/ci-local.sh",
     "test:docker": "docker run --rm --user $(id -u):$(id -g) --env-file .env -v \"$(pwd):/app\" -w /app qa-agent-playwright npx vitest run",
     "check:docker": "docker run --rm --user $(id -u):$(id -g) --env-file .env -v \"$(pwd):/app\" -w /app qa-agent-playwright sh -c \"npm run typecheck && npm run lint && npx vitest run && npm run validate:agent-config\"",
     "preflight:docker": "docker run --rm --user $(id -u):$(id -g) --env-file .env -e AGENT_QA_CONFIG=./configs/agent-qa.fixture.config.json -v \"$(pwd):/app\" -w /app qa-agent-playwright npx tsx src/main.ts preflight --output-dir ./.agent-qa/pipeline-test",
