@@ -12,6 +12,29 @@
 - [x] Evidências e diretório de run
 - [x] Specs `doc/01`–`21` e release notes v0.2-stable
 
+## Concluído (MESHAP-3975 — Fundação v2)
+
+- [x] `.gitignore`: `*-auth.json`, `meshamail-auth.json`, `storage-state.json`, `.agent-qa/pipeline/state/`
+- [x] `git rm --cached meshamail-auth.json` (credencial fora do versionamento)
+- [x] Configs experimentais **apagados de vez** (16 arquivos: codeshare, meshamail.70b, fail, groq, i18n, etc.); pasta `configs/experimental/` removida
+- [x] Mantidos: `agent-qa.config.json` (raiz) + `configs/agent-qa.fixture.config.json` (smoke)
+- [x] Referências ativas atualizadas (`package.json` preflight:docker, `README.md` smoke)
+- [x] `applyBaseUrlOverride` helper + wired em 6 pontos de carga de config
+- [x] Testes `test/apply-base-url-override.spec.ts`
+- [x] G9 documentado: Tool Queue opt-in, HYBRID_GUARDED canônico
+
+## Concluído (MESHAP-3975 — gaps config limpo + URL dinâmica, 2026-06-11)
+
+- [x] `configs/agent-qa.meshamail.config.json` versionado (staged)
+- [x] `QA_AGENT_BASE_URL` / `QA_AGENT_PREVIEW_DOMAIN` em `.env.example` e README
+- [x] Known security gap documentado (`decisions.md`, `.agent-qa/memory.md`) — purge/rotação fora de escopo
+- [x] `npm run check` verde
+
+## Concluído (Meshamail smoke + regressão aba)
+
+- [x] T002 DISCLOSURE: postcondition `text_any_visible`, alias primário "Conta e opções"
+- [x] Bug aba abrindo/fechando: removida recriação de contexto pós-SSO; popup OAuth adoptado; `recoverPage` menos agressivo; locator `text_any` preferência por match específico
+
 ## Concluído (correção de bugs no pipeline de execução)
 
 - [x] Bug 1 — `semanticTarget` retorna `null` para candidatos vazios/curtos (<3 chars)

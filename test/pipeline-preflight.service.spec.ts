@@ -201,6 +201,7 @@ describe('PipelinePreflightService', () => {
     delete process.env.GITHUB_TOKEN;
     delete process.env.GH_TOKEN;
     delete process.env.INPUT_GITHUB_TOKEN;
+    process.env.AGENT_QA_CONFIG = join(await tempDir(), 'nonexistent.config.json');
 
     const outputDir = await tempDir();
     const result = await makeService().run(outputDir);

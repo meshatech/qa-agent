@@ -17,6 +17,8 @@ import { EvidenceService } from '../services/evidence.service.js';
 import { ScenarioPlannerService } from '../services/scenario-planner.service.js';
 import { TaskMemoryService } from '../services/task-memory.service.js';
 import { ValidateConfigUseCase } from './validate-config.usecase.js';
+import { applyBaseUrlOverride } from '../helpers/apply-base-url-override.js';
+import { applyEphemeralAuthStorage } from '../helpers/ephemeral-auth-storage.js';
 import { ExecutionPlanPlannerService, type ExecutionPlanSource } from '../services/execution-plan-planner.service.js';
 import { PlanExecutorService, type PlanExecutionResult } from '../services/plan-executor.service.js';
 import { ReactiveRunnerService } from '../services/reactive-runner.service.js';
@@ -29,6 +31,9 @@ import { DemandContextPersistenceService } from '../services/demand-context-pers
 import { PRReporterService } from '../services/pr-reporter.service.js';
 import { collectKnownSecretsFromEnv } from '../services/known-secrets.collector.js';
 import { redactSecretsInMessage } from '../helpers/sanitize-token.js';
+import { ToolQueueSchema } from '../../domain/schemas/tool-queue.schema.js';
+import { ToolQueueToExecutionPlanMapper } from '../services/tool-queue-to-execution-plan.mapper.js';
+import { ORCHESTRATOR_SYSTEM_PROMPT, buildOrchestratorUserMessage } from '../../infra/llm/single-orchestrator-prompt.builder.js';
 
 const logger = new Logger('RunAgentUseCase');
 
@@ -60,7 +65,7 @@ export class RunAgentUseCase {
   async execute(rawDto: RunAgentDto): Promise<QaRunResult> {
     const startedAt = new Date();
     const dto = this.parseDto(rawDto);
-    const config = await this.loadConfig(dto);
+    let config = await this.loadConfig(dto);
     this.applyOverrides(config, dto);
     if (dto.demandPath) config.demand.description = await readFile(dto.demandPath, 'utf8');
     await this.validateConfig.validateLoaded(config);
@@ -68,6 +73,7 @@ export class RunAgentUseCase {
     this.data.reset();
     this.memory.reset();
     const runDir = await this.repo.createRunDir(config);
+    config = applyEphemeralAuthStorage(config, runDir);
     const runId = runDir.split(/[\\/]/).pop()!;
     try {
       await this.persistClickUpDemandContext(runDir, config);
@@ -82,14 +88,13 @@ export class RunAgentUseCase {
     const scenarios = await this.planner.plan(config);
     const filtered = dto.scenarioId ? scenarios.filter((s) => s.id === dto.scenarioId) : scenarios.slice(0, dto.maxScenarios ?? scenarios.length);
     // Execution routes (config -> route):
-    //   1. tools.enabled=true & mode!=FULL_REACTIVE -> Tools route (runWithTools) -> PlanExecutorService
-    //   2. tools.enabled=false & mode!=FULL_REACTIVE -> Plan route (runWithBrowser+plan) -> PlanExecutorService
-    //   3. mode=FULL_REACTIVE -> Reactive route (runScenario/runTask) -> decideWithSemanticRetry (opt-in/experimental)
-    // Routes 1 and 2 converge on PlanExecutorService and share the same fallback ladder
-    // (locator -> ensureAvailable -> decide() -> replan()). Route 3 is a distinct
-    // fully-reactive paradigm driven by decide() per action; keep it explicit/opt-in.
-    const useTools = config.runtime.tools?.enabled && config.runtime.mode !== 'FULL_REACTIVE';
-    const planned = config.runtime.mode === 'FULL_REACTIVE'
+    //   1. mode=ORCHESTRATOR -> Orchestrator route (single prompt -> ToolQueue -> ExecutionPlan) -> PlanExecutorService
+    //   2. tools.enabled=true & mode!=FULL_REACTIVE -> Tools route (runWithTools) -> PlanExecutorService
+    //   3. tools.enabled=false & mode!=FULL_REACTIVE -> Plan route (runWithBrowser+plan) -> PlanExecutorService
+    //   4. mode=FULL_REACTIVE -> Reactive route (runScenario/runTask) -> decideWithSemanticRetry (opt-in/experimental)
+    const isOrchestrator = config.runtime.mode === 'ORCHESTRATOR';
+    const useTools = !isOrchestrator && config.runtime.tools?.enabled && config.runtime.mode !== 'FULL_REACTIVE';
+    const planned = config.runtime.mode === 'FULL_REACTIVE' || isOrchestrator
       ? { plan: undefined, source: 'manual' as ExecutionPlanSource }
       : useTools
         ? { plan: undefined, source: 'manual' as ExecutionPlanSource }
@@ -107,6 +112,10 @@ export class RunAgentUseCase {
       fallbackWarning: planned.fallbackReason ? this.plannerFallbackWarning(planned.fallbackReason) : undefined,
     };
     if (dto.dryRun) return this.finalize(result, config, [], startedAt, runId, false);
+
+    if (isOrchestrator) {
+      return this.withTimeout(config.timeouts.runMs, () => this.runWithOrchestrator(result, config, dto, runDir, startedAt, runId));
+    }
 
     if (useTools) {
       return this.withTimeout(config.timeouts.runMs, () => this.runWithTools(result, config, dto, runDir, startedAt, runId));
@@ -131,7 +140,7 @@ export class RunAgentUseCase {
       throw new ConfigError(`Failed to load config from ${dto.configPath}: ${error instanceof Error ? error.message : String(error)}`, error);
     }
     try {
-      return RunConfigSchema.parse(raw);
+      return applyBaseUrlOverride(RunConfigSchema.parse(raw));
     } catch (error) {
       throw new ConfigError(error instanceof ZodError ? error.message : String(error), error);
     }
@@ -442,8 +451,9 @@ export class RunAgentUseCase {
     }
 
     const hasFailure = result.status !== 'PASSED';
-    const shouldSaveVideo = config.evidence.video === 'on' || (hasFailure && config.evidence.video === 'on-failure');
-    const shouldSaveTrace = config.evidence.trace === 'on' || (hasFailure && config.evidence.trace === 'on-failure');
+    const hasSteps = (result.steps?.length ?? 0) > 0;
+    const shouldSaveVideo = hasSteps && (config.evidence.video === 'on' || (hasFailure && config.evidence.video === 'on-failure'));
+    const shouldSaveTrace = hasSteps && (config.evidence.trace === 'on' || (hasFailure && config.evidence.trace === 'on-failure'));
 
     if (shouldSaveVideo) {
       await this.browser.saveVideo(`${result.runDir}/artifacts/videos/run-video.webm`).catch(() => undefined);
@@ -601,6 +611,113 @@ export class RunAgentUseCase {
 
   private hasBlockingBug(result: QaRunResult): boolean {
     return (result.bugs ?? []).some((b) => b.classification.isBug && (b.classification.severity === 'HIGH' || b.classification.severity === 'CRITICAL'));
+  }
+
+  private async runWithOrchestrator(result: QaRunResult, config: RunConfig, _dto: RunAgentDto, runDir: string, startedAt: Date, runId: string): Promise<QaRunResult> {
+    const attempts: AttemptRecord[] = [];
+    try {
+      await this.browser.open(config);
+
+      for (const scenario of result.scenarios ?? []) {
+        scenario.status = 'RUNNING';
+
+        // Navigate to baseUrl once per scenario
+        try {
+          await this.browser.execute({ type: 'navigate', to: config.baseUrl, reason: 'Open base URL for observation' });
+        } catch (e) {
+          logger.error(`Failed to navigate to ${config.baseUrl}: ${e instanceof Error ? e.message : String(e)}`);
+          scenario.status = 'BLOCKED';
+          continue;
+        }
+
+        for (const task of scenario.tasks) {
+          if (task.status !== 'PENDING') continue;
+
+          // 1. Observe current page state
+          const observation = await this.browser.observe();
+
+          // 2. Build prompt with observation
+          const prompt = buildOrchestratorUserMessage({
+            task: { id: task.id, title: task.title, expected: task.expected, status: task.status },
+            observation,
+          });
+
+          // 3. Call LLM via decision provider
+          let rawQueue: string;
+          try {
+            rawQueue = await this.decideOrchestrator(config, ORCHESTRATOR_SYSTEM_PROMPT, prompt);
+          } catch (e) {
+            logger.error(`Orchestrator LLM call failed: ${e instanceof Error ? e.message : String(e)}`);
+            task.status = 'BLOCKED';
+            result.bugs!.push(await this.recordBug(runDir, runId, result.bugs!.length + 1, { id: 'orchestrator-llm', description: 'LLM call', action: { type: 'waitForStable', reason: '' }, preconditions: [], postconditions: [], assertions: [], onFailure: 'BLOCK' } as unknown as import('../../domain/models/run.model.js').QaStep, observation, e instanceof Error ? e.message : String(e), 'ASSERTION_FAILURE', config, scenario.id, task.id, attempts));
+            continue;
+          }
+
+          // 3. Validate ToolQueue
+          let queue: ReturnType<typeof ToolQueueSchema.parse>;
+          try {
+            const parsed = JSON.parse(rawQueue);
+            queue = ToolQueueSchema.parse(parsed);
+          } catch (e) {
+            logger.error(`Invalid ToolQueue: ${e instanceof Error ? e.message : String(e)}`);
+            task.status = 'BLOCKED';
+            continue;
+          }
+
+          // 4. Map to ExecutionPlan
+          const mapper = new ToolQueueToExecutionPlanMapper();
+          const plan = mapper.map({
+            queue,
+            goal: task.title,
+            planId: `${scenario.id}-${task.id}`,
+            scenarioId: scenario.id,
+            taskId: task.id,
+          });
+
+          // 5. Execute via PlanExecutorService
+          const planResult = await this.planExecutor.execute(plan, config);
+          result.steps.push(...planResult.steps);
+          attempts.push(...planResult.attempts);
+
+          // 6. Apply results
+          await this.applyPlanExecutionResult(planResult, result, config, attempts, runDir, runId);
+
+          task.status = planResult.ok ? 'PASSED' : 'BLOCKED';
+        }
+        scenario.status = this.scenarioStatus(scenario);
+        if (this.hasBlockingBug(result)) break;
+      }
+
+      result.status = this.runStatus(result);
+      return await this.finalize(result, config, attempts, startedAt, runId, true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`Orchestrator run crashed: ${message}`, error instanceof Error ? error.stack : undefined);
+      result.status = 'BLOCKED';
+      result.bugs!.push({
+        bugId: `BUG-CRASH-${runId}`,
+        stepId: 'crash',
+        scenarioId: result.scenarios?.[0]?.id,
+        taskId: result.scenarios?.[0]?.tasks[0]?.id,
+        classification: { isBug: true, severity: 'CRITICAL', category: 'APP_FAULT', reason: 'Unhandled runtime error during orchestrator execution' },
+        path: runDir,
+        url: undefined,
+        expected: 'Run completes without crash',
+        actual: message,
+        signalType: 'ASSERTION_FAILURE',
+        rawMessage: error instanceof Error ? error.stack : message,
+        capturedAt: new Date().toISOString(),
+      });
+      await this.finalize(result, config, attempts, startedAt, runId, false);
+      return result;
+    }
+  }
+
+  private async decideOrchestrator(config: RunConfig, systemPrompt: string, userMessage: string): Promise<string> {
+    if (!this.decision.orchestrator) {
+      throw new Error('DecisionProviderPort does not implement orchestrator()');
+    }
+    return this.decision.orchestrator({ config, systemPrompt, userMessage });
   }
 
   private async withTimeout<T>(timeoutMs: number, fn: () => Promise<T>): Promise<T> {

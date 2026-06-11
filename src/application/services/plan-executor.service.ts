@@ -107,12 +107,21 @@ export class PlanExecutorService {
           return this.fail(result, this.planStep(step, before, this.waitAction(warning), this.waitAction(warning), { type: 'no_console_errors' }, pre, undefined, warning), before, warning);
         }
 
+        const stepAction = this.data.resolveObject(step.action, 'action');
+        if (stepAction.type === 'click' && 'target' in stepAction && stepAction.target && config.runtime.elementAvailability.enabled) {
+          console.log(`[PlanExecutor] step=${step.id} proactive ensureActionTargetAvailable`);
+          const available = await this.ensureActionTargetAvailable(step, before, config);
+          result.attempts.push(...available.attempts);
+          if (available.reobserved) before = available.observation;
+        }
+
         let action: QaAction;
         try {
           action = this.resolveAction(step, before, result);
         } catch (error) {
           result.locatorTelemetry.push({ stepId: step.id, type: 'target_not_found', timestamp: new Date().toISOString() });
           await this.recordAccessibilityWarnings(result, step.id);
+          console.log(`[PlanExecutor] step=${step.id} target_not_found → ensureActionTargetAvailable`);
           const available = await this.ensureActionTargetAvailable(step, before, config);
           result.attempts.push(...available.attempts);
           if (available.available) {
@@ -146,7 +155,9 @@ export class PlanExecutorService {
           return this.fail(result, this.planStep(step, before, action, action, { type: 'no_console_errors' }, { ok: false, type: 'policy', actual: message, durationMs: 0 }, undefined, message), before, message);
         }
 
+        console.log(`[PlanExecutor] step=${step.id} task=${step.taskId} attempt=${attempt + 1} action=${JSON.stringify({ type: action.type, reason: 'reason' in action ? action.reason : undefined, targetElementId: 'targetElementId' in action ? action.targetElementId : undefined })}`);
         const exec = await this.browser.execute(action);
+        console.log(`[PlanExecutor] step=${step.id} actionResult=${exec.ok ? 'PASSED' : 'FAILED'} durationMs=${exec.durationMs}${exec.error ? ` error=${exec.error.message}` : ''}`);
         if (exec.ok && action.type === 'extract' && exec.data !== undefined) this.data.storeValue(action.key, exec.data);
         const record: AttemptRecord = { actionType: action.type, result: exec.ok ? 'PASSED' : 'FAILED', reason: exec.error?.message, ts: new Date().toISOString() };
         result.attempts.push(record);
@@ -335,6 +346,8 @@ export class PlanExecutorService {
 
   private resolveLocator(step: ExecutionStep, obs: ScreenObservation, result: PlanExecutionResult, locator: import('../../domain/schemas/action.schema.js').LocatorDescriptor): string {
     const elementId = this.locators.findByLocator(obs, locator);
+    const resolved = this.locators.resolve(obs.observationId, elementId);
+    console.log(`[PlanExecutor] resolveLocator step=${step.id} elementId=${elementId} humanName="${resolved.humanName ?? '?'}" strategy=${locator.strategy}`);
     const isSemanticFallback = locator.strategy === 'semantic';
     result.locatorTelemetry.push({
       stepId: step.id,
@@ -435,7 +448,11 @@ export class PlanExecutorService {
       if (condition.expectedUrlPattern && after?.url) return new RegExp(condition.expectedUrlPattern).test(after.url);
     }
     if (condition.type === 'auth_state') return value === expected;
-    if (condition.type === 'menu_state' && expected === 'open') return value === true || this.hasText(obs, condition.semanticKey);
+    if (condition.type === 'menu_state' && expected === 'open') {
+      if (value === true) return true;
+      const keys = condition.semanticKey.split('|').map((s) => s.trim()).filter(Boolean);
+      return keys.some((k) => this.hasText(obs, k));
+    }
     if (condition.type === 'menu_state' && expected === 'closed') return value === false;
     return expected === undefined ? true : String(value).toLowerCase().includes(String(expected).toLowerCase());
   }

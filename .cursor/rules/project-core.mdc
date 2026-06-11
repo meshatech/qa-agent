@@ -29,8 +29,8 @@ Local fixture smoke:
 
 ```bash
 node ./test/fixtures/server.mjs
-npm run qa-agent -- validate-config --config ./agent-qa.fixture.config.json
-npm run qa-agent -- run --config ./agent-qa.fixture.config.json
+npm run qa-agent -- validate-config --config ./configs/agent-qa.fixture.config.json
+npm run qa-agent -- run --config ./configs/agent-qa.fixture.config.json
 ```
 
 ## Scope boundaries

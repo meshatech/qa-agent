@@ -1,8 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { chromium, firefox, webkit, type Browser, type BrowserContext, type Page, type Locator, type BrowserType } from 'playwright';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, rm } from 'node:fs/promises';
 import { readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import pixelmatch from 'pixelmatch';
 import { PNG } from 'pngjs';
 import { AxeBuilder } from '@axe-core/playwright';
@@ -28,8 +30,9 @@ export class PlaywrightHarness implements BrowserHarnessPort {
   private recovering = false;
   private signals: SignalsBuffer;
   private readonly locators = new Map<string, LocatorDescriptor>();
-  private readonly videoDir = '.agent-qa-video';
+  private readonly videoDir = join(tmpdir(), `qa-agent-video-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   private pendingDialog?: { accept(promptText?: string): Promise<void>; dismiss(): Promise<void>; message(): string };
+  private tabTraceSeq = 0;
 
   constructor(
     @Inject(PlaywrightQuiescenceGuard) private readonly quiescence: PlaywrightQuiescenceGuard,
@@ -46,17 +49,30 @@ export class PlaywrightHarness implements BrowserHarnessPort {
       const engine: BrowserType = config.browser.engine === 'firefox' ? firefox : config.browser.engine === 'webkit' ? webkit : chromium;
       this.browser = await engine.launch({ headless: !config.browser.headed, slowMo: config.browser.slowMoMs });
       await mkdir(this.videoDir, { recursive: true });
-      await this.createContextAndPage(config);
+      console.log('[TabTrace] browser.open starting (tab trace enabled)');
+      await this.createContextAndPage(config, { withStorage: false });
       const page = this.mustPage();
       if (config.auth.kind === 'formLogin') await this.formLogin.login(page, config);
+      await this.navigateWithRetry(config.baseUrl);
       if (config.auth.kind === 'ssoRedirect') {
-        const storagePath = config.auth.storageStatePath;
-        const exists = await readFile(storagePath).then(() => true).catch(() => false);
-        if (!exists) {
-          throw new HarnessFatalError(`Storage state not found: ${storagePath}. Run "npx tsx src/main.ts capture-auth --config <config> --output ${storagePath}" first to authenticate via SSO.`);
+        const storagePath = this.requireStorageStatePath(config);
+        if (await this.needsSsoLogin(config)) {
+          console.log('[PlaywrightHarness] Session missing or expired, performing SSO redirect login...');
+          const activePage = await this.performSsoRedirectLogin(this.mustPage(), config);
+          this.page = activePage;
+          this.signalsCollector.attach(activePage, config, this.signals);
+          this.registerDialogHandler();
+          await mkdir(dirname(storagePath), { recursive: true }).catch(() => undefined);
+          await Promise.all([
+            this.waitForAuthenticatedApp(config, activePage),
+            this.persistEphemeralSession(storagePath),
+          ]);
+          if (await this.needsSsoLogin(config)) {
+            throw new HarnessFatalError('SSO redirect login completed but application is still on login page');
+          }
+          console.log('[PlaywrightHarness] SSO login successful, continuing on authenticated page');
         }
       }
-      await this.navigateWithRetry(config.baseUrl);
       await this.waitForQuiescence(config.timeouts.quiescenceMs).catch(() => undefined);
     } catch (error) {
       if (error instanceof HarnessFatalError) throw error;
@@ -99,6 +115,8 @@ export class PlaywrightHarness implements BrowserHarnessPort {
     if (this.inFlight) return { ok: false, actionType: action.type, durationMs: 0, error: { code: 'CONCURRENT_ACTION_DENIED', message: 'Action already in flight' } };
     this.inFlight = true;
     let data: string | undefined;
+    const actionLabel = this.describeAction(action);
+    this.tabTrace('execute:before', { action: actionLabel });
     try {
       switch (action.type) {
         case 'fill': {
@@ -117,11 +135,23 @@ export class PlaywrightHarness implements BrowserHarnessPort {
           }
           break;
         }
-        case 'click': await this.clickAllowingPendingDialog(this.byId(action.targetElementId)); break;
+        case 'click':
+          await this.clickSameTab(this.byId(action.targetElementId), actionLabel);
+          break;
         case 'press': {
           const target = action.targetElementId ? this.byId(action.targetElementId) : null;
           if (target) await target.press(action.key);
           else await this.mustPage().keyboard.press(action.key);
+          break;
+        }
+        case 'typeText': {
+          const target = action.targetElementId ? this.byId(action.targetElementId) : null;
+          if (target) {
+            await target.focus();
+            await this.mustPage().keyboard.type(action.text, { delay: action.delayMs });
+          } else {
+            await this.mustPage().keyboard.type(action.text, { delay: action.delayMs });
+          }
           break;
         }
         case 'clickOutside': {
@@ -187,6 +217,8 @@ export class PlaywrightHarness implements BrowserHarnessPort {
       const code = e instanceof Error && /timeout/i.test(e.message) ? 'QUIESCENCE_TIMEOUT' : 'LOCATOR_NOT_FOUND';
       return { ok: false, actionType: action.type, durationMs: Date.now() - started, error: { code, message: e instanceof Error ? e.message : String(e) } };
     } finally {
+      if (this.config?.runtime.enforceSingleTab) await this.sweepGhostTabs('execute:finally');
+      this.tabTrace('execute:after', { action: actionLabel });
       this.inFlight = false;
     }
   }
@@ -304,6 +336,8 @@ export class PlaywrightHarness implements BrowserHarnessPort {
     await mkdir(dirname(path), { recursive: true }).catch(() => undefined);
     await this.context?.close().catch(() => undefined);
     await video?.saveAs(path).catch(() => undefined);
+    // Clean up temp video directory so partial/intermediate recordings don't leak
+    await rm(this.videoDir, { recursive: true, force: true }).catch(() => undefined);
   }
 
   async close(): Promise<void> {
@@ -331,6 +365,8 @@ export class PlaywrightHarness implements BrowserHarnessPort {
         // process already dead, ok
       }
     }
+    // Clean up temp video directory
+    await rm(this.videoDir, { recursive: true, force: true }).catch(() => undefined);
     this.browser = undefined;
     this.context = undefined;
     this.page = undefined;
@@ -422,14 +458,19 @@ export class PlaywrightHarness implements BrowserHarnessPort {
   }
 
   private async ensurePage(): Promise<Page> {
-    if (this.page && !this.page.isClosed() && (await this.isPageUsable(this.page))) return this.page;
+    if (this.page && !this.page.isClosed()) {
+      if (await this.isPageUsable(this.page)) return this.page;
+      await this.page.waitForLoadState('domcontentloaded', { timeout: 3000 }).catch(() => undefined);
+      if (await this.isPageUsable(this.page)) return this.page;
+    }
     const config = this.config;
     if (!config) throw new HarnessFatalError('Browser not opened');
     if (!this.browser?.isConnected()) throw new HarnessFatalError('Browser is closed');
     if (this.recovering) {
       await this.waitWhileRecovering();
-      if (this.page && !this.page.isClosed()) return this.page;
+      if (this.page && !this.page.isClosed() && (await this.isPageUsable(this.page))) return this.page;
     }
+    this.tabTrace('ensurePage:recovering', { primaryUrl: this.page?.isClosed() === false ? this.page.url() : '(none)' });
     await this.recoverPage(config);
     return this.mustPage();
   }
@@ -437,25 +478,29 @@ export class PlaywrightHarness implements BrowserHarnessPort {
   private async recoverPage(config: RunConfig): Promise<void> {
     if (this.recovering) return;
     this.recovering = true;
+    this.tabTrace('recoverPage:start', { baseUrl: config.baseUrl });
     try {
-      const oldPage = this.page;
-      this.page = undefined;
-      try {
-        await oldPage?.close().catch(() => undefined);
-        this.page = await this.context?.newPage();
+      const pages = this.context?.pages().filter((candidate) => !candidate.isClosed()) ?? [];
+      const primary = this.page && !this.page.isClosed() ? this.page : pages[0];
+      if (primary) {
+        this.page = primary;
+        this.tabTrace('recoverPage:reuse-primary', { url: primary.url() });
+        await this.closeExtraPages(primary, 'recoverPage');
         this.registerDialogHandler();
-      } catch {
-        this.context = undefined;
-      }
-      if (!this.page) {
-        await this.createContextAndPage(config);
-      } else {
         this.signalsCollector.attach(this.page, config, this.signals);
+        if (!(await this.isPageUsable(this.page))) {
+          await this.page.waitForLoadState('domcontentloaded', { timeout: 3000 }).catch(() => undefined);
+        }
+        await this.navigateWithRetry(config.baseUrl).catch(() => undefined);
+      } else {
+        this.tabTrace('recoverPage:create-context', {});
+        await this.createContextAndPage(config);
+        await this.navigateWithRetry(config.baseUrl).catch(() => undefined);
       }
       this.mustPage();
-      await this.navigateWithRetry(config.baseUrl).catch(() => undefined);
     } finally {
       this.recovering = false;
+      this.tabTrace('recoverPage:done', {});
     }
   }
 
@@ -465,23 +510,29 @@ export class PlaywrightHarness implements BrowserHarnessPort {
     }
   }
 
-  private async createContextAndPage(config: RunConfig): Promise<void> {
+  private async createContextAndPage(config: RunConfig, options?: { withStorage?: boolean }): Promise<void> {
     if (!this.browser?.isConnected()) throw new HarnessFatalError('Browser is closed');
+    this.tabTrace('createContextAndPage:start', { withStorage: options?.withStorage ?? true });
     const oldContext = this.context;
     this.context = undefined;
     await oldContext?.close().catch(() => undefined);
+    const storageState = await this.resolveStorageStateForContext(config, options?.withStorage);
     this.context = await this.browser.newContext({
       viewport: config.browser.viewport,
       locale: config.browser.locale,
       timezoneId: config.browser.timezone,
-      storageState: config.auth.kind === 'storageState' ? config.auth.path : undefined,
+      storageState,
       recordVideo: { dir: this.videoDir },
     });
+    this.attachTabTraceListener(this.context);
     await this.context.tracing.start({ screenshots: true, snapshots: true, sources: true }).catch(() => undefined);
     this.page = await this.context.newPage();
+    this.attachSingleTabPolicy(this.context);
+    if (config.runtime.enforceSingleTab) this.attachGhostTabKiller(this.context);
     this.signals.reset();
     this.signalsCollector.attach(this.page, config, this.signals);
     this.registerDialogHandler();
+    this.tabTrace('createContextAndPage:done', { primaryUrl: this.page.url() });
   }
 
   private registerDialogHandler(): void {
@@ -495,9 +546,11 @@ export class PlaywrightHarness implements BrowserHarnessPort {
   private async navigateWithRetry(url: string): Promise<void> {
     const retry = this.config?.timeouts.navigationRetry ?? { maxAttempts: 1, backoffMs: 250 };
     let lastError: unknown;
+    this.tabTrace('navigate:start', { url });
     for (let attempt = 1; attempt <= retry.maxAttempts; attempt++) {
       try {
         await this.mustPage().goto(url, { timeout: this.config?.timeouts.navigationMs });
+        this.tabTrace('navigate:done', { url, attempt });
         return;
       } catch (error) {
         lastError = error;
@@ -505,6 +558,290 @@ export class PlaywrightHarness implements BrowserHarnessPort {
       }
     }
     throw lastError;
+  }
+
+  private isAppUrl(url: string, config: RunConfig): boolean {
+    if (!url || url === 'about:blank') return false;
+    try {
+      const host = new URL(url).hostname;
+      return config.appDomains.some((domain) => host === domain || host.endsWith(`.${domain}`));
+    } catch {
+      return false;
+    }
+  }
+
+  private requireStorageStatePath(config: RunConfig): string {
+    if (config.auth.kind !== 'ssoRedirect' || !config.auth.storageStatePath) {
+      throw new HarnessFatalError('ssoRedirect auth requires a runtime storageStatePath (set by RunAgentUseCase)');
+    }
+    return config.auth.storageStatePath;
+  }
+
+  private async resolveStorageStateForContext(config: RunConfig, withStorage?: boolean): Promise<string | undefined> {
+    if (withStorage === false) return undefined;
+    if (config.auth.kind === 'storageState') return config.auth.path;
+    if (config.auth.kind !== 'ssoRedirect') return undefined;
+    const path = config.auth.storageStatePath;
+    if (!path) return undefined;
+    const exists = await readFile(path).then(() => true).catch(() => false);
+    if (!exists) {
+      if (withStorage === true) {
+        throw new HarnessFatalError(`Expected ephemeral storage state at ${path} after SSO login`);
+      }
+      return undefined;
+    }
+    return path;
+  }
+
+  private async needsSsoLogin(config: RunConfig): Promise<boolean> {
+    if (config.auth.kind !== 'ssoRedirect') return false;
+    const page = this.mustPage();
+    try {
+      if (/\/login\b/i.test(new URL(page.url()).pathname)) return true;
+    } catch {
+      return true;
+    }
+    if (config.auth.kind !== 'ssoRedirect') return false;
+    try {
+      return await this.toPlaywrightLocator(page, config.auth.loginButtonSelector).isVisible({ timeout: 1500 });
+    } catch {
+      return false;
+    }
+  }
+
+  private async performSsoRedirectLogin(page: Page, config: RunConfig): Promise<Page> {
+    const auth = config.auth as {
+      loginUrl?: string;
+      loginButtonSelector: LocatorDescriptor;
+      idpUsernameSelector?: LocatorDescriptor;
+      idpPasswordSelector?: LocatorDescriptor;
+      idpSubmitSelector?: LocatorDescriptor;
+      usernameEnv?: string;
+      passwordEnv?: string;
+      successWhen?: { urlContains?: string; textVisible?: string };
+    };
+    const username = auth.usernameEnv ? process.env[auth.usernameEnv] : undefined;
+    const password = auth.passwordEnv ? process.env[auth.passwordEnv] : undefined;
+
+    const loginUrl = new URL(auth.loginUrl ?? '/login', config.baseUrl).toString();
+    console.log(`[PlaywrightHarness] Navigating to login URL: ${loginUrl}`);
+    await page.goto(loginUrl, { timeout: config.timeouts.navigationMs });
+    await this.waitForQuiescence(config.timeouts.quiescenceMs).catch(() => undefined);
+
+    console.log(`[PlaywrightHarness] Clicking login button...`);
+    const loginButton = this.toPlaywrightLocator(page, auth.loginButtonSelector);
+    await this.clickSameTab(loginButton, 'sso:login-button');
+    await page.waitForURL(/login\.mesha\.com\.br|meshamail\.mesha\.com\.br/i, { timeout: config.timeouts.navigationMs }).catch(() => undefined);
+    await this.closeExtraPages(page, 'sso:after-login-button');
+    const urlAfterClick = page.url();
+    console.log(`[PlaywrightHarness] URL after login button click: ${urlAfterClick}`);
+
+    if (auth.idpUsernameSelector && auth.idpPasswordSelector && auth.idpSubmitSelector) {
+      if (!username) throw new HarnessFatalError(`Missing env ${auth.usernameEnv} for ssoRedirect`);
+      if (!password) throw new HarnessFatalError(`Missing env ${auth.passwordEnv} for ssoRedirect`);
+
+      console.log(`[PlaywrightHarness] Filling IDP credentials... username=${username.split('@')[0]}...@...`);
+      const usernameLocator = this.toPlaywrightLocator(page, auth.idpUsernameSelector);
+      const passwordLocator = this.toPlaywrightLocator(page, auth.idpPasswordSelector);
+      const submitLocator = this.toPlaywrightLocator(page, auth.idpSubmitSelector);
+
+      await usernameLocator.waitFor({ state: 'visible', timeout: config.timeouts.actionMs });
+      await usernameLocator.fill(username);
+      await passwordLocator.waitFor({ state: 'visible', timeout: config.timeouts.actionMs });
+      await passwordLocator.fill(password);
+
+      console.log(`[PlaywrightHarness] Submitting IDP credentials...`);
+      const urlBefore = page.url();
+      const redirectWait = this.waitForAuthenticatedApp(config, page);
+      this.tabTrace('sso:idp-submit:before', { url: urlBefore });
+      await this.clickSameTab(submitLocator, 'sso:idp-submit');
+      await redirectWait;
+
+      const urlAfter = page.url();
+      console.log(`[PlaywrightHarness] URL after IDP submit: ${urlAfter}`);
+      if (urlAfter === urlBefore) {
+        throw new HarnessFatalError(`SSO redirect login failed: URL did not change after submit (still ${urlAfter})`);
+      }
+
+      // Check for auth failure messages on the page
+      const pageText = await page.locator('body').innerText().catch(() => '');
+      if (pageText.includes('Falha na autenticação') || pageText.includes('login.fail.message') || pageText.includes('Authentication failed')) {
+        console.error(`[PlaywrightHarness] IDP auth failure detected on page`);
+      }
+
+      if (auth.successWhen?.urlContains && !urlAfter.includes(auth.successWhen.urlContains)) {
+        throw new HarnessFatalError(`SSO redirect login failed: expected URL to contain "${auth.successWhen.urlContains}", got ${urlAfter}`);
+      }
+      if (auth.successWhen?.textVisible) {
+        await page.getByText(auth.successWhen.textVisible).first().waitFor({ state: 'visible', timeout: config.timeouts.actionMs });
+      }
+    }
+
+    await this.closeExtraPages(page, 'sso:complete');
+    console.log(`[PlaywrightHarness] SSO redirect login completed`);
+    return page;
+  }
+
+  private attachSingleTabPolicy(context: import('playwright').BrowserContext): void {
+    void context.addInitScript({
+      content: `
+(() => {
+  const install = () => {
+    if (window.__qaSingleTabInstalled) return;
+    window.__qaSingleTabInstalled = true;
+    console.log('[TabTrace:init] single-tab policy installed');
+    const nativeOpen = window.open.bind(window);
+    window.open = (url, target, features) => {
+      console.log('[TabTrace:init] window.open', JSON.stringify({ url: url == null ? '' : String(url), target: target ?? '', features: features ?? '' }));
+      if (url && (!target || target === '_blank')) {
+        window.location.assign(String(url));
+        return window;
+      }
+      return nativeOpen(url, target, features);
+    };
+    document.addEventListener('click', (event) => {
+      const anchor = event.target && event.target.closest ? event.target.closest('a[target="_blank"]') : null;
+      if (!anchor || !anchor.href) return;
+      console.log('[TabTrace:init] _blank anchor click', anchor.href);
+      event.preventDefault();
+      event.stopPropagation();
+      anchor.target = '_self';
+      window.location.assign(anchor.href);
+    }, true);
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', install, { once: true });
+  else install();
+})();
+      `.trim(),
+    });
+  }
+
+  private attachGhostTabKiller(context: BrowserContext): void {
+    context.on('page', (page) => {
+      const primary = this.page;
+      if (!primary || page === primary || page.isClosed()) return;
+      this.tabTrace('ghostTabKiller:closing', { url: page.url(), primaryUrl: primary.url() });
+      void page.close().catch(() => undefined);
+    });
+  }
+
+  private async sweepGhostTabs(source: string): Promise<void> {
+    const primary = this.page;
+    if (!primary || primary.isClosed()) return;
+    const extras = primary.context().pages().filter((candidate) => !candidate.isClosed() && candidate !== primary);
+    if (!extras.length) return;
+    for (const candidate of extras) {
+      this.tabTrace('sweepGhostTabs:closing', { source, url: candidate.url(), primaryUrl: primary.url() });
+      await candidate.close().catch(() => undefined);
+    }
+  }
+
+  private attachTabTraceListener(context: BrowserContext): void {
+    context.on('page', (page) => {
+      const primary = this.page;
+      const isPrimary = page === primary;
+      this.tabTrace('context.page:event', {
+        isPrimary,
+        url: page.url(),
+        opener: '(n/a)',
+        caller: this.tabCaller(5),
+      });
+      page.on('close', () => {
+        this.tabTrace('page.close:event', {
+          isPrimary: page === this.page,
+          url: page.url(),
+          caller: this.tabCaller(5),
+        });
+      });
+    });
+  }
+
+  private async clickSameTab(target: Locator, actionLabel = 'click'): Promise<void> {
+    const page = this.mustPage();
+    const targetMeta = await target.evaluate(`(el) => {
+      const clickable = el.closest('a,button,[role="button"],[role="menuitem"],[role="link"],[role="switch"]') || el;
+      if (clickable.tagName === 'A') clickable.target = '_self';
+      return {
+        tag: clickable.tagName,
+        role: clickable.getAttribute('role') || '',
+        text: (clickable.innerText || clickable.textContent || '').trim().slice(0, 120),
+        href: clickable.tagName === 'A' ? clickable.href : '',
+        target: clickable.tagName === 'A' ? clickable.target : '',
+      };
+    }`).catch(() => ({ tag: '?', role: '', text: '', href: '', target: '' }));
+    this.tabTrace('clickSameTab:before', { action: actionLabel, target: targetMeta, primaryUrl: page.url() });
+    let popupHandler: ((popup: Page) => void) | undefined;
+    const popupPromise = new Promise<void>((resolve) => {
+      popupHandler = (popup: Page) => {
+        if (popup === page || popup.isClosed()) {
+          resolve();
+          return;
+        }
+        this.tabTrace('clickSameTab:popup-detected', {
+          action: actionLabel,
+          popupUrl: popup.url(),
+          primaryUrl: page.url(),
+          caller: this.tabCaller(4),
+        });
+        void popup.close().then(() => {
+          this.tabTrace('clickSameTab:popup-closed', { action: actionLabel, popupUrl: popup.url() });
+          resolve();
+        }).catch(() => resolve());
+      };
+      page.context().on('page', popupHandler);
+    });
+    const popupWindow = new Promise<void>((resolve) => setTimeout(resolve, 150));
+    try {
+      await this.clickAllowingPendingDialog(target);
+      await Promise.race([popupPromise, popupWindow]);
+    } finally {
+      if (popupHandler) page.context().off('page', popupHandler);
+    }
+    await this.enforceSingleTab(page, actionLabel);
+    this.tabTrace('clickSameTab:after', { action: actionLabel, primaryUrl: page.url() });
+  }
+
+  private async enforceSingleTab(primary: Page, source = 'enforceSingleTab'): Promise<void> {
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const beforeCount = primary.context().pages().filter((candidate) => !candidate.isClosed()).length;
+      await this.closeExtraPages(primary, `${source}:attempt-${attempt + 1}`);
+      const openCount = primary.context().pages().filter((candidate) => !candidate.isClosed()).length;
+      if (openCount <= 1) {
+        if (beforeCount > 1) this.tabTrace('enforceSingleTab:ok', { source, attempt: attempt + 1, beforeCount, openCount });
+        return;
+      }
+      this.tabTrace('enforceSingleTab:retry', { source, attempt: attempt + 1, beforeCount, openCount });
+      await primary.waitForTimeout(50);
+    }
+    this.tabTrace('enforceSingleTab:exhausted', { source });
+  }
+
+  private async closeExtraPages(primary: Page, source = 'closeExtraPages'): Promise<void> {
+    const extras = primary.context().pages().filter((candidate) => !candidate.isClosed() && candidate !== primary);
+    if (!extras.length) return;
+    for (const candidate of extras) {
+      this.tabTrace('closeExtraPages:closing', { source, url: candidate.url(), primaryUrl: primary.url() });
+    }
+    await Promise.all(extras.map((candidate) => candidate.close().catch(() => undefined)));
+    this.tabTrace('closeExtraPages:done', { source, closedCount: extras.length });
+  }
+
+  private persistEphemeralSession(storagePath: string): Promise<void> {
+    return this.context?.storageState({ path: storagePath }).then(() => {
+      console.log(`[PlaywrightHarness] Ephemeral session saved to ${storagePath}`);
+    }) ?? Promise.resolve();
+  }
+
+  private async waitForAuthenticatedApp(config: RunConfig, page: Page): Promise<void> {
+    await page.waitForURL((url) => {
+      try {
+        const pathname = new URL(url.toString()).pathname;
+        return this.isAppUrl(url.toString(), config) && !/\/login\b/i.test(pathname);
+      } catch {
+        return false;
+      }
+    }, { timeout: config.timeouts.navigationMs }).catch(() => undefined);
+    await this.waitForQuiescence(config.timeouts.quiescenceMs).catch(() => undefined);
   }
 
   private async fillRichText(target: Locator, value: string): Promise<void> {
@@ -618,9 +955,50 @@ export class PlaywrightHarness implements BrowserHarnessPort {
     return obs;
   }
 
+  private toPlaywrightLocator(page: Page, descriptor: LocatorDescriptor | string): Locator {
+    if (typeof descriptor === 'string') return page.locator(descriptor);
+    if (descriptor.strategy === 'role') return page.getByRole(descriptor.role as Parameters<Page['getByRole']>[0], { name: descriptor.name, exact: descriptor.exact });
+    if (descriptor.strategy === 'label') return page.getByLabel(descriptor.text, { exact: descriptor.exact });
+    if (descriptor.strategy === 'placeholder') return page.getByPlaceholder(descriptor.text, { exact: descriptor.exact });
+    if (descriptor.strategy === 'text') return page.getByText(descriptor.text, { exact: descriptor.exact });
+    if (descriptor.strategy === 'text_any') return page.getByText(new RegExp(descriptor.texts.map((text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), descriptor.exact ? undefined : 'i')).first();
+    if (descriptor.strategy === 'semantic') return this.toPlaywrightLocator(page, descriptor.candidates[0]!);
+    if (descriptor.strategy === 'index') return this.toPlaywrightLocator(page, descriptor.target).nth(descriptor.index);
+    if (descriptor.strategy === 'document') return page.locator('html');
+    return page.getByTestId(descriptor.value);
+  }
+
   private playwrightMessage(error: unknown): string {
     const message = error instanceof Error ? error.message : String(error);
     if (/Target page, context or browser has been closed/i.test(message)) return 'Target page, context or browser has been closed';
     return message;
+  }
+
+  private describeAction(action: QaAction): string {
+    const reason = 'reason' in action && action.reason ? ` reason="${action.reason}"` : '';
+    if (action.type === 'click' && 'targetElementId' in action) return `click id=${action.targetElementId}${reason}`;
+    if (action.type === 'navigate' && 'to' in action) return `navigate to=${action.to}${reason}`;
+    if (action.type === 'press' && 'key' in action) return `press key=${action.key}${reason}`;
+    return `${action.type}${reason}`;
+  }
+
+  private tabCaller(depth = 4): string {
+    return new Error().stack?.split('\n').slice(2, 2 + depth).map((line) => line.trim()).join(' <- ') ?? '';
+  }
+
+  private tabSnapshot(): Array<{ index: number; isPrimary: boolean; closed: boolean; url: string }> {
+    const primary = this.page;
+    return (this.context?.pages() ?? []).map((candidate, index) => ({
+      index,
+      isPrimary: candidate === primary,
+      closed: candidate.isClosed(),
+      url: candidate.isClosed() ? '(closed)' : candidate.url(),
+    }));
+  }
+
+  private tabTrace(event: string, details: Record<string, unknown>): void {
+    this.tabTraceSeq += 1;
+    const pages = this.tabSnapshot();
+    console.log(`[TabTrace #${this.tabTraceSeq}] ${event} openPages=${pages.length} ${JSON.stringify({ ...details, pages })}`);
   }
 }

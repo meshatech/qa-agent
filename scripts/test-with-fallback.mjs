@@ -13,15 +13,18 @@ function isInsideDocker() {
 }
 
 function dockerBinary() {
-  for (const bin of ['sudo docker', 'docker']) {
-    try {
-      execSync(`${bin} info`, { stdio: 'pipe' });
-      return bin;
-    } catch {
-      continue;
-    }
+  try {
+    execSync('docker info', { stdio: 'pipe' });
+    return 'docker';
+  } catch {
+    return null;
   }
-  return null;
+}
+
+function dockerUserFlags() {
+  const uid = typeof process.getuid === 'function' ? process.getuid() : 1000;
+  const gid = typeof process.getgid === 'function' ? process.getgid() : 1000;
+  return `--user ${uid}:${gid}`;
 }
 
 function hasDockerImage(docker) {
@@ -58,7 +61,7 @@ function runVitestInDocker(docker) {
   const vitestCmd = args ? `npx vitest run ${args}` : 'npx vitest run';
   console.log('[test-with-fallback] Running tests via Docker (qa-agent-playwright)...');
   execSync(
-    `${docker} run --rm ${envFile}-v "${process.cwd()}:/app" -w /app qa-agent-playwright ${vitestCmd}`,
+    `${docker} run --rm ${dockerUserFlags()} ${envFile}-v "${process.cwd()}:/app" -w /app qa-agent-playwright ${vitestCmd}`,
     { stdio: 'inherit' },
   );
 }
@@ -77,6 +80,6 @@ if (docker && hasDockerImage(docker)) {
   console.error(
     '[test-with-fallback] ERROR: Docker image qa-agent-playwright not built and Playwright browsers not found.',
   );
-  console.error('Run: sudo docker build -f Dockerfile.playwright -t qa-agent-playwright .');
+  console.error('Run: docker build -f Dockerfile.playwright -t qa-agent-playwright .');
   process.exit(1);
 }

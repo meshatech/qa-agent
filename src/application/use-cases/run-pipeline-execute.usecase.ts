@@ -9,6 +9,7 @@ import type { ConfigLoaderPort } from '../ports/config-loader.port.js';
 import type { BrowserHarnessPort } from '../ports/browser-harness.port.js';
 import { ExecutionPlanSchema } from '../../domain/schemas/execution-plan.schema.js';
 import { RunConfigSchema, type RunConfig } from '../../domain/schemas/config.schema.js';
+import { applyBaseUrlOverride } from '../helpers/apply-base-url-override.js';
 
 const EXECUTION_PLAN_FILE = 'execution-plan.json';
 const EXECUTION_RESULT_FILE = 'execution-result.json';
@@ -70,7 +71,7 @@ export class RunPipelineExecuteUseCase {
 
   private async loadConfig(configPath: string): Promise<RunConfig> {
     const raw = await this.configLoader.load(configPath);
-    return RunConfigSchema.parse(raw);
+    return applyBaseUrlOverride(RunConfigSchema.parse(raw));
   }
 
   private summarizeTelemetry(telemetry: LocatorTelemetryEvent[]): PipelineExecuteRunResult['telemetrySummary'] {

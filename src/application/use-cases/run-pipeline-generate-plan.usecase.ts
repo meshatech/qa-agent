@@ -8,6 +8,7 @@ import { ExecutionPlanPlannerService, type PlannedExecutionPlan } from '../servi
 import type { ConfigLoaderPort } from '../ports/config-loader.port.js';
 import { SelectedScenariosSchema } from '../../domain/schemas/selected-scenarios.schema.js';
 import { RunConfigSchema, type RunConfig } from '../../domain/schemas/config.schema.js';
+import { applyBaseUrlOverride } from '../helpers/apply-base-url-override.js';
 
 const SELECTED_SCENARIOS_FILE = 'selected-scenarios.json';
 const EXECUTION_PLAN_FILE = 'execution-plan.json';
@@ -106,7 +107,7 @@ export class RunPipelineGeneratePlanUseCase {
 
   private async loadConfig(configPath: string): Promise<RunConfig> {
     const raw = await this.configLoader.load(configPath);
-    return RunConfigSchema.parse(raw);
+    return applyBaseUrlOverride(RunConfigSchema.parse(raw));
   }
 
   private auditPlanQuality(plan: import('../../domain/schemas/execution-plan.schema.js').ExecutionPlan): PipelineGeneratePlanRunResult['qualityAudit'] {

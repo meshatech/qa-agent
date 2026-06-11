@@ -47,6 +47,10 @@ export class LocatorResolverService {
       if (!found) throw new DomainError('LOCATOR_NOT_FOUND', `Element not found for indexed locator: ${JSON.stringify(locator)}`);
       return found.id;
     }
+    if (locator.strategy === 'text_any') {
+      const ranked = this.rankTextAnyMatches(obs, locator);
+      if (ranked) return ranked.id;
+    }
     const found = obs.elements.find((element) => this.sameLocator(element.locator, locator))
       ?? obs.elements.find((element) => this.sameElement(element, locator))
       ?? this.bestTokenOverlap(obs, locator);
@@ -67,6 +71,32 @@ export class LocatorResolverService {
     return JSON.stringify(a) === JSON.stringify(b);
   }
 
+  private rankTextAnyMatches(obs: ScreenObservation, locator: Extract<LocatorDescriptor, { strategy: 'text_any' }>): ScreenObservation['elements'][number] | undefined {
+    const matches = obs.elements
+      .filter((element) => this.sameElement(element, locator))
+      .filter((element) => !this.shouldExcludeTextAnyCandidate(element, locator.texts));
+    if (!matches.length) return undefined;
+    const ranked = matches
+      .map((element) => ({ element, score: this.textAnyMatchScore(element, locator.texts) }))
+      .sort((a, b) => b.score - a.score || this.actionableScore(b.element) - this.actionableScore(a.element));
+    return ranked[0]?.element;
+  }
+
+  private textAnyMatchScore(element: ScreenObservation['elements'][number], texts: string[]): number {
+    const haystack = [element.name, element.text, element.ariaLabel, element.title, element.alt]
+      .filter((value): value is string => Boolean(value))
+      .join(' ')
+      .toLowerCase();
+    let best = 0;
+    for (const text of texts) {
+      const normalized = text.toLowerCase();
+      if (haystack === normalized) best = Math.max(best, 100 + text.length);
+      else if ((element.name ?? '').toLowerCase() === normalized) best = Math.max(best, 90 + text.length);
+      else if (this.includes(element.name, text) || this.includes(element.text, text)) best = Math.max(best, 50 + text.length);
+    }
+    return best;
+  }
+
   private sameElement(element: ScreenObservation['elements'][number], locator: LocatorDescriptor): boolean {
     if (locator.strategy === 'role') {
       if (element.role !== locator.role) return false;
@@ -75,13 +105,29 @@ export class LocatorResolverService {
     }
     if (locator.strategy === 'text') return this.includes(element.name, locator.text) || this.includes(element.text, locator.text);
     if (locator.strategy === 'text_any') {
-      return locator.texts.some((text) =>
-        this.includes(element.name, text) ||
-        this.includes(element.text, text) ||
-        this.includes(element.ariaLabel, text) ||
-        this.includes(element.title, text) ||
-        this.includes(element.alt, text)
-      );
+      return locator.texts.some((text) => {
+        const expectedTokens = this.tokens(text);
+        const nameTokens = new Set(this.tokens(element.name ?? ''));
+        const textTokens = new Set(this.tokens(element.text ?? ''));
+        const labelTokens = new Set(this.tokens(element.ariaLabel ?? ''));
+        const titleTokens = new Set(this.tokens(element.title ?? ''));
+        const altTokens = new Set(this.tokens(element.alt ?? ''));
+        // Prevent false positive: e.g. expected="menu de conta ou configurações" (5 tokens)
+        // matching value="Configurações" (1 token) because expected includes value as substring
+        const hasEnoughTokens = (tokens: Set<string>) =>
+          expectedTokens.length <= 1 || tokens.size >= expectedTokens.length ||
+          expectedTokens.every((t) => tokens.has(t));
+        if (!hasEnoughTokens(nameTokens) && !hasEnoughTokens(textTokens) &&
+            !hasEnoughTokens(labelTokens) && !hasEnoughTokens(titleTokens) &&
+            !hasEnoughTokens(altTokens)) {
+          return false;
+        }
+        return this.includes(element.name, text) ||
+          this.includes(element.text, text) ||
+          this.includes(element.ariaLabel, text) ||
+          this.includes(element.title, text) ||
+          this.includes(element.alt, text);
+      });
     }
     if (locator.strategy === 'label' || locator.strategy === 'placeholder') {
       return this.includes(element.name, locator.text) || this.includes(element.text, locator.text);
@@ -164,7 +210,22 @@ export class LocatorResolverService {
   }
 
   private actionableScore(element: ScreenObservation['elements'][number]): number {
-    return ACTIONABLE_ROLES.has(element.role.toLowerCase()) ? 1 : 0;
+    const role = element.role.toLowerCase();
+    if (role === 'switch' || role === 'menuitem') return 3;
+    if (ACTIONABLE_ROLES.has(role)) return 1;
+    return 0;
+  }
+
+  private shouldExcludeTextAnyCandidate(element: ScreenObservation['elements'][number], texts: string[]): boolean {
+    const normalizedTexts = texts.map((text) => text.toLowerCase());
+    const seeksMenuItem = normalizedTexts.some((text) => /^(tema|sair|logout|aparência|appearance|theme|escuro|dark)$/.test(text) || /tema|sair|logout|aparência/.test(text));
+    if (!seeksMenuItem) return false;
+    return this.isAccountMenuTrigger(element);
+  }
+
+  private isAccountMenuTrigger(element: ScreenObservation['elements'][number]): boolean {
+    const name = (element.name ?? '').toLowerCase();
+    return name.includes('conta e opções') || name === 'account' || name === 'configurações';
   }
 
   /**
@@ -216,8 +277,7 @@ export class LocatorResolverService {
       }
     }
 
-    // Default: largest element in viewport
-    return inViewport.sort((a, b) => this.area(b) - this.area(a))[0];
+    return undefined;
   }
 
   private area(element: ScreenObservation['elements'][number]): number {

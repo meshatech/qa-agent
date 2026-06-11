@@ -2,7 +2,7 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
 export default [
-  { ignores: ['dist/**', 'node_modules/**', 'qa-agent-runs/**', '.agent-qa/**', '.agent-qa-video/**', '.agent-qa/worktrees/**', 'test/fixtures/*.mjs', 'scripts/**'] },
+  { ignores: ['dist/**', 'node_modules/**', 'qa-agent-runs/**', 'qa-agent-runs-local/**', '.agent-qa/**', '.agent-qa-video/**', '.agent-qa/worktrees/**', 'test/fixtures/*.mjs', 'scripts/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

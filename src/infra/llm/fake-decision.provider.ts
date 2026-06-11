@@ -95,6 +95,17 @@ export class FakeDecisionProvider implements DecisionProviderPort {
     return tasks.map((task) => ({ kind: 'NO_REGRESSION', description: task.title }));
   }
 
+  async orchestrator(_input: import('../../application/ports/decision-provider.port.js').OrchestratorInput): Promise<string> {
+    this.calls++;
+    // Return a minimal valid ToolQueue JSON for testing
+    return JSON.stringify({
+      taskQueue: [
+        { step: 1, tool: 'navigator.open', params: { url: 'https://example.com' } },
+      ],
+      reasoning: 'Fake orchestrator queue',
+    });
+  }
+
   stats() {
     return { calls: this.calls, breakdown: { ...this.callCounts } };
   }

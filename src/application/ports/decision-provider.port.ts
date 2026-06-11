@@ -38,6 +38,12 @@ export interface LlmStats {
   breakdown?: Record<string, unknown>;
 }
 
+export interface OrchestratorInput {
+  config: RunConfig;
+  systemPrompt: string;
+  userMessage: string;
+}
+
 export interface DecisionProviderPort {
   plan?(config: RunConfig): Promise<QaScenario[]>;
   buildPlan?(config: RunConfig, scenarios?: QaScenario[]): Promise<ExecutionPlan>;
@@ -46,4 +52,5 @@ export interface DecisionProviderPort {
   stats?(): LlmStats;
   classifyOutcome?(config: RunConfig, task: QaTask): Promise<ExpectedOutcome>;
   classifyOutcomes?(config: RunConfig, tasks: QaTask[]): Promise<ExpectedOutcome[]>;
+  orchestrator?(input: OrchestratorInput): Promise<string>;
 }

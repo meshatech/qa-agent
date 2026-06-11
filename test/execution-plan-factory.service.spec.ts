@@ -15,7 +15,7 @@ function makeConfig(): RunConfig {
     llm: { provider: 'fake', model: 'test', apiKeyEnv: 'TEST_KEY', maxSchemaRetries: 1, rateLimitRetries: 1, rateLimitMaxWaitMs: 1000, promptVersion: 'v1', temperature: 0, maxTokens: 100 },
     browser: { engine: 'chromium', headed: false, viewport: { width: 1280, height: 720 }, locale: 'pt-BR', timezone: 'America/Sao_Paulo' },
     timeouts: { quiescenceMs: 1000, actionMs: 5000, navigationMs: 10000, scenarioMs: 60000, runMs: 300000 },
-    runtime: { maxActionsPerTask: 5, mode: 'HYBRID_GUARDED', maxAttemptsPerStep: 2, maxReplansPerScenario: 2, destructiveActionPolicy: 'BLOCK', semanticKeys: {}, semanticAliases: {}, elementAvailability: { enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false, allowedContainers: [] }, tools: { enabled: false } },
+    runtime: { maxActionsPerTask: 5, mode: 'HYBRID_GUARDED', maxAttemptsPerStep: 2, maxReplansPerScenario: 2, destructiveActionPolicy: 'BLOCK', semanticKeys: {}, semanticAliases: {}, elementAvailability: { enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false, allowedContainers: [] }, tools: { enabled: false }, enforceSingleTab: false },
     recovery: { maxAttemptsPerTask: 2, maxFallbacksPerStep: 1, maxEmergencyActionsPerScenario: 1 },
     classifier: { knownNoiseRegexes: [], knownTrackingDomains: [], treatThirdPartyNetwork5xxAsBug: false },
     privacy: { maskEmails: true, maskJwt: true, maskCookies: true },
@@ -151,7 +151,10 @@ describe('ExecutionPlanFactoryService', () => {
     const plan = await factory.fromScenarios(configWithoutAliases, [scenario]);
 
     expect(plan).toBeDefined();
-    expect((plan!.steps[0]!.action as { target: { texts: string[] } }).target.texts).toEqual(['appearance control']);
+    const target = (plan!.steps[0]!.action as { target: { strategy: string; semanticKey: string; candidates: Array<{ strategy: string; text?: string; texts?: string[] }> } }).target;
+    expect(target.strategy).toBe('semantic');
+    expect(target.semanticKey).toBe('appearance_toggle');
+    expect(target.candidates.some((c) => c.text === 'appearance control' || c.texts?.includes('appearance control'))).toBe(true);
   });
 
   it('generates waitForStable for authenticated area task with auth_state postcondition', async () => {
@@ -177,7 +180,10 @@ describe('ExecutionPlanFactoryService', () => {
     expect(step.action.type).toBe('click');
     expect((step.action as { target: { strategy: string } }).target.strategy).toBe('text_any');
     expect(step.postconditions).toEqual([
-      { type: 'menu_state', expected: 'open', semanticKey: 'menu' },
+      {
+        type: 'text_any_visible',
+        texts: ['menu', 'Perfil', 'Assinatura', 'Sair', 'Logout', 'Tema', 'Aparência'],
+      },
     ]);
   });
 
@@ -258,8 +264,9 @@ describe('ExecutionPlanFactoryService', () => {
     expect(logoutStep.id).toBe('T009-logout');
     expect(logoutStep.action.type).toBe('click');
     expect(logoutStep.preconditions).toEqual([]);
-    expect((logoutStep.action as { target: { strategy: string; texts: string[] } }).target.strategy).toBe('text_any');
-    expect((logoutStep.action as { target: { texts: string[] } }).target.texts).toContain('Sair');
+    expect((logoutStep.action as { target: { strategy: string; semanticKey: string; candidates: Array<{ strategy: string; name?: string; text?: string }> } }).target.strategy).toBe('semantic');
+    expect((logoutStep.action as { target: { semanticKey: string } }).target.semanticKey).toBe('logout_action');
+    expect((logoutStep.action as { target: { candidates: Array<{ name?: string; text?: string }> } }).target.candidates.some((c) => c.name === 'Sair' || c.text === 'Sair')).toBe(true);
     expect(logoutStep.postconditions).toEqual([
       { type: 'auth_state', expected: 'anonymous' },
     ]);

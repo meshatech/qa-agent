@@ -62,7 +62,7 @@ export const RunConfigSchema = z.object({
       passwordEnv: z.string().optional(),
       successUrlContains: z.string().optional(),
       successWhen: SuccessWhenSchema.optional(),
-      storageStatePath: z.string(),
+      storageStatePath: z.string().optional(),
     }),
   ]).default({ kind: 'none' }),
   llm: z.object({
@@ -99,6 +99,7 @@ export const RunConfigSchema = z.object({
       allowClickOutside: z.boolean().default(false),
       allowedContainers: z.array(ElementAvailabilityContainerSchema).default([]),
     }).default({ enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false, allowedContainers: [] }),
+    enforceSingleTab: z.boolean().default(false),
     tools: z.object({
       enabled: z.boolean().default(false),
     }).default({ enabled: false }),
@@ -109,7 +110,7 @@ export const RunConfigSchema = z.object({
       executionPlanStrategy: z.enum(['llm_with_factory_fallback', 'factory_first']).default('llm_with_factory_fallback'),
       allowEmergencyPlan: z.boolean().default(false).optional(),
     }).optional(),
-  }).default({ maxActionsPerTask: 3, mode: 'HYBRID_GUARDED', maxAttemptsPerStep: 2, maxReplansPerScenario: 2, destructiveActionPolicy: 'BLOCK', semanticKeys: {}, semanticAliases: {}, elementAvailability: { enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false, allowedContainers: [] }, tools: { enabled: false } }),
+  }).default({ maxActionsPerTask: 3, mode: 'HYBRID_GUARDED', maxAttemptsPerStep: 2, maxReplansPerScenario: 2, destructiveActionPolicy: 'BLOCK', semanticKeys: {}, semanticAliases: {}, elementAvailability: { enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false, allowedContainers: [] }, enforceSingleTab: false, tools: { enabled: false } }),
   recovery: z.object({
     maxAttemptsPerTask: z.number().int().positive().default(3),
     maxFallbacksPerStep: z.number().int().positive().default(1),

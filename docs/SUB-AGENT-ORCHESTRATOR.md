@@ -511,22 +511,80 @@ export const ToolNameSchema = z.enum([
 ]);
 ```
 
-## ToolQueueSchema
+## FallbackToolCallSchema
+
+Fallback é uma tool simples, sem step, expectedOutcome ou fallback aninhado. Isso evita recursão infinita no Zod.
 
 ```ts
+export const FallbackToolCallSchema = z.discriminatedUnion('tool', [
+  z.object({ tool: z.literal('navigator.open'), params: NavigatorOpenParamsSchema }),
+  z.object({ tool: z.literal('observer.capture'), params: ObserverCaptureParamsSchema }),
+  z.object({ tool: z.literal('actor.click'), params: ActorClickParamsSchema }),
+  z.object({ tool: z.literal('actor.fill'), params: ActorFillParamsSchema }),
+  z.object({ tool: z.literal('actor.type'), params: ActorTypeParamsSchema }),
+  z.object({ tool: z.literal('actor.press'), params: ActorPressParamsSchema }),
+  z.object({ tool: z.literal('validator.state'), params: ValidatorStateParamsSchema }),
+  z.object({ tool: z.literal('explorer.scan'), params: ExplorerScanParamsSchema }),
+]);
+```
+
+## ToolQueueItemSchema
+
+Cada item da queue é validado por discriminated union na tool. Params são tipados por tool, não `z.record(z.unknown())`.
+
+```ts
+export const ToolQueueItemSchema = z.discriminatedUnion('tool', [
+  z.object({ step: z.number().int().positive(), tool: z.literal('navigator.open'), params: NavigatorOpenParamsSchema, expectedOutcome: ExpectedOutcomeSchema.optional(), fallback: FallbackToolCallSchema.optional() }),
+  z.object({ step: z.number().int().positive(), tool: z.literal('observer.capture'), params: ObserverCaptureParamsSchema, expectedOutcome: ExpectedOutcomeSchema.optional(), fallback: FallbackToolCallSchema.optional() }),
+  z.object({ step: z.number().int().positive(), tool: z.literal('actor.click'), params: ActorClickParamsSchema, expectedOutcome: ExpectedOutcomeSchema.optional(), fallback: FallbackToolCallSchema.optional() }),
+  z.object({ step: z.number().int().positive(), tool: z.literal('actor.fill'), params: ActorFillParamsSchema, expectedOutcome: ExpectedOutcomeSchema.optional(), fallback: FallbackToolCallSchema.optional() }),
+  z.object({ step: z.number().int().positive(), tool: z.literal('actor.type'), params: ActorTypeParamsSchema, expectedOutcome: ExpectedOutcomeSchema.optional(), fallback: FallbackToolCallSchema.optional() }),
+  z.object({ step: z.number().int().positive(), tool: z.literal('actor.press'), params: ActorPressParamsSchema, expectedOutcome: ExpectedOutcomeSchema.optional(), fallback: FallbackToolCallSchema.optional() }),
+  z.object({ step: z.number().int().positive(), tool: z.literal('validator.state'), params: ValidatorStateParamsSchema, expectedOutcome: ExpectedOutcomeSchema.optional(), fallback: FallbackToolCallSchema.optional() }),
+  z.object({ step: z.number().int().positive(), tool: z.literal('explorer.scan'), params: ExplorerScanParamsSchema, expectedOutcome: ExpectedOutcomeSchema.optional(), fallback: FallbackToolCallSchema.optional() }),
+]);
+
 export const ToolQueueSchema = z.object({
-  taskQueue: z.array(z.object({
-    step: z.number().int().positive(),
-    tool: ToolNameSchema,
-    params: z.record(z.unknown()),
-    expectedOutcome: ExpectedOutcomeSchema.optional(),
-    fallback: z.object({
-      tool: ToolNameSchema,
-      params: z.record(z.unknown()),
-    }).optional(),
-  })),
+  taskQueue: z.array(ToolQueueItemSchema),
   reasoning: z.string().max(800),
 });
+```
+
+Isso impede:
+
+```json
+{ "tool": "actor.fill", "params": { "banana": "x" } }
+```
+
+E permite fallback para tool diferente com params próprios:
+
+```json
+{
+  "tool": "actor.fill",
+  "params": { "target": { "strategy": "text_any", "texts": ["editor"] }, "value": "teste" },
+  "fallback": {
+    "tool": "explorer.scan",
+    "params": { "mode": "scan_inputs" }
+  }
+}
+```
+
+## Validação única e forte
+
+```
+ToolQueueItemSchema = discriminated union por tool
+→ params validados pela tool específica
+→ fallback é FallbackToolCallSchema (não-recursivo, tool+params tipados)
+→ sem z.record(z.unknown()) em nenhum ponto
+→ sem recursão infinita no Zod
+```
+
+Regra:
+
+```
+Se tool não existir → BLOCKED com TOOL_NOT_ALLOWED
+Se params não bater com a tool → BLOCKED com TOOL_PARAMS_INVALID
+Se fallback inválido → BLOCKED com FALLBACK_INVALID
 ```
 
 ## Regras
@@ -591,7 +649,15 @@ Vira step com ação de navegação.
 
 ### `observer.capture`
 
-Vira step de observação ou metadata de evidência, conforme o modelo atual.
+Vira step de observação (`observe_screen`) no ExecutionPlan.
+
+Regra:
+
+```
+observer.capture sempre vira um ExecutionStep do tipo observação.
+não é metadata opcional.
+é step obrigatório antes de qualquer actor.*.
+```
 
 ### `actor.click`
 
@@ -657,9 +723,34 @@ erro sanitizado
 evidências disponíveis
 ```
 
-## Saída esperada
+## ReplanQueueSchema
 
-Não retornar sempre o plano inteiro. Preferir plano incremental:
+O replan também passa por schema. Não retorna tool livre.
+
+```ts
+export const ReplanActionSchema = z.enum([
+  'replace_remaining_steps',
+  'abort',
+]);
+
+export const ReplanQueueSchema = z.object({
+  action: ReplanActionSchema,
+  fromStep: z.number().int().positive().optional(),
+  taskQueue: z.array(ToolQueueItemSchema).optional(),
+  reasoning: z.string().max(500),
+});
+```
+
+Regras:
+
+```
+action = replace_remaining_steps → fromStep obrigatório, taskQueue obrigatório
+action = abort → fromStep omitido, taskQueue omitido
+replan nunca altera steps já executados
+replan nunca retorna tool fora de ToolNameSchema
+```
+
+## Exemplo de saída válida
 
 ```json
 {
@@ -683,15 +774,15 @@ Ou abort:
 ```json
 {
   "action": "abort",
-  "reason": "No reliable locator found after exploration."
+  "reasoning": "No reliable locator found after exploration."
 }
 ```
 
-## Regras
+## Regras de execução
 
 ```
-máximo de replans por scenario
-máximo de falhas por step
+máximo de replans por scenario: 2
+máximo de falhas por step: 3
 sem loop infinito
 falha repetida → BLOCKED
 ```
@@ -804,6 +895,8 @@ Criar:
 ```
 SingleOrchestratorPromptBuilder
 ToolNameSchema
+ToolParamsSchema (discriminated union por tool)
+ToolQueueItemSchema
 ToolQueueSchema
 ToolQueueRepairService
 ```
@@ -814,6 +907,7 @@ Critérios:
 prompt gera JSON válido
 schema bloqueia tool inexistente
 fallback.tool também é tipado
+params validado por tool específica (ex: actor.fill requer target+value)
 JSON inválido tenta repair uma vez
 sem execução ainda
 ```
@@ -951,8 +1045,8 @@ não reintroduz regex de intenção
 A arquitetura estará pronta quando:
 
 - Um único prompt orquestrador gerar `ToolQueue` válida.
-- A queue for validada por schema.
-- `fallback.tool` for tipado.
+- A queue for validada por schema em **duas camadas** (estrutura + params por tool).
+- `fallback.tool` for tipado e `fallback.params` validado pela tool específica.
 - `ToolQueue` for convertida para `ExecutionPlan`.
 - `ExecutionPlanSchema` validar o plano convertido.
 - `PlanExecutorService` continuar sendo o executor oficial.
@@ -960,6 +1054,7 @@ A arquitetura estará pronta quando:
 - Toda ação relevante tiver validator depois.
 - Falha de locator gerar replan/explorer.
 - Falha repetida gerar `BLOCKED`.
+- Replan retornar `ReplanQueueSchema` tipado, nunca tool livre.
 - Nenhum regex for usado para inferir intenção.
 - O runtime continuar baseado em contrato tipado.
 - Evidências forem registradas.

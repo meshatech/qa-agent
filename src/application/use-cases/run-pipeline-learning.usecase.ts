@@ -7,6 +7,7 @@ import { LearningCandidateExtractorService, isEphemeralId } from '../services/le
 import type { ConfigLoaderPort } from '../ports/config-loader.port.js';
 import { LearningCandidatesArtifactSchema } from '../../domain/schemas/learning-candidate.schema.js';
 import { RunConfigSchema } from '../../domain/schemas/config.schema.js';
+import { applyBaseUrlOverride } from '../helpers/apply-base-url-override.js';
 
 const EXECUTION_RESULT_FILE = 'execution-result.json';
 const EXECUTION_PLAN_FILE = 'execution-plan.json';
@@ -69,7 +70,7 @@ export class RunPipelineLearningUseCase {
 
   private async loadConfig(configPath: string) {
     const raw = await this.configLoader.load(configPath);
-    return RunConfigSchema.parse(raw);
+    return applyBaseUrlOverride(RunConfigSchema.parse(raw));
   }
 
   private async readJsonSafe<T>(dir: string, filename: string): Promise<T | undefined> {

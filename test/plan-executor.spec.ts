@@ -329,7 +329,21 @@ describe('PlanExecutorService', () => {
   });
 
   it('uses decision provider fallback when a locator cannot be resolved', async () => {
-    let current = obs(['Fallback target']);
+    let current: ScreenObservation = {
+      observationId: 'obs-fallback',
+      createdAt: new Date().toISOString(),
+      url: 'https://app.local/',
+      title: 'App',
+      visibleTexts: ['Fallback target'],
+      elements: [
+        { id: 'el_001', role: 'button', name: 'Salvar', inViewport: false, locator: { strategy: 'role', role: 'button', name: 'Salvar' } },
+        { id: 'el_002', role: 'textbox', name: 'Nome', inViewport: false, locator: { strategy: 'label', text: 'Nome' } },
+      ],
+      pageState: { isLoading: false, hasModal: false, hasToast: false, hasValidationErrors: false },
+      consoleSignals: [],
+      networkSignals: [],
+      meta: { viewport: { width: 1280, height: 720 }, schemaVersion: 'obs.v1' },
+    };
     const actions: QaAction[] = [];
     const decide = vi.fn(async () => ({
       schemaVersion: 'action.v1' as const,
@@ -345,7 +359,7 @@ describe('PlanExecutorService', () => {
       async observe() { return current; },
       async execute(action) {
         actions.push(action);
-        current = obs(['Fallback clicked']);
+        current = { ...current, visibleTexts: ['Fallback clicked'] };
         return { ok: true, actionType: action.type, durationMs: 1 };
       },
       async waitForQuiescence() {

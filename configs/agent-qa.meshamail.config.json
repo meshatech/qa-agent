@@ -28,8 +28,7 @@
     "idpSubmitSelector": { "strategy": "testid", "value": "login-page-continue-login-button" },
     "usernameEnv": "MESHA_EMAIL",
     "passwordEnv": "MESHA_PASSWORD",
-    "successWhen": { "urlContains": "/dashboard" },
-    "storageStatePath": "./meshamail-auth.json"
+    "successWhen": { "urlContains": "meshamail.mesha.com.br" }
   },
   "llm": {
     "provider": "groq",
@@ -62,6 +61,8 @@
   "runtime": {
     "maxActionsPerTask": 2,
     "semanticAliases": {
+      "DISCLOSURE": ["Conta e opções"],
+      "APPEARANCE_CHANGE": ["Tema", "Aparência", "Modo escuro", "Tema escuro", "Escuro", "Dark"],
       "DEAUTHENTICATION": ["Sair", "Logout", "Sign out", "Deslogar", "Encerrar sessão", "Sair da conta"]
     },
     "elementAvailability": {
@@ -93,8 +94,9 @@
       "executionPlanStrategy": "factory_first"
     },
     "tools": {
-      "enabled": true
-    }
+      "enabled": false
+    },
+    "enforceSingleTab": true
   },
   "recovery": {
     "maxAttemptsPerTask": 2,
@@ -122,7 +124,7 @@
     "https://meshamail.mesha.com.br/"
   ],
   "output": {
-    "runsDir": "./qa-agent-runs",
+    "runsDir": "./qa-agent-runs-local",
     "keepVideoOnPass": false,
     "keepTraceOnPass": false
   },

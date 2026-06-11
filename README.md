@@ -110,6 +110,30 @@ Campos importantes do config atual:
 - `output.keepTraceOnPass`: salva trace da run quando passar
 - `output.keepVideoOnPass`: salva video da run quando passar
 
+### Override de baseUrl por PR/preview
+
+Em pipelines onde cada PR sobe em uma URL dinâmica (ex.: `https://pr-<N>.preview.<dominio>`), use variáveis de ambiente em vez de editar o JSON:
+
+| Variável | Efeito |
+|----------|--------|
+| `QA_AGENT_BASE_URL` | Substitui `config.baseUrl` após o parse Zod |
+| `QA_AGENT_PREVIEW_DOMAIN` | Injeta o domínio base (sem prefixo `*.`) em `appDomains` — ex.: `*.preview.meshamail.dev` → `preview.meshamail.dev` |
+
+Exemplo para preview de PR:
+
+```bash
+export QA_AGENT_BASE_URL="https://pr-42.preview.meshamail.dev"
+export QA_AGENT_PREVIEW_DOMAIN="*.preview.meshamail.dev"
+npm run qa-agent -- run --config ./configs/agent-qa.meshamail.config.json
+```
+
+Implementação: [`src/application/helpers/apply-base-url-override.ts`](src/application/helpers/apply-base-url-override.ts) (wired em `ValidateConfigUseCase`, `RunAgentUseCase` e use-cases de pipeline).
+
+Configs versionados em `configs/`:
+
+- `configs/agent-qa.fixture.config.json` — smoke local (fixture HTTP)
+- `configs/agent-qa.meshamail.config.json` — smoke autenticado MeshaMail (credenciais via `MESHA_EMAIL` / `MESHA_PASSWORD`)
+
 ## Providers LLM
 
 Estado atual implementado:
@@ -518,7 +542,7 @@ Use env vars para credenciais e deixe o JSON sem segredo:
 $env:MESHA_EMAIL="seu-email"
 $env:MESHA_PASSWORD="sua-senha"
 $env:GROQ_PROVIDER="sua-chave-groq"
-npm run qa-agent -- run --config agent-qa.meshamail.config.json --headed
+npm run qa-agent -- run --config ./agent-qa.config.json --headed
 ```
 
 Um config de producao/HML deve ser conservador:
@@ -596,8 +620,8 @@ node ./test/fixtures/server.mjs
 Em outro terminal, rode:
 
 ```bash
-npm run qa-agent -- validate-config --config ./agent-qa.fixture.config.json
-npm run qa-agent -- run --config ./agent-qa.fixture.config.json
+npm run qa-agent -- validate-config --config ./configs/agent-qa.fixture.config.json
+npm run qa-agent -- run --config ./configs/agent-qa.fixture.config.json
 ```
 
 ## Testes

@@ -22,3 +22,11 @@
 - **Descrição**: O fixture é uma página simples usada para smoke tests.
 - **Locators estáveis**: Não há elementos interativos complexos; a página é um alvo básico de navegação.
 - **Observação**: Durante o onboarding, nenhum route ou elemento acessível além da própria página foi detectado.
+
+## Credencial meshamail no histórico git
+
+<!-- type: known_issue | id: meshamail-auth-git-history -->
+- **Problema**: `meshamail-auth.json` chegou a ser versionado; remoção do índice está em andamento mas o arquivo ainda pode existir em `HEAD` e commits antigos
+- **Impacto**: exposição de credencial no histórico permanente do repositório até purge + rotação
+- **Mitigação atual**: `.gitignore` (`*-auth.json`, `meshamail-auth.json`); auth de run via env (`MESHA_EMAIL`, `MESHA_PASSWORD`) e sessão efêmera `{runDir}/.auth/storage-state.json`
+- **Pendente**: commit da remoção, purge de histórico, rotação da credencial — ver `.cursor/memory/decisions.md`

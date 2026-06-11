@@ -46,6 +46,7 @@ export const QaActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('auditAccessibility'), reason }),
   z.object({ type: z.literal('acceptDialog'), text: z.string().optional(), reason }),
   z.object({ type: z.literal('dismissDialog'), reason }),
+  z.object({ type: z.literal('typeText'), targetElementId: el.optional(), text: z.string().min(1), delayMs: z.number().int().positive().optional(), reason }),
   z.object({ type: z.literal('richTextFill'), targetElementId: el, value: z.string(), reason }),
   z.object({ type: z.literal('extract'), targetElementId: el, key: z.string().min(1), source: z.enum(['text', 'value']).default('text'), reason }),
   z.object({ type: z.literal('assertVisible'), targetElementId: el.optional(), text: z.string().optional(), reason }).refine((a) => a.targetElementId || a.text, 'assertVisible requires targetElementId or text'),

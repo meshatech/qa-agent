@@ -14,7 +14,7 @@ function makeConfig(): RunConfig {
     llm: { provider: 'fake', model: 'test', apiKeyEnv: 'TEST_KEY', maxSchemaRetries: 1, rateLimitRetries: 1, rateLimitMaxWaitMs: 1000, promptVersion: 'v1', temperature: 0, maxTokens: 100 },
     browser: { engine: 'chromium', headed: false, viewport: { width: 1280, height: 720 }, locale: 'pt-BR', timezone: 'America/Sao_Paulo' },
     timeouts: { quiescenceMs: 1000, actionMs: 5000, navigationMs: 10000, scenarioMs: 60000, runMs: 300000 },
-    runtime: { maxActionsPerTask: 5, mode: 'HYBRID_GUARDED', maxAttemptsPerStep: 2, maxReplansPerScenario: 2, destructiveActionPolicy: 'BLOCK', semanticKeys: {}, semanticAliases: {}, elementAvailability: { enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false, allowedContainers: [] }, tools: { enabled: false } },
+    runtime: { maxActionsPerTask: 5, mode: 'HYBRID_GUARDED', maxAttemptsPerStep: 2, maxReplansPerScenario: 2, destructiveActionPolicy: 'BLOCK', semanticKeys: {}, semanticAliases: {}, elementAvailability: { enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false, allowedContainers: [] }, tools: { enabled: false }, enforceSingleTab: false },
     recovery: { maxAttemptsPerTask: 2, maxFallbacksPerStep: 1, maxEmergencyActionsPerScenario: 1 },
     classifier: { knownNoiseRegexes: [], knownTrackingDomains: [], treatThirdPartyNetwork5xxAsBug: false },
     privacy: { maskEmails: true, maskJwt: true, maskCookies: true },
@@ -87,14 +87,17 @@ describe('ExecutionPlanFactoryService — contract-driven (typed state, no words
     ]);
   });
 
-  it('DISCLOSURE proves menu open via menu_state', async () => {
+  it('DISCLOSURE proves menu open via text_any_visible', async () => {
     const scenario = makeScenario('SCN-005', [
       makeTask('T005', 'Abrir painel', { kind: 'DISCLOSURE', target: 'account_menu', description: 'abrir painel de conta' }),
     ]);
     const plan = await factory.fromScenarios(config, [scenario]);
 
     expect(plan!.steps[0].postconditions).toEqual([
-      { type: 'menu_state', semanticKey: 'account_menu', expected: 'open' },
+      {
+        type: 'text_any_visible',
+        texts: ['account_menu', 'Perfil', 'Assinatura', 'Sair', 'Logout', 'Tema', 'Aparência'],
+      },
     ]);
   });
 
