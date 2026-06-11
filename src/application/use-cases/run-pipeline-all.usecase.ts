@@ -1,9 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 import type { PipelineAllRunResult, PipelineAllStepRecord, PipelineAllStepStatus } from '../dto/pipeline-all-result.dto.js';
-import type { GitHubCommentPort } from '../ports/github-comment.port.js';
-import type { GitHubEventContextPort } from '../ports/github-event-context.port.js';
 import { CorrelationBlockedError, PreflightBlockedError } from '../../domain/errors.js';
+import { PipelineBlockedNotifier } from '../services/pipeline-blocked-notifier.service.js';
 import {
   ExitCodes,
   classifyCorrelationResult,
@@ -33,8 +32,7 @@ export class RunPipelineAllUseCase {
     @Inject(RunPipelineReportUseCase) private readonly report: RunPipelineReportUseCase,
     @Inject(RunPipelineLearningUseCase) private readonly learning: RunPipelineLearningUseCase,
     @Inject(RunPipelinePromoteLearningUseCase) private readonly promoteLearning: RunPipelinePromoteLearningUseCase,
-    @Inject('GitHubCommentPort') private readonly githubComment: GitHubCommentPort,
-    @Inject('GitHubEventContextPort') private readonly githubEventContext: GitHubEventContextPort,
+    @Inject(PipelineBlockedNotifier) private readonly notifier: PipelineBlockedNotifier,
   ) {}
 
   async execute(
@@ -45,49 +43,25 @@ export class RunPipelineAllUseCase {
     const projectPath = options?.projectPath ?? process.cwd();
     const steps: PipelineAllStepRecord[] = [];
 
-    try {
-      const prepareResult = await this.prepare.execute(outputDir);
-      const prepareExit = classifyPreflightReport(prepareResult.preflightReport);
-      if (prepareExit === ExitCodes.PREFLIGHT_BLOCKED) {
-        const message = describePreflightBlockedMessage(prepareResult.preflightReport);
-        const commentPosted = await this.postBlockedComment(message);
-        steps.push(this.recordStep('prepare', 'BLOCKED', ExitCodes.PREFLIGHT_BLOCKED, message));
-        return this.finish(steps, 'prepare', commentPosted);
-      }
-      steps.push(this.recordStep('prepare', 'OK', prepareExit));
-    } catch (err) {
-      if (err instanceof PreflightBlockedError) {
-        const message = describePreflightBlockedMessage(err.report);
-        const commentPosted = await this.postBlockedComment(message);
-        steps.push(this.recordStep('prepare', 'BLOCKED', ExitCodes.PREFLIGHT_BLOCKED, message));
-        return this.finish(steps, 'prepare', commentPosted);
-      }
-      const exitCode = classifyError(err);
-      steps.push(this.recordStep('prepare', this.toStepStatus(exitCode), exitCode, this.errorMessage(err)));
-      return this.finish(steps);
-    }
+    const prepareResult = await this.runGateStep(
+      steps,
+      'prepare',
+      () => this.prepare.execute(outputDir),
+      (result) => classifyPreflightReport(result.preflightReport),
+      (result) => describePreflightBlockedMessage(result.preflightReport),
+      (err) => (err instanceof PreflightBlockedError ? describePreflightBlockedMessage(err.report) : undefined),
+    );
+    if (!prepareResult.shouldContinue) return this.finish(steps, 'prepare', prepareResult.commentPosted);
 
-    try {
-      const correlateResult = await this.correlate.execute(outputDir, { projectPath });
-      const correlateExit = classifyCorrelationResult(correlateResult.result);
-      if (correlateExit === ExitCodes.PREFLIGHT_BLOCKED) {
-        const message = correlateResult.result.blockReason ?? 'Pipeline correlation blocked';
-        const commentPosted = await this.postBlockedComment(message);
-        steps.push(this.recordStep('correlate', 'BLOCKED', ExitCodes.PREFLIGHT_BLOCKED, message));
-        return this.finish(steps, 'correlate', commentPosted);
-      }
-      steps.push(this.recordStep('correlate', 'OK', correlateExit));
-    } catch (err) {
-      if (err instanceof CorrelationBlockedError) {
-        const message = err.result.blockReason ?? err.message;
-        const commentPosted = await this.postBlockedComment(message);
-        steps.push(this.recordStep('correlate', 'BLOCKED', ExitCodes.PREFLIGHT_BLOCKED, message));
-        return this.finish(steps, 'correlate', commentPosted);
-      }
-      const exitCode = classifyError(err);
-      steps.push(this.recordStep('correlate', this.toStepStatus(exitCode), exitCode, this.errorMessage(err)));
-      return this.finish(steps);
-    }
+    const correlateResult = await this.runGateStep(
+      steps,
+      'correlate',
+      () => this.correlate.execute(outputDir, { projectPath }),
+      (result) => classifyCorrelationResult(result.result),
+      (result) => result.result.blockReason ?? 'Pipeline correlation blocked',
+      (err) => (err instanceof CorrelationBlockedError ? (err.result.blockReason ?? err.message) : undefined),
+    );
+    if (!correlateResult.shouldContinue) return this.finish(steps, 'correlate', correlateResult.commentPosted);
 
     await this.runStep(steps, 'risk', async () => {
       await this.risk.execute(outputDir, { projectPath });
@@ -165,7 +139,7 @@ export class RunPipelineAllUseCase {
     blockedAt?: string,
     commentPosted?: boolean,
   ): PipelineAllRunResult {
-    const exitCodes = steps.map((s) => s.exitCode as ExitCode);
+    const exitCodes = steps.map((s) => s.exitCode);
     return {
       steps,
       ...(blockedAt ? { blockedAt } : {}),
@@ -174,37 +148,39 @@ export class RunPipelineAllUseCase {
     };
   }
 
+  private async runGateStep<T>(
+    steps: PipelineAllStepRecord[],
+    name: string,
+    execute: () => Promise<T>,
+    classify: (result: T) => ExitCode,
+    getBlockedMessage: (result: T) => string,
+    getErrorBlockedMessage: (err: unknown) => string | undefined,
+  ): Promise<{ shouldContinue: boolean; commentPosted?: boolean }> {
+    try {
+      const result = await execute();
+      const exitCode = classify(result);
+      if (exitCode === ExitCodes.PREFLIGHT_BLOCKED) {
+        const message = getBlockedMessage(result);
+        const commentPosted = !!(await this.notifier.notify(message));
+        steps.push(this.recordStep(name, 'BLOCKED', ExitCodes.PREFLIGHT_BLOCKED, message));
+        return { shouldContinue: false, commentPosted };
+      }
+      steps.push(this.recordStep(name, 'OK', exitCode));
+      return { shouldContinue: true };
+    } catch (err) {
+      const blockedMessage = getErrorBlockedMessage(err);
+      if (blockedMessage) {
+        const commentPosted = !!(await this.notifier.notify(blockedMessage));
+        steps.push(this.recordStep(name, 'BLOCKED', ExitCodes.PREFLIGHT_BLOCKED, blockedMessage));
+        return { shouldContinue: false, commentPosted };
+      }
+      const exitCode = classifyError(err);
+      steps.push(this.recordStep(name, this.toStepStatus(exitCode), exitCode, this.errorMessage(err)));
+      return { shouldContinue: false };
+    }
+  }
+
   private errorMessage(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
-  }
-
-  private resolveGitHubToken(): string | undefined {
-    const token =
-      process.env.GITHUB_TOKEN?.trim() ||
-      process.env.GH_TOKEN?.trim() ||
-      process.env.INPUT_GITHUB_TOKEN?.trim();
-    return token && token.length > 0 ? token : undefined;
-  }
-
-  private async postBlockedComment(body: string): Promise<boolean> {
-    const repository = process.env.GITHUB_REPOSITORY?.trim() ?? '';
-    const pullNumber = await this.githubEventContext.resolvePullNumber();
-    const token = this.resolveGitHubToken();
-
-    if (!repository || !pullNumber || !token) {
-      return false;
-    }
-
-    try {
-      await this.githubComment.postComment({
-        repository,
-        pullNumber,
-        body,
-        token,
-      });
-      return true;
-    } catch {
-      return false;
-    }
   }
 }

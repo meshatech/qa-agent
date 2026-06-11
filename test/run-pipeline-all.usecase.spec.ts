@@ -64,8 +64,7 @@ function makeUseCase(overrides: {
   report?: { execute: ReturnType<typeof vi.fn> };
   learning?: { execute: ReturnType<typeof vi.fn> };
   promoteLearning?: { execute: ReturnType<typeof vi.fn> };
-  githubComment?: { postComment: ReturnType<typeof vi.fn> };
-  githubEventContext?: { resolvePullNumber: ReturnType<typeof vi.fn> };
+  notifier?: { notify: ReturnType<typeof vi.fn> };
 }) {
   const prepareExecute = overrides.prepare?.execute ?? vi.fn().mockResolvedValue({
     preflightReport: passReport,
@@ -128,8 +127,7 @@ function makeUseCase(overrides: {
     promotionLogPath: '/tmp/pipeline/promotion-log.json',
     warnings: [],
   });
-  const postComment = overrides.githubComment?.postComment ?? vi.fn().mockResolvedValue(undefined);
-  const resolvePullNumber = overrides.githubEventContext?.resolvePullNumber ?? vi.fn().mockResolvedValue(42);
+  const notifierNotify = overrides.notifier?.notify ?? vi.fn().mockResolvedValue(true);
 
   const useCase = new RunPipelineAllUseCase(
     { execute: prepareExecute } as never,
@@ -140,8 +138,7 @@ function makeUseCase(overrides: {
     { execute: reportExecute } as never,
     { execute: learningExecute } as never,
     { execute: promoteExecute } as never,
-    { postComment } as never,
-    { resolvePullNumber } as never,
+    { notify: notifierNotify } as never,
   );
 
   return {
@@ -154,14 +151,13 @@ function makeUseCase(overrides: {
     reportExecute,
     learningExecute,
     promoteExecute,
-    postComment,
-    resolvePullNumber,
+    notifierNotify,
   };
 }
 
 describe('RunPipelineAllUseCase', () => {
   it('runs full happy path with OK exit code', async () => {
-    const { useCase, postComment } = makeUseCase({});
+    const { useCase, notifierNotify } = makeUseCase({});
 
     const result = await useCase.execute('/tmp/pipeline', { configPath: './agent-qa.config.json' });
 
@@ -170,7 +166,7 @@ describe('RunPipelineAllUseCase', () => {
     expect(result.steps.every((step) => step.status === 'OK')).toBe(true);
     expect(result.blockedAt).toBeUndefined();
     expect(result.commentPosted).toBeUndefined();
-    expect(postComment).not.toHaveBeenCalled();
+    expect(notifierNotify).not.toHaveBeenCalled();
   });
 
   it('stops after prepare BLOCKED and posts specific preflight reason', async () => {
@@ -189,7 +185,7 @@ describe('RunPipelineAllUseCase', () => {
     );
     const correlateExecute = vi.fn();
     const generatePlanExecute = vi.fn();
-    const postComment = vi.fn().mockResolvedValue(undefined);
+    const notifierNotify = vi.fn().mockResolvedValue(true);
 
     process.env.GITHUB_REPOSITORY = 'owner/repo';
     process.env.GITHUB_TOKEN = 'ghp_test';
@@ -199,7 +195,7 @@ describe('RunPipelineAllUseCase', () => {
       prepare: { execute: prepareExecute },
       correlate: { execute: correlateExecute },
       generatePlan: { execute: generatePlanExecute },
-      githubComment: { postComment },
+      notifier: { notify: notifierNotify },
     });
 
     const result = await useCase.execute('/tmp/pipeline');
@@ -210,12 +206,7 @@ describe('RunPipelineAllUseCase', () => {
     expect(result.steps).toHaveLength(1);
     expect(result.steps[0]?.name).toBe('prepare');
     expect(result.steps[0]?.status).toBe('BLOCKED');
-    expect(postComment).toHaveBeenCalledWith({
-      repository: 'owner/repo',
-      pullNumber: 42,
-      body: 'QA bloqueado: CLICKUP_TOKEN is missing',
-      token: 'ghp_test',
-    });
+    expect(notifierNotify).toHaveBeenCalledWith('QA bloqueado: CLICKUP_TOKEN is missing');
     expect(correlateExecute).not.toHaveBeenCalled();
     expect(generatePlanExecute).not.toHaveBeenCalled();
   });
@@ -224,7 +215,7 @@ describe('RunPipelineAllUseCase', () => {
     const blocked = createBlockedCorrelationResult('acceptanceCriteria is empty');
     const correlateExecute = vi.fn().mockRejectedValue(new CorrelationBlockedError(blocked));
     const generatePlanExecute = vi.fn();
-    const postComment = vi.fn().mockResolvedValue(undefined);
+    const notifierNotify = vi.fn().mockResolvedValue(true);
 
     process.env.GITHUB_REPOSITORY = 'owner/repo';
     process.env.GITHUB_TOKEN = 'ghp_test';
@@ -233,7 +224,7 @@ describe('RunPipelineAllUseCase', () => {
     const { useCase } = makeUseCase({
       correlate: { execute: correlateExecute },
       generatePlan: { execute: generatePlanExecute },
-      githubComment: { postComment },
+      notifier: { notify: notifierNotify },
     });
 
     const result = await useCase.execute('/tmp/pipeline');
@@ -241,11 +232,7 @@ describe('RunPipelineAllUseCase', () => {
     expect(result.exitCode).toBe(ExitCodes.PREFLIGHT_BLOCKED);
     expect(result.blockedAt).toBe('correlate');
     expect(result.commentPosted).toBe(true);
-    expect(postComment).toHaveBeenCalledWith(
-      expect.objectContaining({
-        body: 'acceptanceCriteria is empty',
-      }),
-    );
+    expect(notifierNotify).toHaveBeenCalledWith('acceptanceCriteria is empty');
     expect(generatePlanExecute).not.toHaveBeenCalled();
   });
 
@@ -349,18 +336,17 @@ describe('RunPipelineAllUseCase', () => {
     const prepareExecute = vi.fn().mockRejectedValue(
       new PreflightBlockedError(blockedReport, '/tmp/pipeline/preflight-report.json'),
     );
-    const postComment = vi.fn();
+    const notifierNotify = vi.fn().mockResolvedValue(false);
 
     const { useCase } = makeUseCase({
       prepare: { execute: prepareExecute },
-      githubComment: { postComment },
-      githubEventContext: { resolvePullNumber: vi.fn().mockResolvedValue(undefined) },
+      notifier: { notify: notifierNotify },
     });
 
     const result = await useCase.execute('/tmp/pipeline');
 
     expect(result.exitCode).toBe(ExitCodes.PREFLIGHT_BLOCKED);
     expect(result.commentPosted).toBe(false);
-    expect(postComment).not.toHaveBeenCalled();
+    expect(notifierNotify).toHaveBeenCalledWith('QA bloqueado: vincule a task do ClickUp ao PR.');
   });
 });
