@@ -1,5 +1,4 @@
 node_modules
-dist
 qa-agent-runs
 .agent-qa-video
 .env

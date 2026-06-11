@@ -1,5 +1,14 @@
 # Memória do Projeto — qa-agent fixture
 
+## Distribuição Docker (release)
+
+<!-- type: project | id: docker-release -->
+- **Imagem**: `ghcr.io/meshatech/qa-agent` (dinâmico: `ghcr.io/${{ github.repository }}`)
+- **Build local**: `npm run docker:build:release` (requer `dist/` pré-compilado)
+- **CLI na imagem**: `/usr/local/bin/qa-agent` → `dist/main.js`; `wait-for-ready.sh` em `/opt/qa-agent/wait-for-ready.sh`
+- **CI**: `.github/workflows/ci.yml` — `check` em `mcr.microsoft.com/playwright:v1.60.0-noble`; `docker-smoke` valida `--version`, `pipeline --help`, `validate-config` fixture
+- **Release**: tag `v*` dispara `.github/workflows/release.yml` (semver + `latest` + `v2` quando aplicável)
+
 ## Base URL
 
 <!-- type: route | id: base-url -->

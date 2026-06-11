@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 import 'reflect-metadata';
 import 'dotenv/config';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { NestFactory } from '@nestjs/core';
 import { Command } from 'commander';
 import { AppModule } from './app.module.js';
@@ -17,8 +20,11 @@ async function withApp<T>(fn: (controller: AgentController) => Promise<T>): Prom
   }
 }
 
+const packageJsonPath = resolve(dirname(fileURLToPath(import.meta.url)), '../package.json');
+const packageVersion = (JSON.parse(readFileSync(packageJsonPath, 'utf8')) as { version: string }).version;
+
 const program = new Command();
-program.name('qa-agent').description('Agent QA v0.1');
+program.name('qa-agent').description('Agent QA v0.1').version(packageVersion);
 
 program
   .command('run')

@@ -197,8 +197,22 @@ Epic PRJ-11319 entregue (11376–11391 + PRJ-11550 + PRJ-11552).
 - [x] `tasks.md` (30 tasks, MVP US1 = T001–T016)
 - [x] Feature 001 Gherkin bug feedback completa (T001–T030): service, finalize, report, docs, testes
 
+## Concluído (Task 2 — Docker, Scripts e CI, 2026-06-11)
+
+- [x] `qa-agent --version` lendo `package.json` em `src/main.ts`
+- [x] `scripts/wait-for-ready.sh` — curl até HTTP 200, `QA_AGENT_PREVIEW_TIMEOUT` (default 120s)
+- [x] `Dockerfile` release (base Playwright v1.60.0-noble, `npm ci --omit=dev`, symlink `/usr/local/bin/qa-agent`)
+- [x] `npm run docker:build:release` no `package.json`
+- [x] `tsconfig.build.json` — `rootDir: src` para emitir `dist/main.js` (alinha bin/Dockerfile)
+- [x] `.dockerignore` — `dist/` incluído no contexto de build release
+- [x] `.github/workflows/ci.yml` — job `check` em container Playwright + `docker-smoke`
+- [x] `.github/workflows/release.yml` — tag `v*` → push `ghcr.io/${{ github.repository }}`
+- [x] Validação local: `npm run check`, `docker build`, smoke `--version` / `pipeline --help` / `validate-config`
+
 ## Em progresso / backlog pipeline V1
 
+- [ ] `pipeline all` (Task 3)
+- [ ] Template `qa-agent.yml` para repos alvo (Task 4)
 - [ ] Seleção de cenários e execution plan para PR (PRJ-11321+)
 - [ ] PR reporter e learning extractor
 
