@@ -1,0 +1,92 @@
+# QA Agent — GitHub Actions workflow template
+# Copie este arquivo para .github/workflows/qa-agent.yml no repositório alvo.
+#
+# Pré-requisitos:
+#   1. Job de preview que expõe a URL como output (ex: Traefik/VPS)
+#   2. Runner self-hosted com Docker (a imagem ghcr.io/mesha/qa-agent:v2 roda em container)
+#   3. Secrets configurados no repositório (veja docs/templates/README.md)
+#   4. agent-qa.config.json na raiz do repo alvo
+#
+# Este workflow roda em todo PR (open / synchronize / reopen).
+
+name: QA Agent
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: qa-agent-pr-${{ github.event.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write   # comentário do relatório
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1) BUILD PREVIEW — substitua pelo job real do seu stack
+  #    O output 'preview_url' é obrigatório. O agente usa QA_AGENT_BASE_URL.
+  # ---------------------------------------------------------------------------
+  build-preview:
+    runs-on: [self-hosted, vps]
+    outputs:
+      preview_url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # EXEMPLO: compose com labels Traefik (substitua pelo seu deploy real)
+      - id: deploy
+        run: |
+          # docker compose -f docker-compose.preview.yml up -d
+          # echo "url=https://pr-${{ github.event.number }}.preview.exemplo.com" >> "$GITHUB_OUTPUT"
+          echo "url=https://pr-${{ github.event.number }}.preview.exemplo.com" >> "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # 2) QA AGENT — roda no container oficial
+  # ---------------------------------------------------------------------------
+  qa-agent:
+    needs: build-preview
+    runs-on: [self-hosted, vps]
+    container:
+      image: ghcr.io/mesha/qa-agent:v2
+    env:
+      # URL do preview (obrigatório)
+      QA_AGENT_BASE_URL: ${{ needs.build-preview.outputs.preview_url }}
+
+      # Tokens de serviço (obrigatórios)
+      CLICKUP_TOKEN: ${{ secrets.CLICKUP_TOKEN }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      # ou OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      # GitHub (automático no Actions)
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Auth — preencha conforme o modo escolhido em agent-qa.config.json
+      # (veja docs/auth-in-ci.md para os 3 caminhos: formLogin | storageState | none)
+      # QA_AGENT_USER: ${{ secrets.QA_AGENT_USER }}
+      # QA_AGENT_PASS: ${{ secrets.QA_AGENT_PASS }}
+    steps:
+      # checkout com fetch-depth:0 para diff base...head completo (usado pelo agente)
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Aguarda o preview ficar com HTTP 200
+      - name: Wait for preview ready
+        run: /opt/qa-agent/wait-for-ready.sh "$QA_AGENT_BASE_URL"
+        env:
+          QA_AGENT_PREVIEW_TIMEOUT: 120   # segundos (default: 120)
+          QA_AGENT_PREVIEW_INTERVAL: 2    # segundos (default: 2)
+
+      # Pipeline completo: prepare → correlate → risk → generate-plan →
+      # execute → report → learning → promote-learning
+      - name: Run QA pipeline
+        run: qa-agent pipeline all --config ./agent-qa.config.json
+
+      # Upload de evidências (vídeo, screenshots, run.json, reports)
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qa-agent-evidence-pr-${{ github.event.number }}
+          path: .agent-qa/pipeline/
