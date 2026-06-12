@@ -1,0 +1,62 @@
+name: QA Agent
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: qa-agent-pr-${{ github.event.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # SUBSTITUA pelo job real de preview do repo alvo
+  # O unico requisito: output 'preview_url' com a URL do preview
+  # ---------------------------------------------------------------------------
+  build-preview:
+    runs-on: [self-hosted, vps]
+    outputs:
+      preview_url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: deploy
+        run: |
+          # TODO: substitua pelo deploy real do repo alvo
+          echo "url=https://pr-${{ github.event.number }}.preview.<APP>.com.br" >> "$GITHUB_OUTPUT"
+
+  qa-agent:
+    needs: build-preview
+    runs-on: [self-hosted, vps]
+    container:
+      image: ghcr.io/mesha/qa-agent:v2
+    env:
+      QA_AGENT_BASE_URL: ${{ needs.build-preview.outputs.preview_url }}
+      CLICKUP_TOKEN: ${{ secrets.CLICKUP_TOKEN }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # TODO: adicione secrets de auth conforme docs/auth-in-ci.md
+      # Exemplo formLogin: QA_AGENT_USER, QA_AGENT_PASS
+      # Exemplo SSO: MESHA_EMAIL, MESHA_PASSWORD
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Wait for preview ready
+        run: /opt/qa-agent/wait-for-ready.sh "$QA_AGENT_BASE_URL"
+        env:
+          QA_AGENT_PREVIEW_TIMEOUT: 120
+          QA_AGENT_PREVIEW_INTERVAL: 2
+
+      - name: Run QA pipeline
+        run: qa-agent pipeline all --config ./agent-qa.config.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qa-agent-evidence-pr-${{ github.event.number }}
+          path: .agent-qa/pipeline/

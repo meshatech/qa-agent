@@ -1,0 +1,85 @@
+{
+  "_comment": "EXEMPLO — adapte todos os valores para o repo alvo. Veja README.md",
+  "baseUrl": "http://localhost:3000/",
+  "appDomains": ["example.com", "pr-*.preview.example.com"],
+  "demand": {
+    "id": "PROJ-1234",
+    "title": "Smoke test — Repo alvo preview QA",
+    "description": "Validar que o preview sobe, o agente executa o pipeline e reporta resultados corretamente.",
+    "acceptanceCriteria": [
+      "Preview responde HTTP 200",
+      "Agente executa pipeline all sem erro",
+      "Comentario aparece no PR",
+      "Artifacts sao salvos"
+    ]
+  },
+  "auth": {
+    "_comment": "Veja docs/auth-in-ci.md para os 3 caminhos de auth",
+    "kind": "none",
+    "loginUrl": "/login"
+  },
+  "llm": {
+    "provider": "groq",
+    "model": "llama-3.3-70b-versatile",
+    "apiKeyEnv": "GROQ_API_KEY",
+    "_comment_alt": "Use OPENAI_API_KEY com provider: openai se preferir",
+    "maxSchemaRetries": 2,
+    "rateLimitRetries": 4,
+    "rateLimitMaxWaitMs": 30000,
+    "promptVersion": "v1",
+    "temperature": 0,
+    "maxTokens": 2048
+  },
+  "browser": {
+    "engine": "chromium",
+    "headed": false,
+    "viewport": { "width": 1366, "height": 768 },
+    "locale": "pt-BR",
+    "timezone": "America/Sao_Paulo"
+  },
+  "timeouts": {
+    "quiescenceMs": 1200,
+    "actionMs": 15000,
+    "navigationMs": 45000,
+    "scenarioMs": 180000,
+    "runMs": 600000
+  },
+  "runtime": {
+    "maxActionsPerTask": 2,
+    "mode": "HYBRID_GUARDED",
+    "semanticAliases": {
+      "DISCLOSURE": ["Configurações", "Menu", "Opções"],
+      "APPEARANCE_CHANGE": ["Tema", "Aparência"],
+      "DEAUTHENTICATION": ["Sair", "Logout", "Sign out"]
+    },
+    "elementAvailability": {
+      "enabled": false,
+      "allowedContainers": []
+    },
+    "planning": {
+      "executionPlanStrategy": "factory_first"
+    },
+    "enforceSingleTab": true
+  },
+  "recovery": {
+    "maxAttemptsPerTask": 2,
+    "maxFallbacksPerStep": 1,
+    "maxEmergencyActionsPerScenario": 2
+  },
+  "classifier": {
+    "knownNoiseRegexes": ["ResizeObserver loop", "favicon\\.ico.*404"],
+    "knownTrackingDomains": ["google-analytics.com", "googletagmanager.com", "clarity.ms"],
+    "treatThirdPartyNetwork5xxAsBug": false
+  },
+  "privacy": {
+    "maskEmails": true,
+    "maskJwt": true,
+    "maskCookies": true
+  },
+  "allowedRoutes": ["https://example.com/"],
+  "evidence": {
+    "video": "on-failure",
+    "trace": "on-failure"
+  },
+  "agentVersion": "0.1.0"
+}
