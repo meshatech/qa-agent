@@ -82,6 +82,25 @@ export class EvidenceService {
     return bug;
   }
 
+  async recordScenarioScreenshot(
+    runDir: string,
+    scenarioId: string,
+    phase: 'start' | 'end' | 'failure',
+    options?: { observation?: ScreenObservation },
+  ): Promise<string | undefined> {
+    const screenshot = await this.browser.screenshot().catch(() => undefined);
+    if (!screenshot) return undefined;
+
+    const filename = `scenarios/${scenarioId}/screenshot-${phase}.png`;
+    await this.repo.writeFile(runDir, filename, screenshot);
+
+    if (options?.observation) {
+      await this.repo.writeJson(runDir, `scenarios/${scenarioId}/observation-${phase}.json`, this.sanitizer.sanitize(options.observation));
+    }
+
+    return filename;
+  }
+
   private purifyDomEvidence(html: string): string {
     return html
       .replace(/<input([^>]*type=["']password["'][^>]*)value=["'][^"']*["']/gi, '<input$1value="***"')

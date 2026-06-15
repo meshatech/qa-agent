@@ -29,6 +29,7 @@ export interface PRReportInput {
     video?: EvidenceLink[];
     trace?: EvidenceLink[];
   };
+  artifactsUrl?: string;
   blocks?: BlockItem[];
   publicationStatus?: PRPublicationStatus;
   qaValueMetrics?: QaValueMetrics;
@@ -76,6 +77,7 @@ export class PRReportRenderer {
       ...this.renderCoveredCriteria(input),
       ...this.renderUncoveredCriteria(input),
       ...this.renderScenarios(input),
+      ...this.renderScenarioEvidenceSection(input),
       ...this.renderBlocks(input),
       ...this.renderBugs(input),
       ...this.renderWarnings(input),
@@ -208,6 +210,43 @@ export class PRReportRenderer {
     return lines;
   }
 
+  private renderScenarioEvidenceSection(input: PRReportInput): string[] {
+    const byScenarioId = input.evidenceMap?.byScenarioId;
+    const hasScenarioEvidence = byScenarioId && Object.keys(byScenarioId).length > 0;
+    const hasBugEvidence = input.evidenceMap?.byBugId && Object.keys(input.evidenceMap.byBugId).length > 0;
+    const hasVideo = input.evidenceMap?.video && input.evidenceMap.video.length > 0;
+    const hasTrace = input.evidenceMap?.trace && input.evidenceMap.trace.length > 0;
+
+    if (!hasScenarioEvidence && !hasBugEvidence && !hasVideo && !hasTrace) return [];
+
+    const lines: string[] = ['', '## Evidence'];
+    if (input.artifactsUrl) {
+      lines.push(`**[View all artifacts](${input.artifactsUrl})**`);
+    }
+
+    if (hasVideo || hasTrace) {
+      lines.push('', '### Run-wide Evidence');
+      for (const link of input.evidenceMap?.video ?? []) lines.push(`- ${link.label}: \`${link.path}\``);
+      for (const link of input.evidenceMap?.trace ?? []) lines.push(`- ${link.label}: \`${link.path}\``);
+    }
+
+    const scenarios = input.result.scenarios ?? [];
+    for (const scenario of scenarios) {
+      const links = byScenarioId?.[scenario.id];
+      if (!links || links.length === 0) continue;
+
+      const scenarioTitle = sanitizeTableCell(scenario.title || scenario.id || 'Untitled scenario');
+      const status = formatStatus(scenario.status);
+      lines.push('', `### ${scenarioTitle} (${status})`);
+
+      for (const link of sortEvidenceLinks(links)) {
+        lines.push(`- ${link.label}: \`${link.path}\``);
+      }
+    }
+
+    return lines;
+  }
+
   private renderBlocks(input: PRReportInput): string[] {
     const blocks = input.blocks ?? [];
     if (!blocks.length) return [];
@@ -288,6 +327,9 @@ export class PRReportRenderer {
     if (result.runDir) lines.push(`- Run directory: \`${result.runDir}\``);
     for (const link of input.evidenceMap?.video ?? []) lines.push(`- ${link.label}: \`${link.path}\``);
     for (const link of input.evidenceMap?.trace ?? []) lines.push(`- ${link.label}: \`${link.path}\``);
+    if (input.artifactsUrl) {
+      lines.push(`- [Download artifacts](${input.artifactsUrl})`);
+    }
     return lines;
   }
 }

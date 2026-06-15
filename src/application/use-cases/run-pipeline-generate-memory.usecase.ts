@@ -47,7 +47,7 @@ export class RunPipelineGenerateMemoryUseCase {
   private async detectChangedFiles(projectPath: string): Promise<string[]> {
     const { execSync } = await import('node:child_process');
     try {
-      const output = execSync('git diff --name-only HEAD~1', { cwd: projectPath, encoding: 'utf8' });
+      const output = execSync('git diff --no-color --name-only HEAD~1', { cwd: projectPath, encoding: 'utf8' });
       return output.split('\n').filter((line) => line.trim().length > 0);
     } catch {
       return [];

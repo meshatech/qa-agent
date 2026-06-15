@@ -99,7 +99,7 @@ describe('ExecGitRepositoryAdapter', () => {
   });
 
   it('buildPullRequestDiffArgs uses origin/base...HEAD range', () => {
-    expect(buildPullRequestDiffArgs('main')).toEqual(['diff', 'origin/main...HEAD']);
+    expect(buildPullRequestDiffArgs('main')).toEqual(['diff', '--no-color', 'origin/main...HEAD']);
   });
 
   it('runs git diff origin/base...HEAD against local repository', async () => {
