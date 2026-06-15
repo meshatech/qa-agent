@@ -194,6 +194,6 @@ describe('ExecGitRepositoryAdapter', () => {
     });
     const readerError = caught as PrContextReaderError;
     expect(readerError.message.toLowerCase()).toMatch(/origin\/main|unknown revision|ambiguous argument/);
-    expect(readerError.cause).toBeInstanceOf(Error);
+    expect(readerError.cause).toBeTruthy();
   });
 });

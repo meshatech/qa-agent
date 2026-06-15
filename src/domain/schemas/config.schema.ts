@@ -66,7 +66,7 @@ export const RunConfigSchema = z.object({
     }),
   ]).default({ kind: 'none' }),
   llm: z.object({
-    provider: z.enum(['fake', 'groq', 'openai']).default('fake'),
+    provider: z.enum(['fake', 'groq', 'openai', 'openrouter', 'claude']).default('fake'),
     model: z.string().default('llama-3.1-8b-instant'),
     apiKeyEnv: z.string().default('GROQ_PROVIDER'),
     maxSchemaRetries: z.number().int().nonnegative().default(2),
@@ -75,6 +75,9 @@ export const RunConfigSchema = z.object({
     maxTokens: z.number().int().positive().default(2048),
     rateLimitRetries: z.number().int().nonnegative().default(3),
     rateLimitMaxWaitMs: z.number().int().positive().default(30000),
+    fallbackProvider: z.enum(['openai', 'groq', 'openrouter', 'claude']).optional(),
+    fallbackApiKeyEnv: z.string().optional(),
+    fallbackModel: z.string().optional(),
   }).default({ provider: 'fake', model: 'fake', apiKeyEnv: 'GROQ_PROVIDER', maxSchemaRetries: 2, promptVersion: 'v1', temperature: 0, maxTokens: 2048, rateLimitRetries: 3, rateLimitMaxWaitMs: 30000 }),
   timeouts: z.object({
     quiescenceMs: z.number().int().positive().default(3000),

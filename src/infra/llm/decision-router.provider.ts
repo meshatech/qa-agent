@@ -18,46 +18,38 @@ export class DecisionRouterProvider implements DecisionProviderPort {
     @Inject(OpenAiLangChainDecisionProvider) private readonly openai: OpenAiLangChainDecisionProvider,
   ) {}
 
+  private select(provider: RunConfig['llm']['provider']): DecisionProviderPort {
+    if (provider === 'groq') return this.groq;
+    if (provider === 'openai' || provider === 'openrouter' || provider === 'claude') return this.openai;
+    return this.fake;
+  }
+
   decide(input: DecisionInput): Promise<QaActionEnvelope> {
-    if (input.config.llm.provider === 'groq') return this.groq.decide(input);
-    if (input.config.llm.provider === 'openai') return this.openai.decide(input);
-    return this.fake.decide(input);
+    return this.select(input.config.llm.provider).decide(input);
   }
 
   plan(config: RunConfig): Promise<QaScenario[]> {
-    if (config.llm.provider === 'groq') return this.groq.plan(config);
-    if (config.llm.provider === 'openai') return this.openai.plan(config);
-    return this.fake.plan(config);
+    return this.select(config.llm.provider).plan!(config);
   }
 
   buildPlan(config: RunConfig, scenarios?: QaScenario[]): Promise<ExecutionPlan> {
-    if (config.llm.provider === 'groq') return this.groq.buildPlan(config, scenarios);
-    if (config.llm.provider === 'openai') return this.openai.buildPlan(config, scenarios);
-    return this.fake.buildPlan(config, scenarios);
+    return this.select(config.llm.provider).buildPlan!(config, scenarios);
   }
 
   replan(input: ReplanInput): Promise<PlanPatch> {
-    if (input.config.llm.provider === 'groq') return this.groq.replan(input);
-    if (input.config.llm.provider === 'openai') return this.openai.replan(input);
-    return this.fake.replan(input);
+    return this.select(input.config.llm.provider).replan!(input);
   }
 
   classifyOutcome(config: RunConfig, task: QaTask): Promise<ExpectedOutcome> {
-    if (config.llm.provider === 'groq') return this.groq.classifyOutcome(config, task);
-    if (config.llm.provider === 'openai') return this.openai.classifyOutcome(config, task);
-    return this.fake.classifyOutcome(config, task);
+    return this.select(config.llm.provider).classifyOutcome!(config, task);
   }
 
   classifyOutcomes(config: RunConfig, tasks: QaTask[]): Promise<ExpectedOutcome[]> {
-    if (config.llm.provider === 'groq') return this.groq.classifyOutcomes(config, tasks);
-    if (config.llm.provider === 'openai') return this.openai.classifyOutcomes(config, tasks);
-    return this.fake.classifyOutcomes(config, tasks);
+    return this.select(config.llm.provider).classifyOutcomes!(config, tasks);
   }
 
   orchestrator(input: import('../../application/ports/decision-provider.port.js').OrchestratorInput): Promise<string> {
-    if (input.config.llm.provider === 'groq') return this.groq.orchestrator!(input);
-    if (input.config.llm.provider === 'openai') return this.openai.orchestrator!(input);
-    return this.fake.orchestrator!(input);
+    return this.select(input.config.llm.provider).orchestrator!(input);
   }
 
   stats() {

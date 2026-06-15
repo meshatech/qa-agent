@@ -10,6 +10,7 @@ export const PREFLIGHT_CHECK_NAMES = [
   'branchHead',
   'checkoutHistory',
   'config',
+  'previewReachable',
 ] as const;
 
 export type PreflightCheckName = (typeof PREFLIGHT_CHECK_NAMES)[number];
@@ -22,6 +23,7 @@ export const BLOCKING_PREFLIGHT_CHECKS = [
   'branchHead',
   'checkoutHistory',
   'config',
+  'previewReachable',
 ] as const satisfies readonly PreflightCheckName[];
 
 export const PreflightCheckStatusSchema = z.enum(['PASS', 'FAIL', 'WARN']);
@@ -75,6 +77,12 @@ export const PreflightChecksDetailSchema = z.object({
     ok: z.boolean(),
     errors: z.array(z.string()),
     configPath: z.string().optional(),
+  }),
+  previewReachable: z.object({
+    ok: z.boolean(),
+    statusCode: z.number().optional(),
+    error: z.string().optional(),
+    url: z.string().optional(),
   }),
 });
 

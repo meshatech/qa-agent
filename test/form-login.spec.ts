@@ -2,7 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { chromium, type Browser } from 'playwright';
+import { type Browser } from 'playwright';
+import { launchBrowser } from './helpers/playwright-launch.js';
 import { FormLoginService } from '../src/infra/playwright/auth/form-login.js';
 import { RunConfigSchema } from '../src/domain/schemas/config.schema.js';
 import { HarnessFatalError } from '../src/domain/errors.js';
@@ -21,7 +22,7 @@ beforeAll(async () => {
   const addr = server.address();
   if (typeof addr !== 'object' || !addr) throw new Error('server failed');
   baseUrl = `http://127.0.0.1:${addr.port}`;
-  browser = await chromium.launch({ headless: true });
+  browser = await launchBrowser(true);
 });
 
 afterAll(async () => {

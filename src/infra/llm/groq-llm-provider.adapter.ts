@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { LlmCompleteInput, LlmCompleteResult, LlmProviderPort } from '../../application/ports/llm-provider.port.js';
+import { LlmProviderError } from '../../domain/errors.js';
+import { toFriendlyLlmErrorMessage } from './llm-error-helper.js';
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const DEFAULT_MODEL = 'llama-3.3-70b-versatile';
@@ -12,7 +14,7 @@ export class GroqLlmProviderAdapter implements LlmProviderPort {
   async complete(input: LlmCompleteInput): Promise<LlmCompleteResult> {
     const key = process.env.GROQ_API_KEY ?? process.env.GROQ_PROVIDER;
     if (!key) {
-      throw new Error('GROQ_API_KEY or GROQ_PROVIDER not set. Set it as env var or pass llmApiKey.');
+      throw new LlmProviderError('GROQ_API_KEY or GROQ_PROVIDER not set. Set it as env var or pass llmApiKey.');
     }
 
     const model = input.model ?? DEFAULT_MODEL;
@@ -39,7 +41,13 @@ export class GroqLlmProviderAdapter implements LlmProviderPort {
 
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      throw new Error(`Groq error ${res.status}: ${text}`);
+      const raw = `Groq error ${res.status}: ${text}`;
+      throw new LlmProviderError(
+        toFriendlyLlmErrorMessage(raw, res.status),
+        res.status,
+        res.status === 429,
+        new Error(raw),
+      );
     }
 
     const json = await res.json() as {

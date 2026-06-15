@@ -81,9 +81,9 @@ import { DiffMemoryExtractorService } from './services/diff-memory-extractor.ser
 import { RiskClassifierService } from './services/risk-classifier.service.js';
 import { ValueGeneratorService } from './services/value-generator.service.js';
 import { MemoryChunkRenderer } from './services/memory-chunk-renderer.service.js';
-import { GroqLlmProviderAdapter } from '../infra/llm/groq-llm-provider.adapter.js';
 import { InfraModule } from '../infra/infra.module.js';
 import { InMemoryPlanCacheAdapter } from '../infra/persistence/in-memory-plan-cache.adapter.js';
+import { LlmProviderFactory } from '../infra/llm/llm-provider.factory.js';
 import { FileMemoryStoreAdapter } from '../infra/memory/file-memory-store.adapter.js';
 import { PostgresMemoryStoreAdapter } from '../infra/memory/postgres-memory-store.adapter.js';
 import { HybridMemoryStoreAdapter } from '../infra/memory/hybrid-memory-store.adapter.js';
@@ -100,7 +100,20 @@ export const APPLICATION_PROVIDERS = [
       new MemorySearchService(chunker, index, loader),
     inject: [MemoryChunker, BM25MemoryIndex, MemoryMarkdownLoader],
   },
-  { provide: 'LlmProviderPort', useClass: GroqLlmProviderAdapter },
+  {
+    provide: 'LlmProviderPort',
+    useFactory: async (loader: import('../application/ports/config-loader.port.js').ConfigLoaderPort) => {
+      const configPath = process.env.AGENT_QA_CONFIG ?? './agent-qa.config.json';
+      try {
+        const raw = await loader.load(configPath);
+        const config = await import('../domain/schemas/config.schema.js').then((m) => m.RunConfigSchema.parse(raw));
+        return LlmProviderFactory.createForConfig(config);
+      } catch {
+        return LlmProviderFactory.resolveProvider('fake');
+      }
+    },
+    inject: ['ConfigLoaderPort'],
+  },
   { provide: 'PlanCachePort', useClass: InMemoryPlanCacheAdapter },
   MemoryChunkRenderer,
   FileMemoryStoreAdapter,

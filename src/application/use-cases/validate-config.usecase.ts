@@ -32,6 +32,9 @@ export class ValidateConfigUseCase {
     if (config.llm.provider !== 'fake' && !process.env[config.llm.apiKeyEnv]) {
       throw new ConfigError(`Missing env ${config.llm.apiKeyEnv} for llm.provider=${config.llm.provider}`);
     }
+    if (config.llm.fallbackProvider && config.llm.fallbackApiKeyEnv && !process.env[config.llm.fallbackApiKeyEnv]) {
+      throw new ConfigError(`Missing env ${config.llm.fallbackApiKeyEnv} for llm.fallbackProvider=${config.llm.fallbackProvider}`);
+    }
     if (config.auth.kind === 'formLogin') {
       for (const key of [config.auth.usernameEnv, config.auth.passwordEnv]) {
         if (!process.env[key]) throw new ConfigError(`Missing env ${key} for formLogin auth`);

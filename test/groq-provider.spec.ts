@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GroqDecisionProvider } from '../src/infra/llm/groq-decision.provider.js';
+import { FakeDecisionProvider } from '../src/infra/llm/fake-decision.provider.js';
 import { RunConfigSchema } from '../src/domain/schemas/config.schema.js';
 import type { ScreenObservation } from '../src/domain/schemas/observation.schema.js';
 
@@ -133,22 +134,46 @@ describe('GroqDecisionProvider', () => {
     expect(decision.expected_after_action.type).toBe('no_console_errors');
   });
 
-  const groqKey = process.env.GROQ_PROVIDER ?? process.env.GROQ_API_KEY;
-  const itReal = groqKey && process.env.RUN_REAL_LLM_TESTS === '1' ? it : it.skip;
+  it('plans scenarios via FakeDecisionProvider without real API key', async () => {
+    const provider = new FakeDecisionProvider();
+    const config = RunConfigSchema.parse({
+      baseUrl: 'http://127.0.0.1',
+      appDomains: ['127.0.0.1'],
+      demand: { id: 'DEM', title: 'Cadastro', description: 'Validar cadastro de produto', acceptanceCriteria: ['Produto aparece na listagem', 'Campos obrigatórios bloqueiam submit'] },
+      llm: { provider: 'fake', model: 'fake', apiKeyEnv: 'FAKE_KEY' },
+    });
+    const scenarios = await provider.plan(config);
+    expect(scenarios.length).toBeGreaterThan(0);
+    expect(scenarios[0]!.tasks.length).toBeGreaterThan(0);
+  });
 
-  itReal('plans real scenarios via Groq (gated by RUN_REAL_LLM_TESTS=1 + GROQ_PROVIDER)', async () => {
-    process.env.GROQ_PROVIDER = groqKey!;
+  it('plans scenarios via Groq with mocked transport (no real API key)', async () => {
+    process.env.GROQ_TEST_KEY = 'test-key';
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({
+        choices: [{ message: { content: JSON.stringify({
+          scenarios: [{
+            id: 'scenario-001',
+            title: 'Cadastro de produto',
+            tasks: [
+              { id: 'T001', title: 'Preencher nome do produto', expected: 'Campo preenchido' },
+              { id: 'T002', title: 'Submeter formulário', expected: 'Produto aparece na listagem' },
+            ],
+          }],
+        }) } }],
+      }), { status: 200 }),
+    );
     const provider = new GroqDecisionProvider();
     const config = RunConfigSchema.parse({
       baseUrl: 'http://127.0.0.1',
       appDomains: ['127.0.0.1'],
       demand: { id: 'DEM', title: 'Cadastro', description: 'Validar cadastro de produto', acceptanceCriteria: ['Produto aparece na listagem', 'Campos obrigatórios bloqueiam submit'] },
-      llm: { provider: 'groq', model: process.env.GROQ_MODEL ?? 'llama-3.1-8b-instant', apiKeyEnv: 'GROQ_PROVIDER', maxSchemaRetries: 1 },
+      llm: { provider: 'groq', model: 'llama-3.3-70b-versatile', apiKeyEnv: 'GROQ_TEST_KEY', maxSchemaRetries: 1 },
     });
     const scenarios = await provider.plan(config);
     expect(scenarios.length).toBeGreaterThan(0);
     expect(scenarios[0]!.tasks.length).toBeGreaterThan(0);
-  }, 60000);
+  });
 });
 
 function observation(): ScreenObservation {

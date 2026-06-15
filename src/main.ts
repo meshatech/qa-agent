@@ -9,7 +9,25 @@ import { Command } from 'commander';
 import { AppModule } from './app.module.js';
 import { AgentController } from './interfaces/cli/agent.controller.js';
 import { ExitCodes as EXIT, classifyError, classifyPreflightReport, classifyCorrelationResult, classifyResult, classifyOnboardingResult } from './interfaces/cli/exit-codes.js';
-import { CorrelationBlockedError, PreflightBlockedError } from './domain/errors.js';
+import { CorrelationBlockedError, PreflightBlockedError, LlmProviderError } from './domain/errors.js';
+
+function formatCliError(err: unknown): { error: string; kind: string; suggestion?: string } {
+  if (err instanceof LlmProviderError) {
+    return {
+      error: err.message,
+      kind: 'LlmProviderError',
+      suggestion: err.statusCode === 429
+        ? 'Dica: configure fallbackProvider no config para alternativa automatica, ou aguarde antes de tentar novamente.'
+        : err.statusCode === 401 || err.statusCode === 403
+          ? 'Dica: verifique se a variavel de ambiente da API key esta definida e valida.'
+          : 'Dica: verifique sua conexao com a internet e as configuracoes do provider no config.',
+    };
+  }
+  return {
+    error: err instanceof Error ? err.message : String(err),
+    kind: err instanceof Error ? err.constructor.name : 'Error',
+  };
+}
 
 async function withApp<T>(fn: (controller: AgentController) => Promise<T>): Promise<T> {
   const app = await NestFactory.createApplicationContext(AppModule, { logger: false });
@@ -55,7 +73,7 @@ program
       console.log(JSON.stringify(result, null, 2));
       process.exitCode = classifyResult(result);
     } catch (err) {
-      console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err), kind: err instanceof Error ? err.constructor.name : 'Error' }, null, 2));
+      console.error(JSON.stringify(formatCliError(err), null, 2));
       process.exitCode = classifyError(err);
     }
   });
@@ -70,7 +88,7 @@ program
       console.log(JSON.stringify(result, null, 2));
       process.exitCode = EXIT.OK;
     } catch (err) {
-      console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err), kind: err instanceof Error ? err.constructor.name : 'Error' }, null, 2));
+      console.error(JSON.stringify(formatCliError(err), null, 2));
       process.exitCode = classifyError(err);
     }
   });
@@ -104,7 +122,7 @@ program
         process.exitCode = classifyPreflightReport(err.report);
         return;
       }
-      console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err), kind: err instanceof Error ? err.constructor.name : 'Error' }, null, 2));
+      console.error(JSON.stringify(formatCliError(err), null, 2));
       process.exitCode = classifyError(err);
     }
   });
@@ -133,7 +151,7 @@ program
       }
       process.exitCode = EXIT.OK;
     } catch (err) {
-      console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err), kind: err instanceof Error ? err.constructor.name : 'Error' }, null, 2));
+      console.error(JSON.stringify(formatCliError(err), null, 2));
       process.exitCode = classifyError(err);
     }
   });
@@ -157,7 +175,7 @@ pipeline
       console.log(formatPipelineAllSummary(result));
       process.exitCode = result.exitCode;
     } catch (err) {
-      console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err), kind: err instanceof Error ? err.constructor.name : 'Error' }, null, 2));
+      console.error(JSON.stringify(formatCliError(err), null, 2));
       process.exitCode = classifyError(err);
     }
   });
@@ -192,7 +210,7 @@ pipeline
         process.exitCode = classifyPreflightReport(err.report);
         return;
       }
-      console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err), kind: err instanceof Error ? err.constructor.name : 'Error' }, null, 2));
+      console.error(JSON.stringify(formatCliError(err), null, 2));
       process.exitCode = classifyError(err);
     }
   });
@@ -223,7 +241,7 @@ pipeline
         process.exitCode = classifyCorrelationResult(err.result);
         return;
       }
-      console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err), kind: err instanceof Error ? err.constructor.name : 'Error' }, null, 2));
+      console.error(JSON.stringify(formatCliError(err), null, 2));
       process.exitCode = classifyError(err);
     }
   });
@@ -240,7 +258,7 @@ pipeline
       console.log(JSON.stringify(result, null, 2));
       process.exitCode = result.executionPlanPath ? EXIT.OK : EXIT.CONFIG_ERROR;
     } catch (err) {
-      console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err), kind: err instanceof Error ? err.constructor.name : 'Error' }, null, 2));
+      console.error(JSON.stringify(formatCliError(err), null, 2));
       process.exitCode = classifyError(err);
     }
   });
@@ -257,7 +275,7 @@ pipeline
       console.log(JSON.stringify(result, null, 2));
       process.exitCode = result.ok ? EXIT.OK : EXIT.BUGS_FOUND;
     } catch (err) {
-      console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err), kind: err instanceof Error ? err.constructor.name : 'Error' }, null, 2));
+      console.error(JSON.stringify(formatCliError(err), null, 2));
       process.exitCode = classifyError(err);
     }
   });
@@ -274,7 +292,7 @@ pipeline
       console.log(JSON.stringify(result, null, 2));
       process.exitCode = result.pipelineStatus === 'COMPLETED' ? EXIT.OK : (result.pipelineStatus === 'PARTIAL' ? EXIT.CONFIG_ERROR : EXIT.BUGS_FOUND);
     } catch (err) {
-      console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err), kind: err instanceof Error ? err.constructor.name : 'Error' }, null, 2));
+      console.error(JSON.stringify(formatCliError(err), null, 2));
       process.exitCode = classifyError(err);
     }
   });
@@ -291,7 +309,7 @@ pipeline
       console.log(JSON.stringify(result, null, 2));
       process.exitCode = result.count > 0 ? EXIT.OK : EXIT.CONFIG_ERROR;
     } catch (err) {
-      console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err), kind: err instanceof Error ? err.constructor.name : 'Error' }, null, 2));
+      console.error(JSON.stringify(formatCliError(err), null, 2));
       process.exitCode = classifyError(err);
     }
   });
@@ -307,7 +325,7 @@ pipeline
       console.log(JSON.stringify(result, null, 2));
       process.exitCode = result.chunksGenerated > 0 ? EXIT.OK : EXIT.CONFIG_ERROR;
     } catch (err) {
-      console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err), kind: err instanceof Error ? err.constructor.name : 'Error' }, null, 2));
+      console.error(JSON.stringify(formatCliError(err), null, 2));
       process.exitCode = classifyError(err);
     }
   });
@@ -323,7 +341,7 @@ pipeline
       console.log(JSON.stringify(result, null, 2));
       process.exitCode = EXIT.OK;
     } catch (err) {
-      console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err), kind: err instanceof Error ? err.constructor.name : 'Error' }, null, 2));
+      console.error(JSON.stringify(formatCliError(err), null, 2));
       process.exitCode = classifyError(err);
     }
   });
@@ -341,7 +359,7 @@ pipeline
       console.log(JSON.stringify(result, null, 2));
       process.exitCode = result.promotedCount > 0 ? EXIT.OK : EXIT.CONFIG_ERROR;
     } catch (err) {
-      console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err), kind: err instanceof Error ? err.constructor.name : 'Error' }, null, 2));
+      console.error(JSON.stringify(formatCliError(err), null, 2));
       process.exitCode = classifyError(err);
     }
   });
@@ -359,7 +377,7 @@ program
       console.log(JSON.stringify(result, null, 2));
       process.exitCode = classifyOnboardingResult(result);
     } catch (err) {
-      console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err), kind: err instanceof Error ? err.constructor.name : 'Error' }, null, 2));
+      console.error(JSON.stringify(formatCliError(err), null, 2));
       process.exitCode = EXIT.BUGS_FOUND;
     }
   });
@@ -374,7 +392,7 @@ program
       console.log(JSON.stringify(result, null, 2));
       process.exitCode = EXIT.OK;
     } catch (err) {
-      console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }, null, 2));
+      console.error(JSON.stringify(formatCliError(err), null, 2));
       process.exitCode = EXIT.HARNESS_FATAL;
     }
   });
@@ -392,12 +410,12 @@ program
       else console.log(out);
       process.exitCode = EXIT.OK;
     } catch (err) {
-      console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }, null, 2));
+      console.error(JSON.stringify(formatCliError(err), null, 2));
       process.exitCode = EXIT.HARNESS_FATAL;
     }
   });
 
 program.parseAsync(process.argv).catch((err) => {
-  console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }, null, 2));
+  console.error(JSON.stringify(formatCliError(err), null, 2));
   process.exitCode = classifyError(err);
 });

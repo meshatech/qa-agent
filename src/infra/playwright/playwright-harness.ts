@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { chromium, firefox, webkit, type Browser, type BrowserContext, type Page, type Locator, type BrowserType } from 'playwright';
+import { readFileSync } from 'node:fs';
 import { mkdir, rm } from 'node:fs/promises';
 import { readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
@@ -43,11 +44,20 @@ export class PlaywrightHarness implements BrowserHarnessPort {
     this.signals = this.signalsCollector.createBuffer();
   }
 
+  private isDockerEnvironment(): boolean {
+    try {
+      return readFileSync('/proc/self/cgroup', 'utf8').includes('docker');
+    } catch {
+      return false;
+    }
+  }
+
   async open(config: RunConfig): Promise<void> {
     try {
       this.config = config;
       const engine: BrowserType = config.browser.engine === 'firefox' ? firefox : config.browser.engine === 'webkit' ? webkit : chromium;
-      this.browser = await engine.launch({ headless: !config.browser.headed, slowMo: config.browser.slowMoMs });
+      const args = this.isDockerEnvironment() ? ['--no-sandbox', '--disable-setuid-sandbox'] : undefined;
+      this.browser = await engine.launch({ headless: !config.browser.headed, slowMo: config.browser.slowMoMs, args });
       await mkdir(this.videoDir, { recursive: true });
       console.log('[TabTrace] browser.open starting (tab trace enabled)');
       await this.createContextAndPage(config, { withStorage: false });

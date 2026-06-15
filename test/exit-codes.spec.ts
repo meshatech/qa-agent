@@ -80,6 +80,7 @@ describe('CLI exit codes', () => {
         branchHead: { ok: false, missing: ['GITHUB_HEAD_REF'] },
         checkoutHistory: { ok: false, errors: ['missing base'] },
         config: { ok: false, errors: ['invalid'] },
+        previewReachable: { ok: false, error: 'unreachable' },
       },
     };
     expect(classifyError(new PreflightBlockedError(report))).toBe(ExitCodes.PREFLIGHT_BLOCKED);

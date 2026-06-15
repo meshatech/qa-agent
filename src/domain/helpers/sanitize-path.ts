@@ -23,16 +23,16 @@ function stripStaticHomePrefix(normalized: string): { stripped: string; hadHomeP
   return { stripped: normalized, hadHomePrefix: false };
 }
 
-function stripProcessHomePrefix(normalized: string): { stripped: string; hadHomePrefix: boolean } {
-  const home = resolveHomeDirectory();
-  if (!home) {
+function stripProcessHomePrefix(normalized: string, home?: string): { stripped: string; hadHomePrefix: boolean } {
+  const resolvedHome = home ?? resolveHomeDirectory();
+  if (!resolvedHome) {
     return { stripped: normalized, hadHomePrefix: false };
   }
 
-  const prefix = `${home}/`;
+  const prefix = `${resolvedHome}/`;
   if (normalized.toLowerCase().startsWith(prefix.toLowerCase())) {
     return {
-      stripped: normalized.slice(home.length),
+      stripped: normalized.slice(resolvedHome.length),
       hadHomePrefix: true,
     };
   }
@@ -40,7 +40,7 @@ function stripProcessHomePrefix(normalized: string): { stripped: string; hadHome
   return { stripped: normalized, hadHomePrefix: false };
 }
 
-export function sanitizePath(path: string): string {
+export function sanitizePath(path: string, homeDir?: string): string {
   const normalized = normalizePathSeparators(path);
   if (!normalized) {
     return normalized;
@@ -54,7 +54,7 @@ export function sanitizePath(path: string): string {
     hadHomePrefix = true;
     working = staticStrip.stripped;
   } else {
-    const processStrip = stripProcessHomePrefix(working);
+    const processStrip = stripProcessHomePrefix(working, homeDir);
     if (processStrip.hadHomePrefix) {
       hadHomePrefix = true;
       working = processStrip.stripped;

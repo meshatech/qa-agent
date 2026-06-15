@@ -85,6 +85,7 @@ export class PipelinePreflightService {
       branchHead: this.readBranchHead(),
       checkoutHistory: await this.validateCheckoutHistory(),
       config: await this.validateConfig(),
+      previewReachable: await this.validatePreviewReachable(),
     };
   }
 
@@ -175,6 +176,11 @@ export class PipelinePreflightService {
           : checks.checkoutHistory.errors.join('; ');
       case 'config':
         return checks.config.ok ? 'Project config is valid' : checks.config.errors.join('; ');
+      case 'previewReachable':
+        if (checks.previewReachable.ok) {
+          return `Preview reachable: ${checks.previewReachable.url}`;
+        }
+        return checks.previewReachable.error ?? 'Preview health check failed';
     }
   }
 
@@ -394,6 +400,43 @@ export class PipelinePreflightService {
     }
 
     return { ok: errors.length === 0, errors, configPath };
+  }
+
+  private async validatePreviewReachable(): Promise<{
+    ok: boolean;
+    statusCode?: number;
+    error?: string;
+    url?: string;
+  }> {
+    const baseUrl = process.env.QA_AGENT_BASE_URL ?? (await this.tryResolveBaseUrl());
+    if (!baseUrl) {
+      return { ok: false, error: 'QA_AGENT_BASE_URL or config.baseUrl not set' };
+    }
+
+    try {
+      const res = await fetch(baseUrl, { method: 'HEAD', signal: AbortSignal.timeout(10000) });
+      if (res.ok) {
+        return { ok: true, statusCode: res.status, url: baseUrl };
+      }
+      if (res.status >= 500) {
+        return { ok: false, statusCode: res.status, error: `Preview não responde — HTTP ${res.status}` };
+      }
+      return { ok: true, statusCode: res.status, url: baseUrl };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { ok: false, error: `Preview não responde — ${message}`, url: baseUrl };
+    }
+  }
+
+  private async tryResolveBaseUrl(): Promise<string | undefined> {
+    try {
+      const configPath = this.resolveConfigPath();
+      const raw = await this.configLoader.load(configPath);
+      const parsed = RunConfigSchema.safeParse(raw);
+      return parsed.success ? parsed.data.baseUrl : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   private sanitizeReport(report: PreflightReport): PreflightReport {

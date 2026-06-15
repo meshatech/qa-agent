@@ -17,6 +17,12 @@ import { DecisionRouterProvider } from './llm/decision-router.provider.js';
 import { FakeDecisionProvider } from './llm/fake-decision.provider.js';
 import { GroqDecisionProvider } from './llm/groq-decision.provider.js';
 import { OpenAiLangChainDecisionProvider } from './llm/openai-langchain-decision.provider.js';
+import { GroqLlmProviderAdapter } from './llm/groq-llm-provider.adapter.js';
+import { OpenAiLlmProviderAdapter } from './llm/openai-llm-provider.adapter.js';
+import { ClaudeLlmProviderAdapter } from './llm/claude-llm-provider.adapter.js';
+import { OpenRouterLlmProviderAdapter } from './llm/openrouter-llm-provider.adapter.js';
+import { FakeLlmProviderAdapter } from './llm/fake-llm-provider.adapter.js';
+import { FallbackLlmProviderAdapter } from './llm/fallback-llm-provider.adapter.js';
 import { JsonObjectExtractor, LlmOutputSanitizer, LlmPlanPatchNormalizer, SafeJsonParser } from './llm/llm-output-normalizer.js';
 import { ReportRenderer } from './persistence/report-renderer.js';
 import { FileRunRepository } from './persistence/file-run.repository.js';
@@ -50,6 +56,12 @@ export const INFRA_PROVIDERS = [
   GroqDecisionProvider,
   OpenAiLangChainDecisionProvider,
   DecisionRouterProvider,
+  GroqLlmProviderAdapter,
+  OpenAiLlmProviderAdapter,
+  ClaudeLlmProviderAdapter,
+  OpenRouterLlmProviderAdapter,
+  FakeLlmProviderAdapter,
+  FallbackLlmProviderAdapter,
   FileConfigLoader,
   FilePreflightReportWriterAdapter,
   FileDemandContextWriterAdapter,

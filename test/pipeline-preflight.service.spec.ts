@@ -35,6 +35,7 @@ const VALID_CONFIG = {
 beforeEach(() => {
   originalEnv = { ...process.env };
   clearCiInjectedEnv();
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200 }));
 });
 
 afterEach(async () => {
@@ -44,6 +45,7 @@ afterEach(async () => {
   });
   await Promise.all(tempDirs.map((dir) => rm(dir, { recursive: true, force: true })));
   tempDirs = [];
+  vi.unstubAllGlobals();
 });
 
 async function tempDir(): Promise<string> {
