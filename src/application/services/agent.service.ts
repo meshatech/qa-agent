@@ -122,8 +122,8 @@ export class AgentService {
     return this.runPipelineRisk.execute(outputDir, { projectPath });
   }
 
-  pipelinePromoteLearning(outputDir: string, projectPath?: string, autoApprove?: boolean): Promise<PipelinePromoteLearningRunResult> {
-    return this.runPipelinePromoteLearning.execute(outputDir, { projectPath, autoApprove });
+  pipelinePromoteLearning(outputDir: string, configPath?: string, projectPath?: string, autoApprove?: boolean): Promise<PipelinePromoteLearningRunResult> {
+    return this.runPipelinePromoteLearning.execute(outputDir, { configPath, projectPath, autoApprove });
   }
 
   pipelineAll(outputDir: string, configPath?: string, projectPath?: string): Promise<PipelineAllRunResult> {

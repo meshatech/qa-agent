@@ -332,11 +332,12 @@ pipeline
   .command('promote-learning')
   .description('Review and promote learning candidates to project memory')
   .option('--output-dir <path>', 'pipeline artifacts directory', './.agent-qa/pipeline')
+  .option('--config <path>', 'config path', './agent-qa.config.json')
   .option('--project-dir <path>', 'project root', process.cwd())
   .option('--auto-approve', 'automatically approve high-confidence confirmed candidates', false)
   .action(async (opts) => {
     try {
-      const result = await withApp((c) => c.pipelinePromoteLearning(opts.outputDir, opts.projectDir, Boolean(opts.autoApprove)));
+      const result = await withApp((c) => c.pipelinePromoteLearning(opts.outputDir, opts.config, opts.projectDir, Boolean(opts.autoApprove)));
       console.log(JSON.stringify(result, null, 2));
       process.exitCode = result.promotedCount > 0 ? EXIT.OK : EXIT.CONFIG_ERROR;
     } catch (err) {

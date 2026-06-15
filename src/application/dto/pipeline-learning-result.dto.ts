@@ -6,4 +6,5 @@ export interface PipelineLearningRunResult {
   gapCount: number;
   semanticLocatorSuggestions: number;
   hasEphemeralIdsFiltered: boolean;
+  knownFailuresCount: number;
 }

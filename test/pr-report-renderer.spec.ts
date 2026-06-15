@@ -3,6 +3,7 @@ import { PRReportRenderer } from '../src/application/services/pr-report-renderer
 import { GherkinFeatureRendererService } from '../src/application/services/gherkin-feature-renderer.service.js';
 import type { QaRunResult } from '../src/domain/models/run.model.js';
 import type { RunConfig } from '../src/domain/schemas/config.schema.js';
+import { DEFAULT_TEST_MEMORY_CONFIG } from './helpers/memory-config.fixture.js';
 
 function makeConfig(overrides?: Partial<RunConfig>): RunConfig {
   return {
@@ -20,7 +21,8 @@ function makeConfig(overrides?: Partial<RunConfig>): RunConfig {
     output: { runsDir: './qa-agent-runs', keepVideoOnPass: false, keepScreenshotOnPass: false, keepTraceOnPass: false },
     evidence: { video: 'off', trace: 'off' },
     scenarioSelection: { maxScenarios: 5 },
-    agentVersion: '0.1.0',
+    memory: DEFAULT_TEST_MEMORY_CONFIG,
+  agentVersion: '0.1.0',
     ...overrides,
   };
 }

@@ -8,6 +8,24 @@ import { existsSync } from 'node:fs';
 
 const args = process.argv.slice(2).join(' ');
 
+function canConnectToPostgres() {
+  if (process.env.SKIP_PG_TESTS === '1') return false;
+  try {
+    const url = process.env.DATABASE_URL ?? 'postgresql://agent_qa:agent_qa@localhost:5433/agent_qa_memory';
+    const match = url.match(/@([^:]+):(\d+)\//);
+    if (!match) return false;
+    const [, host, port] = match;
+    execSync(`nc -z ${host} ${port}`, { stdio: 'pipe', timeout: 2000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+if (!canConnectToPostgres()) {
+  process.env.SKIP_PG_TESTS = '1';
+}
+
 function isInsideDocker() {
   return existsSync('/.dockerenv');
 }

@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 
 import type { PipelineGenerateMemoryRunResult } from '../dto/pipeline-generate-memory-result.dto.js';
 import { DiffMemoryExtractorService } from '../services/diff-memory-extractor.service.js';
+import { MEMORY_HEADER_V1 } from '../services/memory-markdown-loader.service.js';
 
 const MEMORY_FILE = 'memory.md';
 const AGENT_QA_DIR = '.agent-qa';
@@ -79,7 +80,7 @@ export class RunPipelineGenerateMemoryUseCase {
   }
 
   private renderMemoryMarkdown(chunks: import('../services/diff-memory-extractor.service.js').DiffMemoryChunk[]): string {
-    const lines = ['# Memória do Projeto\n'];
+    const lines = [MEMORY_HEADER_V1, '', '# Memória do Projeto\n'];
 
     for (const chunk of chunks) {
       lines.push(`## ${chunk.title}\n`);

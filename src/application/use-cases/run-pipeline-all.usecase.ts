@@ -89,7 +89,7 @@ export class RunPipelineAllUseCase {
     });
 
     await this.runStep(steps, 'promote-learning', async () => {
-      await this.promoteLearning.execute(outputDir, { projectPath, autoApprove: true });
+      await this.promoteLearning.execute(outputDir, { configPath, projectPath, autoApprove: true });
       return ExitCodes.OK;
     });
 

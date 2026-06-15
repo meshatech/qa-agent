@@ -8,6 +8,8 @@ import type { ConfigLoaderPort } from '../ports/config-loader.port.js';
 import { LearningCandidatesArtifactSchema } from '../../domain/schemas/learning-candidate.schema.js';
 import { RunConfigSchema } from '../../domain/schemas/config.schema.js';
 import { applyBaseUrlOverride } from '../helpers/apply-base-url-override.js';
+import type { MemoryStorePort } from '../ports/memory-store.port.js';
+import { computeFailureSignature, type ProjectScope } from '../../domain/schemas/memory-record.schema.js';
 
 const EXECUTION_RESULT_FILE = 'execution-result.json';
 const EXECUTION_PLAN_FILE = 'execution-plan.json';
@@ -20,13 +22,15 @@ export class RunPipelineLearningUseCase {
   constructor(
     @Inject(LearningCandidateExtractorService) private readonly extractor: LearningCandidateExtractorService,
     @Inject('ConfigLoaderPort') private readonly configLoader: ConfigLoaderPort,
+    @Inject('MemoryStorePort') private readonly memoryStore: MemoryStorePort,
   ) {}
 
   async execute(
     outputDir: string,
     options?: { configPath?: string; projectPath?: string },
   ): Promise<PipelineLearningRunResult> {
-    const _config = await this.loadConfig(options?.configPath ?? 'agent-qa.config.json');
+    const config = await this.loadConfig(options?.configPath ?? 'agent-qa.config.json');
+    const projectPath = options?.projectPath ?? process.cwd();
 
     const executionResult = await this.readJsonSafe<Record<string, unknown>>(outputDir, EXECUTION_RESULT_FILE);
     const executionPlan = await this.readJsonSafe<Record<string, unknown>>(outputDir, EXECUTION_PLAN_FILE);
@@ -42,6 +46,8 @@ export class RunPipelineLearningUseCase {
       selectedScenarios: (selectedScenarios ?? { scenarios: [] }) as unknown as import('../services/learning-candidate-extractor.service.js').ExtractLearningCandidatesInput['selectedScenarios'],
       memoryConsultationLog: memoryConsultationLog as unknown as import('../services/learning-candidate-extractor.service.js').ExtractLearningCandidatesInput['memoryConsultationLog'] ?? undefined,
     });
+
+    const knownFailuresCount = await this.applyFailureFingerprintDedup(candidates, { projectId: projectPath }, runId, config.memory.source);
 
     const artifact = LearningCandidatesArtifactSchema.parse({
       schemaVersion: 'learning-candidates.v1',
@@ -65,7 +71,47 @@ export class RunPipelineLearningUseCase {
         ? (executionResult.locatorTelemetry as Array<{ elementId?: string }>)
         : []
       ).some((e) => isEphemeralId(e.elementId)),
+      knownFailuresCount,
     };
+  }
+
+  /**
+   * For "gap" candidates (locator/memory gaps), compute a stable failure_signature
+   * and consult the memory store. Repeated failures already linked to a promoted
+   * memory entry are tagged with `duplicateOfMemoryId` so promote-learning rejects
+   * them instead of re-promoting the same gap on every run.
+   */
+  private async applyFailureFingerprintDedup(
+    candidates: import('../../domain/schemas/learning-candidate.schema.js').LearningCandidate[],
+    scope: ProjectScope,
+    runId: string,
+    source: import('../ports/memory-store.port.js').MemorySource,
+  ): Promise<number> {
+    let knownFailuresCount = 0;
+
+    for (const candidate of candidates) {
+      if (candidate.type !== 'gap') continue;
+
+      const brokenLocator = candidate.metadata?.memoryGap ?? candidate.stepId;
+      const signature = computeFailureSignature({ projectId: scope.projectId, errorType: candidate.type, brokenLocator });
+      candidate.failureSignature = signature;
+
+      const existing = await this.memoryStore.findFailureFingerprint(signature, scope, source);
+      if (existing?.suggestedMemoryId) {
+        candidate.duplicateOfMemoryId = existing.suggestedMemoryId;
+        knownFailuresCount += 1;
+      }
+
+      await this.memoryStore.recordFailureFingerprint({
+        projectId: scope.projectId,
+        failureSignature: signature,
+        brokenLocator,
+        runId,
+        suggestedMemoryId: existing?.suggestedMemoryId,
+      }, source);
+    }
+
+    return knownFailuresCount;
   }
 
   private async loadConfig(configPath: string) {

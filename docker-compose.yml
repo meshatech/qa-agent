@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: agent-qa-memory-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: agent_qa
+      POSTGRES_PASSWORD: agent_qa
+      POSTGRES_DB: agent_qa_memory
+    ports:
+      - '5433:5432'
+    volumes:
+      - agent-qa-memory-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U agent_qa -d agent_qa_memory']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  agent-qa-memory-postgres-data:

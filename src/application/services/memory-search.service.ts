@@ -44,6 +44,7 @@ export class MemorySearchService {
     }
 
     const loaded = await this.loader.load(memoryPath);
+    warnings.push(...loaded.warnings);
     if (!loaded.text.trim()) {
       safeLog('memory file is empty, returning empty');
       return {

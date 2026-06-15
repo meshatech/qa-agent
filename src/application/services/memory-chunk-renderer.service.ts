@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import type { LearningCandidate } from '../../domain/schemas/learning-candidate.schema.js';
+import type { MemoryChunkType } from '../../domain/schemas/memory.schema.js';
 
-const TYPE_MAP: Record<string, string> = {
+export const LEARNING_TYPE_TO_MEMORY_TYPE: Record<LearningCandidate['type'], MemoryChunkType> = {
   semantic_locator: 'semantic_locator',
   route_mapping: 'route',
   component_behavior: 'known_issue',
@@ -15,22 +16,40 @@ function escapeMarkdown(text: string): string {
 
 @Injectable()
 export class MemoryChunkRenderer {
-  render(candidate: LearningCandidate): string | null {
-    const chunkType = TYPE_MAP[candidate.type];
-    if (!chunkType) return null;
+  chunkType(candidate: LearningCandidate): MemoryChunkType | null {
+    return LEARNING_TYPE_TO_MEMORY_TYPE[candidate.type] ?? null;
+  }
 
-    const id = candidate.id.replace(/[^a-zA-Z0-9_-]/g, '-').toUpperCase();
+  chunkId(candidate: LearningCandidate): string {
+    return candidate.id.replace(/[^a-zA-Z0-9_-]/g, '-').toUpperCase();
+  }
+
+  renderBody(candidate: LearningCandidate): string | null {
+    if (!this.chunkType(candidate)) return null;
 
     const lines: string[] = [];
-    lines.push(`## ${escapeMarkdown(candidate.description)}`);
-    lines.push('');
-    lines.push(`<!-- type: ${chunkType} | id: ${id} -->`);
     lines.push(`- **Description**: ${escapeMarkdown(candidate.description)}`);
     lines.push(`- **Content**: ${escapeMarkdown(candidate.content)}`);
     lines.push(`- **Source**: ${escapeMarkdown(candidate.source)}`);
     lines.push(`- **Confidence**: ${candidate.confidence}`);
     if (candidate.risk) lines.push(`- **Risk**: ${escapeMarkdown(candidate.risk)}`);
     lines.push(`- **Generated**: ${candidate.generatedAt}`);
+
+    return lines.join('\n');
+  }
+
+  render(candidate: LearningCandidate): string | null {
+    const chunkType = this.chunkType(candidate);
+    const body = this.renderBody(candidate);
+    if (!chunkType || !body) return null;
+
+    const id = this.chunkId(candidate);
+
+    const lines: string[] = [];
+    lines.push(`## ${escapeMarkdown(candidate.description)}`);
+    lines.push('');
+    lines.push(`<!-- type: ${chunkType} | id: ${id} -->`);
+    lines.push(body);
     lines.push('');
 
     return lines.join('\n');

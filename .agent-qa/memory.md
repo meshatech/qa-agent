@@ -1,3 +1,5 @@
+<!-- agent-qa-memory v1 -->
+
 # Memória do Projeto — qa-agent fixture
 
 ## Pipeline all (comando agregado)

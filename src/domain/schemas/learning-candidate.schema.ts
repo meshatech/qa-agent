@@ -28,6 +28,8 @@ export const LearningCandidateSchema = z.object({
     hadElementAvailability: z.boolean().optional(),
     memoryGap: z.string().optional(),
   }).optional(),
+  failureSignature: z.string().optional(),
+  duplicateOfMemoryId: z.string().optional(),
   generatedAt: z.string().datetime(),
 });
 

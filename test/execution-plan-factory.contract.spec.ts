@@ -4,6 +4,7 @@ import { ExecutionPlanFactoryService } from '../src/application/services/executi
 import type { QaScenario, QaTask } from '../src/domain/models/run.model.js';
 import type { ExpectedOutcome } from '../src/domain/schemas/expected-outcome.schema.js';
 import type { RunConfig } from '../src/domain/schemas/config.schema.js';
+import { DEFAULT_TEST_MEMORY_CONFIG } from './helpers/memory-config.fixture.js';
 
 function makeConfig(): RunConfig {
   return {
@@ -21,7 +22,8 @@ function makeConfig(): RunConfig {
     output: { runsDir: './qa-agent-runs', keepVideoOnPass: false, keepScreenshotOnPass: false, keepTraceOnPass: false },
     evidence: { video: 'off', trace: 'off' },
     scenarioSelection: { maxScenarios: 5 },
-    agentVersion: '0.1.0',
+    memory: DEFAULT_TEST_MEMORY_CONFIG,
+  agentVersion: '0.1.0',
   };
 }
 
