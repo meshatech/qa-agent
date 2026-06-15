@@ -3,7 +3,14 @@ import { join, resolve } from 'node:path';
 
 import type { PipelinePromoteLearningRunResult } from '../dto/pipeline-promote-learning-result.dto.js';
 import { MemoryChunkRenderer } from '../services/memory-chunk-renderer.service.js';
+import { MEMORY_HEADER_V1 } from '../services/memory-markdown-loader.service.js';
+import { RunHistoryService } from '../services/run-history.service.js';
+import type { ConfigLoaderPort } from '../ports/config-loader.port.js';
 import type { RunRepositoryPort } from '../ports/run-repository.port.js';
+import type { MemoryStorePort } from '../ports/memory-store.port.js';
+import { RunConfigSchema } from '../../domain/schemas/config.schema.js';
+import { applyBaseUrlOverride } from '../helpers/apply-base-url-override.js';
+import { computeContentHash, type PromotedMemoryRecord } from '../../domain/schemas/memory-record.schema.js';
 
 const LEARNING_CANDIDATES_FILE = 'learning-candidates.json';
 const PROMOTION_LOG_FILE = 'promotion-log.json';
@@ -22,12 +29,16 @@ export class RunPipelinePromoteLearningUseCase {
   constructor(
     @Inject(MemoryChunkRenderer) private readonly renderer: MemoryChunkRenderer,
     @Inject('RunRepositoryPort') private readonly repository: RunRepositoryPort,
+    @Inject('MemoryStorePort') private readonly memoryStore: MemoryStorePort,
+    @Inject(RunHistoryService) private readonly runHistory: RunHistoryService,
+    @Inject('ConfigLoaderPort') private readonly configLoader: ConfigLoaderPort,
   ) {}
 
   async execute(
     outputDir: string,
-    options?: { projectPath?: string; autoApprove?: boolean },
+    options?: { projectPath?: string; autoApprove?: boolean; configPath?: string },
   ): Promise<PipelinePromoteLearningRunResult> {
+    const config = await this.loadConfig(options?.configPath ?? 'agent-qa.config.json');
     const projectPath = options?.projectPath ?? process.cwd();
     const autoApprove = options?.autoApprove ?? false;
 
@@ -44,7 +55,10 @@ export class RunPipelinePromoteLearningUseCase {
     // 3. Evaluate each candidate
     const decisions: PromotionDecision[] = [];
     const promotedChunks: string[] = [];
+    const promotedRecords: PromotedMemoryRecord[] = [];
     const warnings: string[] = [];
+
+    const passingRunIds = await this.loadPassingRunIds(projectPath);
 
     for (const candidate of candidates) {
       const decision = this.evaluateCandidate(candidate, existingMemory, autoApprove);
@@ -52,8 +66,25 @@ export class RunPipelinePromoteLearningUseCase {
 
       if (decision.approved) {
         const chunk = this.renderer.render(candidate);
-        if (chunk) {
+        const chunkType = this.renderer.chunkType(candidate);
+        const body = this.renderer.renderBody(candidate);
+
+        if (chunk && chunkType && body) {
           promotedChunks.push(chunk);
+
+          const title = candidate.description;
+          promotedRecords.push({
+            id: this.renderer.chunkId(candidate),
+            projectId: projectPath,
+            type: chunkType,
+            title,
+            content: body,
+            scenarioId: candidate.scenarioId,
+            confidence: candidate.confidence,
+            promotionStatus: passingRunIds.has(candidate.runId) ? 'promoted' : 'candidate',
+            sourceRunId: candidate.runId,
+            contentHash: computeContentHash({ projectId: projectPath, type: chunkType, title, content: body }),
+          });
         } else {
           warnings.push(`Could not convert candidate ${candidate.id} to memory chunk`);
         }
@@ -62,8 +93,20 @@ export class RunPipelinePromoteLearningUseCase {
 
     // 4. Append promoted chunks to memory.md
     if (promotedChunks.length > 0) {
-      const newContent = existingMemory + '\n\n' + promotedChunks.join('\n\n');
+      const base = this.ensureHeaderV1(existingMemory);
+      const newContent = base + '\n\n' + promotedChunks.join('\n\n');
       await this.repository.writeFile(memoryDir, MEMORY_FILE, newContent);
+    }
+
+    // 4b. Persist promoted memory to the configured memory store (db/hybrid)
+    if (promotedRecords.length > 0) {
+      const writeBack = config.memory.writeBack;
+      const dbWriteBack = writeBack === 'db' || writeBack === 'both' ? 'db' : 'off';
+      await this.memoryStore.upsertPromoted(promotedRecords, {
+        writeBack: dbWriteBack,
+        projectPath,
+        source: config.memory.source,
+      });
     }
 
     // 5. Write promotion log
@@ -125,6 +168,15 @@ export class RunPipelinePromoteLearningUseCase {
       }
     }
 
+    if (candidate.duplicateOfMemoryId) {
+      return {
+        candidateId: candidate.id,
+        approved: false,
+        reason: `REJECTED: duplicate (known failure fingerprint, see ${candidate.duplicateOfMemoryId})`,
+        timestamp: new Date().toISOString(),
+      };
+    }
+
     // Reject: duplicate (already in memory)
     if (existingMemory.includes(candidate.id) || existingMemory.includes(candidate.description.slice(0, 30))) {
       return {
@@ -153,6 +205,16 @@ export class RunPipelinePromoteLearningUseCase {
     };
   }
 
+  private ensureHeaderV1(content: string): string {
+    const firstLine = content.split(/\r?\n/).find((line) => line.trim().length > 0) ?? '';
+    if (firstLine.trim() === MEMORY_HEADER_V1) {
+      return content;
+    }
+
+    const trimmed = content.trim();
+    return trimmed ? `${MEMORY_HEADER_V1}\n\n${trimmed}` : MEMORY_HEADER_V1;
+  }
+
   private async loadCandidates(outputDir: string): Promise<import('../../domain/schemas/learning-candidate.schema.js').LearningCandidatesArtifact | null> {
     try {
       return await this.repository.readJson(outputDir, LEARNING_CANDIDATES_FILE);
@@ -161,11 +223,21 @@ export class RunPipelinePromoteLearningUseCase {
     }
   }
 
+  private async loadPassingRunIds(projectPath: string): Promise<Set<string>> {
+    const entries = await this.runHistory.readLines(projectPath).catch(() => []);
+    return new Set(entries.filter((entry) => entry.status === 'passed').map((entry) => entry.runId));
+  }
+
   private async readMemorySafe(memoryDir: string): Promise<string | null> {
     try {
       return await this.repository.readFile(memoryDir, MEMORY_FILE);
     } catch {
       return null;
     }
+  }
+
+  private async loadConfig(configPath: string) {
+    const raw = await this.configLoader.load(configPath);
+    return applyBaseUrlOverride(RunConfigSchema.parse(raw));
   }
 }

@@ -5,6 +5,7 @@ import { ExecutionPlanBuildError } from '../src/domain/errors.js';
 import { ExecutionPlanSchema } from '../src/domain/schemas/execution-plan.schema.js';
 import type { QaScenario } from '../src/domain/models/run.model.js';
 import type { RunConfig } from '../src/domain/schemas/config.schema.js';
+import { DEFAULT_TEST_MEMORY_CONFIG } from './helpers/memory-config.fixture.js';
 
 function makeConfig(): RunConfig {
   return {
@@ -22,7 +23,8 @@ function makeConfig(): RunConfig {
     output: { runsDir: './qa-agent-runs', keepVideoOnPass: false, keepScreenshotOnPass: false, keepTraceOnPass: false },
     evidence: { video: 'off', trace: 'off' },
     scenarioSelection: { maxScenarios: 5 },
-    agentVersion: '0.1.0',
+    memory: DEFAULT_TEST_MEMORY_CONFIG,
+  agentVersion: '0.1.0',
   };
 }
 

@@ -84,6 +84,10 @@ import { MemoryChunkRenderer } from './services/memory-chunk-renderer.service.js
 import { GroqLlmProviderAdapter } from '../infra/llm/groq-llm-provider.adapter.js';
 import { InfraModule } from '../infra/infra.module.js';
 import { InMemoryPlanCacheAdapter } from '../infra/persistence/in-memory-plan-cache.adapter.js';
+import { FileMemoryStoreAdapter } from '../infra/memory/file-memory-store.adapter.js';
+import { PostgresMemoryStoreAdapter } from '../infra/memory/postgres-memory-store.adapter.js';
+import { HybridMemoryStoreAdapter } from '../infra/memory/hybrid-memory-store.adapter.js';
+import { MemoryStoreRouterAdapter } from '../infra/memory/memory-store-router.adapter.js';
 
 export const APPLICATION_PROVIDERS = [
   AgentService, RunAgentUseCase, ValidateConfigUseCase, InspectRunUseCase, ReportRunUseCase, CaptureAuthUseCase, RunOnboardingUseCase, RunPipelinePreflightUseCase, RunPrDiffContextUseCase, RunPipelinePrepareUseCase, RunPipelineCorrelateUseCase, RunPipelineGeneratePlanUseCase, RunPipelineExecuteUseCase, RunPipelineReportUseCase, RunPipelineLearningUseCase, RunPipelineGenerateMemoryUseCase, RunPipelineRiskUseCase, RunPipelinePromoteLearningUseCase, RunPipelineAllUseCase, PipelineBlockedNotifier,
@@ -99,6 +103,11 @@ export const APPLICATION_PROVIDERS = [
   { provide: 'LlmProviderPort', useClass: GroqLlmProviderAdapter },
   { provide: 'PlanCachePort', useClass: InMemoryPlanCacheAdapter },
   MemoryChunkRenderer,
+  FileMemoryStoreAdapter,
+  PostgresMemoryStoreAdapter,
+  HybridMemoryStoreAdapter,
+  MemoryStoreRouterAdapter,
+  { provide: 'MemoryStorePort', useExisting: MemoryStoreRouterAdapter },
 ];
 
 @Module({ imports: [InfraModule], providers: APPLICATION_PROVIDERS, exports: APPLICATION_PROVIDERS })

@@ -8,6 +8,7 @@ import type { RunRepositoryPort } from '../src/application/ports/run-repository.
 import type { QaRunResult } from '../src/domain/models/run.model.js';
 import type { RunConfig } from '../src/domain/schemas/config.schema.js';
 import { GitHubCommentError } from '../src/domain/errors.js';
+import { DEFAULT_TEST_MEMORY_CONFIG } from './helpers/memory-config.fixture.js';
 
 function makeConfig(overrides?: Partial<RunConfig>): RunConfig {
   return {
@@ -25,7 +26,8 @@ function makeConfig(overrides?: Partial<RunConfig>): RunConfig {
     output: { runsDir: './qa-agent-runs', keepVideoOnPass: false, keepScreenshotOnPass: false, keepTraceOnPass: false },
     evidence: { video: 'off', trace: 'off' },
     scenarioSelection: { maxScenarios: 5 },
-    agentVersion: '0.1.0',
+    memory: DEFAULT_TEST_MEMORY_CONFIG,
+  agentVersion: '0.1.0',
     ...overrides,
   };
 }
@@ -41,13 +43,45 @@ function makeResult(overrides?: Partial<QaRunResult>): QaRunResult {
   };
 }
 
+function makeRepo(overrides?: Partial<RunRepositoryPort>): RunRepositoryPort {
+  return {
+    createRunDir: vi.fn(),
+    ensureDir: vi.fn(),
+    writeJson: vi.fn(),
+    writeFile: vi.fn(() => Promise.resolve()),
+    writeReport: vi.fn(),
+    findRunDir: vi.fn(),
+    readJson: vi.fn(),
+    readFile: vi.fn(),
+    exists: vi.fn(),
+    listFiles: vi.fn(),
+    appendRunHistory: vi.fn(),
+    deleteFile: vi.fn(),
+    renameFile: vi.fn(),
+    ...overrides,
+  };
+}
+
+function makeService(github: GitHubCommentPort, repo: RunRepositoryPort) {
+  return new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
+}
+
+function makeBaseArgs(overrides?: Record<string, unknown>) {
+  return {
+    result: makeResult(),
+    config: makeConfig(),
+    runDir: '/tmp/run-001',
+    repository: 'owner/repo',
+    pullNumber: 42,
+    ...overrides,
+  };
+}
+
 describe('PRReporterService', () => {
   it('generates pr-report.md locally without publishing when token is absent', async () => {
     const written: Array<{ runDir: string; name: string; data: string }> = [];
     const jsonWritten: Array<{ runDir: string; name: string; data: unknown }> = [];
-    const repo: RunRepositoryPort = {
-      createRunDir: vi.fn(),
-      ensureDir: vi.fn(),
+    const repo = makeRepo({
       writeJson: vi.fn((runDir, name, data) => {
         jsonWritten.push({ runDir, name, data });
         return Promise.resolve();
@@ -56,26 +90,11 @@ describe('PRReporterService', () => {
         written.push({ runDir, name, data: String(data) });
         return Promise.resolve();
       }),
-      writeReport: vi.fn(),
-      findRunDir: vi.fn(),
-      readJson: vi.fn(),
-      readFile: vi.fn(),
-      exists: vi.fn(),
-      listFiles: vi.fn(),
-      appendRunHistory: vi.fn(),
-      deleteFile: vi.fn(),
-      renameFile: vi.fn(),
-    };
-    const github: GitHubCommentPort = { postComment: vi.fn() };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
-
-    const result = await service.report({
-      result: makeResult(),
-      config: makeConfig(),
-      runDir: '/tmp/run-001',
-      repository: 'owner/repo',
-      pullNumber: 42,
     });
+    const github: GitHubCommentPort = { postComment: vi.fn() };
+    const service = makeService(github, repo);
+
+    const result = await service.report(makeBaseArgs());
 
     expect(result.published).toBe(false);
     expect(result.reportPath).toBe('pr-report.md');
@@ -108,32 +127,11 @@ describe('PRReporterService', () => {
   });
 
   it('publishes comment when token is provided and API succeeds', async () => {
-    const repo: RunRepositoryPort = {
-      createRunDir: vi.fn(),
-      ensureDir: vi.fn(),
-      writeJson: vi.fn(),
-      writeFile: vi.fn(() => Promise.resolve()),
-      writeReport: vi.fn(),
-      findRunDir: vi.fn(),
-      readJson: vi.fn(),
-      readFile: vi.fn(),
-      exists: vi.fn(),
-      listFiles: vi.fn(),
-      appendRunHistory: vi.fn(),
-      deleteFile: vi.fn(),
-      renameFile: vi.fn(),
-    };
+    const repo = makeRepo();
     const github: GitHubCommentPort = { postComment: vi.fn(() => Promise.resolve()) };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
+    const service = makeService(github, repo);
 
-    const result = await service.report({
-      result: makeResult(),
-      config: makeConfig(),
-      runDir: '/tmp/run-001',
-      repository: 'owner/repo',
-      pullNumber: 42,
-      token: 'ghp_fake_token_123',
-    });
+    const result = await service.report(makeBaseArgs({ token: 'ghp_fake_token_123' }));
 
     expect(result.published).toBe(true);
     expect(result.publicationWarning).toBeUndefined();
@@ -160,34 +158,13 @@ describe('PRReporterService', () => {
   });
 
   it('falls back to local report when publication fails', async () => {
-    const repo: RunRepositoryPort = {
-      createRunDir: vi.fn(),
-      ensureDir: vi.fn(),
-      writeJson: vi.fn(),
-      writeFile: vi.fn(() => Promise.resolve()),
-      writeReport: vi.fn(),
-      findRunDir: vi.fn(),
-      readJson: vi.fn(),
-      readFile: vi.fn(),
-      exists: vi.fn(),
-      listFiles: vi.fn(),
-      appendRunHistory: vi.fn(),
-      deleteFile: vi.fn(),
-      renameFile: vi.fn(),
-    };
+    const repo = makeRepo();
     const github: GitHubCommentPort = {
       postComment: vi.fn(() => Promise.reject(new GitHubCommentError('Forbidden', 403))),
     };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
+    const service = makeService(github, repo);
 
-    const result = await service.report({
-      result: makeResult(),
-      config: makeConfig(),
-      runDir: '/tmp/run-001',
-      repository: 'owner/repo',
-      pullNumber: 42,
-      token: 'ghp_fake_token_123',
-    });
+    const result = await service.report(makeBaseArgs({ token: 'ghp_fake_token_123' }));
 
     expect(result.published).toBe(false);
     expect(result.publicationWarning).toBe('Not published: token lacks permission');
@@ -217,86 +194,51 @@ describe('PRReporterService', () => {
   });
 
   it('maps 401 to specific fallback message', async () => {
-    const repo: RunRepositoryPort = {
-      createRunDir: vi.fn(), ensureDir: vi.fn(), writeJson: vi.fn(), writeFile: vi.fn(() => Promise.resolve()),
-      writeReport: vi.fn(), findRunDir: vi.fn(), readJson: vi.fn(), readFile: vi.fn(), exists: vi.fn(), listFiles: vi.fn(),
-      appendRunHistory: vi.fn(),
-      deleteFile: vi.fn(),
-      renameFile: vi.fn(),
-    };
+    const repo = makeRepo();
     const github: GitHubCommentPort = {
       postComment: vi.fn(() => Promise.reject(new GitHubCommentError('Unauthorized', 401))),
     };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
+    const service = makeService(github, repo);
 
-    const result = await service.report({
-      result: makeResult(), config: makeConfig(), runDir: '/tmp/run-001',
-      repository: 'owner/repo', pullNumber: 42, token: 'ghp_test',
-    });
+    const result = await service.report(makeBaseArgs({ token: 'ghp_test' }));
 
     expect(result.publicationWarning).toBe('Not published: invalid or unauthorized token');
     expect(result.publicationStatus?.reason).toBe('Not published: invalid or unauthorized token');
   });
 
   it('maps 404 to specific fallback message', async () => {
-    const repo: RunRepositoryPort = {
-      createRunDir: vi.fn(), ensureDir: vi.fn(), writeJson: vi.fn(), writeFile: vi.fn(() => Promise.resolve()),
-      writeReport: vi.fn(), findRunDir: vi.fn(), readJson: vi.fn(), readFile: vi.fn(), exists: vi.fn(), listFiles: vi.fn(),
-      appendRunHistory: vi.fn(),
-      deleteFile: vi.fn(),
-      renameFile: vi.fn(),
-    };
+    const repo = makeRepo();
     const github: GitHubCommentPort = {
       postComment: vi.fn(() => Promise.reject(new GitHubCommentError('Not Found', 404))),
     };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
+    const service = makeService(github, repo);
 
-    const result = await service.report({
-      result: makeResult(), config: makeConfig(), runDir: '/tmp/run-001',
-      repository: 'owner/repo', pullNumber: 42, token: 'ghp_test',
-    });
+    const result = await service.report(makeBaseArgs({ token: 'ghp_test' }));
 
     expect(result.publicationWarning).toBe('Not published: repository or pull request not found');
   });
 
   it('maps network failure to generic message', async () => {
-    const repo: RunRepositoryPort = {
-      createRunDir: vi.fn(), ensureDir: vi.fn(), writeJson: vi.fn(), writeFile: vi.fn(() => Promise.resolve()),
-      writeReport: vi.fn(), findRunDir: vi.fn(), readJson: vi.fn(), readFile: vi.fn(), exists: vi.fn(), listFiles: vi.fn(),
-      appendRunHistory: vi.fn(),
-      deleteFile: vi.fn(),
-      renameFile: vi.fn(),
-    };
+    const repo = makeRepo();
     const github: GitHubCommentPort = {
       postComment: vi.fn(() => Promise.reject(new Error('Network timeout'))),
     };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
+    const service = makeService(github, repo);
 
-    const result = await service.report({
-      result: makeResult(), config: makeConfig(), runDir: '/tmp/run-001',
-      repository: 'owner/repo', pullNumber: 42, token: 'ghp_test',
-    });
+    const result = await service.report(makeBaseArgs({ token: 'ghp_test' }));
 
     expect(result.publicationWarning).toBe('Not published: GitHub API request failed');
   });
 
   it('includes publication status in final markdown on success', async () => {
     const written: Array<{ runDir: string; name: string; data: string }> = [];
-    const repo: RunRepositoryPort = {
-      createRunDir: vi.fn(), ensureDir: vi.fn(), writeJson: vi.fn(),
+    const repo = makeRepo({
       writeFile: vi.fn((runDir, name, data) => { written.push({ runDir, name, data: String(data) }); return Promise.resolve(); }),
-      writeReport: vi.fn(), findRunDir: vi.fn(), readJson: vi.fn(), readFile: vi.fn(), exists: vi.fn(), listFiles: vi.fn(),
-      appendRunHistory: vi.fn(),
-      deleteFile: vi.fn(),
-      renameFile: vi.fn(),
-    };
-    const github: GitHubCommentPort = { postComment: vi.fn(() => Promise.resolve()) };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
-
-    await service.report({
-      result: makeResult(), config: makeConfig(), runDir: '/tmp/run-001',
-      repository: 'owner/repo', pullNumber: 42, token: 'ghp_test',
     });
+    const github: GitHubCommentPort = { postComment: vi.fn(() => Promise.resolve()) };
+    const service = makeService(github, repo);
+
+    await service.report(makeBaseArgs({ token: 'ghp_test' }));
 
     const report = written.find((w) => w.name === 'pr-report.md');
     expect(report!.data).toContain('## PR Publication Status');
@@ -306,26 +248,14 @@ describe('PRReporterService', () => {
 
   it('renders scenarios, bugs and warnings in pr-report.md', async () => {
     const written: Array<{ runDir: string; name: string; data: string }> = [];
-    const repo: RunRepositoryPort = {
-      createRunDir: vi.fn(),
-      ensureDir: vi.fn(),
-      writeJson: vi.fn(),
+    const repo = makeRepo({
       writeFile: vi.fn((runDir, name, data) => {
         written.push({ runDir, name, data: String(data) });
         return Promise.resolve();
       }),
-      writeReport: vi.fn(),
-      findRunDir: vi.fn(),
-      readJson: vi.fn(),
-      readFile: vi.fn(),
-      exists: vi.fn(),
-      listFiles: vi.fn(),
-      appendRunHistory: vi.fn(),
-      deleteFile: vi.fn(),
-      renameFile: vi.fn(),
-    };
+    });
     const github: GitHubCommentPort = { postComment: vi.fn() };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
+    const service = makeService(github, repo);
 
     const runResult = makeResult({
       status: 'FAILED',
@@ -361,16 +291,7 @@ describe('PRReporterService', () => {
       warnings: [{ stepId: 'planner', message: 'LLM_BUILD_PLAN_FALLBACK_TO_FACTORY' }],
     };
 
-    await service.report({
-      result: runResult,
-      config: makeConfig(),
-      runDir: '/tmp/run-001',
-      repository: 'owner/repo',
-      pullNumber: 42,
-      commitSha: 'abc123',
-      headRef: 'feature/foo',
-      baseRef: 'main',
-    });
+    await service.report(makeBaseArgs({ result: runResult, commitSha: 'abc123', headRef: 'feature/foo', baseRef: 'main' }));
 
     const report = written.find((w) => w.name === 'pr-report.md')!.data;
     expect(report).toContain('**Status:** FAILED');
@@ -390,34 +311,13 @@ describe('PRReporterService', () => {
   });
 
   it('never leaks token into markdown, warning or error', async () => {
-    const repo: RunRepositoryPort = {
-      createRunDir: vi.fn(),
-      ensureDir: vi.fn(),
-      writeJson: vi.fn(),
-      writeFile: vi.fn(() => Promise.resolve()),
-      writeReport: vi.fn(),
-      findRunDir: vi.fn(),
-      readJson: vi.fn(),
-      readFile: vi.fn(),
-      exists: vi.fn(),
-      listFiles: vi.fn(),
-      appendRunHistory: vi.fn(),
-      deleteFile: vi.fn(),
-      renameFile: vi.fn(),
-    };
+    const repo = makeRepo();
     const github: GitHubCommentPort = {
       postComment: vi.fn(() => Promise.reject(new GitHubCommentError('ghp_secret_123 failed', 418))),
     };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
+    const service = makeService(github, repo);
 
-    const result = await service.report({
-      result: makeResult(),
-      config: makeConfig(),
-      runDir: '/tmp/run-001',
-      repository: 'owner/repo',
-      pullNumber: 42,
-      token: 'ghp_secret_123',
-    });
+    const result = await service.report(makeBaseArgs({ token: 'ghp_secret_123' }));
 
     expect(result.publicationWarning).toBeDefined();
     expect(result.publicationWarning).not.toContain('ghp_secret_123');
@@ -434,34 +334,13 @@ describe('PRReporterService', () => {
   });
 
   it('never leaks CLICKUP_TOKEN or pk_ token into outputs', async () => {
-    const repo: RunRepositoryPort = {
-      createRunDir: vi.fn(),
-      ensureDir: vi.fn(),
-      writeJson: vi.fn(),
-      writeFile: vi.fn(() => Promise.resolve()),
-      writeReport: vi.fn(),
-      findRunDir: vi.fn(),
-      readJson: vi.fn(),
-      readFile: vi.fn(),
-      exists: vi.fn(),
-      listFiles: vi.fn(),
-      appendRunHistory: vi.fn(),
-      deleteFile: vi.fn(),
-      renameFile: vi.fn(),
-    };
+    const repo = makeRepo();
     const github: GitHubCommentPort = {
       postComment: vi.fn(() => Promise.reject(new GitHubCommentError('pk_test_abc123 failed', 418))),
     };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
+    const service = makeService(github, repo);
 
-    const result = await service.report({
-      result: makeResult(),
-      config: makeConfig(),
-      runDir: '/tmp/run-001',
-      repository: 'owner/repo',
-      pullNumber: 42,
-      token: 'ghp_test',
-    });
+    const result = await service.report(makeBaseArgs({ token: 'ghp_test' }));
 
     expect(result.publicationWarning).toBeDefined();
     expect(result.publicationWarning).not.toContain('pk_test_abc123');
@@ -478,28 +357,16 @@ describe('PRReporterService', () => {
 
   it('renders report without metrics using inline calculations', async () => {
     const written: Array<{ runDir: string; name: string; data: string }> = [];
-    const repo: RunRepositoryPort = {
-      createRunDir: vi.fn(),
-      ensureDir: vi.fn(),
-      writeJson: vi.fn(),
+    const repo = makeRepo({
       writeFile: vi.fn((runDir, name, data) => {
         written.push({ runDir, name, data: String(data) });
         return Promise.resolve();
       }),
-      writeReport: vi.fn(),
-      findRunDir: vi.fn(),
-      readJson: vi.fn(),
-      readFile: vi.fn(),
-      exists: vi.fn(),
-      listFiles: vi.fn(),
-      appendRunHistory: vi.fn(),
-      deleteFile: vi.fn(),
-      renameFile: vi.fn(),
-    };
+    });
     const github: GitHubCommentPort = { postComment: vi.fn() };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
+    const service = makeService(github, repo);
 
-    await service.report({
+    await service.report(makeBaseArgs({
       result: makeResult({
         scenarios: [
           { id: 's1', title: 'A', status: 'PASSED', tasks: [] },
@@ -507,11 +374,7 @@ describe('PRReporterService', () => {
         ],
         metrics: undefined,
       }),
-      config: makeConfig(),
-      runDir: '/tmp/run-001',
-      repository: 'owner/repo',
-      pullNumber: 42,
-    });
+    }));
 
     const report = written.find((w) => w.name === 'pr-report.md')!.data;
     expect(report).toContain('- Scenarios: 2');
@@ -521,36 +384,20 @@ describe('PRReporterService', () => {
 
   it('renders acceptance criteria when config.demand has criteria', async () => {
     const written: Array<{ runDir: string; name: string; data: string }> = [];
-    const repo: RunRepositoryPort = {
-      createRunDir: vi.fn(),
-      ensureDir: vi.fn(),
-      writeJson: vi.fn(),
+    const repo = makeRepo({
       writeFile: vi.fn((runDir, name, data) => {
         written.push({ runDir, name, data: String(data) });
         return Promise.resolve();
       }),
-      writeReport: vi.fn(),
-      findRunDir: vi.fn(),
-      readJson: vi.fn(),
-      readFile: vi.fn(),
-      exists: vi.fn(),
-      listFiles: vi.fn(),
-      appendRunHistory: vi.fn(),
-      deleteFile: vi.fn(),
-      renameFile: vi.fn(),
-    };
+    });
     const github: GitHubCommentPort = { postComment: vi.fn() };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
+    const service = makeService(github, repo);
 
-    await service.report({
-      result: makeResult(),
+    await service.report(makeBaseArgs({
       config: makeConfig({
         demand: { id: 'DEM-001', title: 'Test', description: 'Test', acceptanceCriteria: ['User can login'] },
       }),
-      runDir: '/tmp/run-001',
-      repository: 'owner/repo',
-      pullNumber: 42,
-    });
+    }));
 
     const report = written.find((w) => w.name === 'pr-report.md')!.data;
     expect(report).toContain('## Acceptance Criteria');
@@ -559,28 +406,16 @@ describe('PRReporterService', () => {
 
   it('renders covered acceptance criteria with coverage map when criteria match scenarios', async () => {
     const written: Array<{ runDir: string; name: string; data: string }> = [];
-    const repo: RunRepositoryPort = {
-      createRunDir: vi.fn(),
-      ensureDir: vi.fn(),
-      writeJson: vi.fn(),
+    const repo = makeRepo({
       writeFile: vi.fn((runDir, name, data) => {
         written.push({ runDir, name, data: String(data) });
         return Promise.resolve();
       }),
-      writeReport: vi.fn(),
-      findRunDir: vi.fn(),
-      readJson: vi.fn(),
-      readFile: vi.fn(),
-      exists: vi.fn(),
-      listFiles: vi.fn(),
-      appendRunHistory: vi.fn(),
-      deleteFile: vi.fn(),
-      renameFile: vi.fn(),
-    };
+    });
     const github: GitHubCommentPort = { postComment: vi.fn() };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
+    const service = makeService(github, repo);
 
-    await service.report({
+    await service.report(makeBaseArgs({
       result: makeResult({
         scenarios: [
           { id: 's1', title: 'Login do usuário', status: 'PASSED', tasks: [] },
@@ -589,10 +424,7 @@ describe('PRReporterService', () => {
       config: makeConfig({
         demand: { id: 'DEM-001', title: 'Test', description: 'Test', acceptanceCriteria: ['Usuário consegue fazer login'] },
       }),
-      runDir: '/tmp/run-001',
-      repository: 'owner/repo',
-      pullNumber: 42,
-    });
+    }));
 
     const report = written.find((w) => w.name === 'pr-report.md')!.data;
     expect(report).toContain('## Covered Acceptance Criteria');
@@ -603,28 +435,16 @@ describe('PRReporterService', () => {
 
   it('renders uncovered acceptance criteria for gaps not covered by scenarios', async () => {
     const written: Array<{ runDir: string; name: string; data: string }> = [];
-    const repo: RunRepositoryPort = {
-      createRunDir: vi.fn(),
-      ensureDir: vi.fn(),
-      writeJson: vi.fn(),
+    const repo = makeRepo({
       writeFile: vi.fn((runDir, name, data) => {
         written.push({ runDir, name, data: String(data) });
         return Promise.resolve();
       }),
-      writeReport: vi.fn(),
-      findRunDir: vi.fn(),
-      readJson: vi.fn(),
-      readFile: vi.fn(),
-      exists: vi.fn(),
-      listFiles: vi.fn(),
-      appendRunHistory: vi.fn(),
-      deleteFile: vi.fn(),
-      renameFile: vi.fn(),
-    };
+    });
     const github: GitHubCommentPort = { postComment: vi.fn() };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
+    const service = makeService(github, repo);
 
-    await service.report({
+    await service.report(makeBaseArgs({
       result: makeResult({
         scenarios: [
           { id: 's1', title: 'Login do usuário', status: 'PASSED', tasks: [] },
@@ -633,10 +453,7 @@ describe('PRReporterService', () => {
       config: makeConfig({
         demand: { id: 'DEM-001', title: 'Test', description: 'Test', acceptanceCriteria: ['Usuário consegue fazer login', 'Admin pode exportar relatório'] },
       }),
-      runDir: '/tmp/run-001',
-      repository: 'owner/repo',
-      pullNumber: 42,
-    });
+    }));
 
     const report = written.find((w) => w.name === 'pr-report.md')!.data;
     expect(report).toContain('## Uncovered Acceptance Criteria');
@@ -650,31 +467,20 @@ describe('PRReporterService', () => {
 
   it('discovers and renders evidence links for bugs with existing files', async () => {
     const written: Array<{ runDir: string; name: string; data: string }> = [];
-    const repo: RunRepositoryPort = {
-      createRunDir: vi.fn(),
-      ensureDir: vi.fn(),
-      writeJson: vi.fn(),
+    const repo = makeRepo({
       writeFile: vi.fn((runDir, name, data) => {
         written.push({ runDir, name, data: String(data) });
         return Promise.resolve();
       }),
-      writeReport: vi.fn(),
-      findRunDir: vi.fn(),
-      readJson: vi.fn(),
-      readFile: vi.fn(),
-      exists: vi.fn(),
       listFiles: vi.fn().mockImplementation((_runDir, path) => {
         if (path === 'bugs/BUG-001') return Promise.resolve(['screenshot.png', 'console.log', 'unknown.txt']);
         return Promise.resolve([]);
       }),
-      appendRunHistory: vi.fn(),
-      deleteFile: vi.fn(),
-      renameFile: vi.fn(),
-    };
+    });
     const github: GitHubCommentPort = { postComment: vi.fn() };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
+    const service = makeService(github, repo);
 
-    await service.report({
+    await service.report(makeBaseArgs({
       result: makeResult({
         bugs: [{
           bugId: 'BUG-001',
@@ -684,11 +490,7 @@ describe('PRReporterService', () => {
           capturedAt: '2026-01-01T00:00:00Z',
         }],
       }),
-      config: makeConfig(),
-      runDir: '/tmp/run-001',
-      repository: 'owner/repo',
-      pullNumber: 42,
-    });
+    }));
 
     const report = written.find((w) => w.name === 'pr-report.md')!.data;
     expect(report).toContain('Screenshot: `bugs/BUG-001/screenshot.png`');
@@ -698,34 +500,17 @@ describe('PRReporterService', () => {
 
   it('does not break report when evidence discovery fails', async () => {
     const written: Array<{ runDir: string; name: string; data: string }> = [];
-    const repo: RunRepositoryPort = {
-      createRunDir: vi.fn(),
-      ensureDir: vi.fn(),
-      writeJson: vi.fn(),
+    const repo = makeRepo({
       writeFile: vi.fn((runDir, name, data) => {
         written.push({ runDir, name, data: String(data) });
         return Promise.resolve();
       }),
-      writeReport: vi.fn(),
-      findRunDir: vi.fn(),
-      readJson: vi.fn(),
-      readFile: vi.fn(),
-      exists: vi.fn(),
       listFiles: vi.fn().mockRejectedValue(new Error('Disk read error')),
-      appendRunHistory: vi.fn(),
-      deleteFile: vi.fn(),
-      renameFile: vi.fn(),
-    };
-    const github: GitHubCommentPort = { postComment: vi.fn() };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
-
-    await service.report({
-      result: makeResult(),
-      config: makeConfig(),
-      runDir: '/tmp/run-001',
-      repository: 'owner/repo',
-      pullNumber: 42,
     });
+    const github: GitHubCommentPort = { postComment: vi.fn() };
+    const service = makeService(github, repo);
+
+    await service.report(makeBaseArgs());
 
     const report = written.find((w) => w.name === 'pr-report.md');
     expect(report).toBeDefined();

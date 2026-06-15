@@ -160,6 +160,11 @@ export const RunConfigSchema = z.object({
     video: z.enum(['off', 'on', 'on-failure']).default('off'),
     trace: z.enum(['off', 'on', 'on-failure']).default('off'),
   }).optional().default({ video: 'off', trace: 'off' }),
+  memory: z.object({
+    source: z.enum(['file', 'postgres', 'hybrid']).default('file'),
+    writeBack: z.enum(['commit', 'db', 'both', 'off']).default('db'),
+    schemaVersion: z.literal('v1').default('v1'),
+  }).default({ source: 'file', writeBack: 'db', schemaVersion: 'v1' }),
   agentVersion: z.string().default('0.1.0'),
 });
 

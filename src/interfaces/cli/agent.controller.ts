@@ -73,8 +73,8 @@ export class AgentController {
     return this.service.pipelineRisk(outputDir, projectPath);
   }
 
-  pipelinePromoteLearning(outputDir: string, projectPath?: string, autoApprove?: boolean) {
-    return this.service.pipelinePromoteLearning(outputDir, projectPath, autoApprove);
+  pipelinePromoteLearning(outputDir: string, configPath?: string, projectPath?: string, autoApprove?: boolean) {
+    return this.service.pipelinePromoteLearning(outputDir, configPath, projectPath, autoApprove);
   }
 
   pipelineAll(outputDir: string, configPath?: string, projectPath?: string) {

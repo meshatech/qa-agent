@@ -41,4 +41,24 @@ describe('MemoryChunker', () => {
     expect(result.chunks).toHaveLength(2);
     expect(result.chunks.every((chunk) => chunk.type === 'route')).toBe(true);
   });
+
+  it('rejects chunks with duplicate ids and reports a rejection summary', () => {
+    const chunker = createChunker();
+    const text = [
+      '## First locator',
+      '<!-- type: semantic_locator | id: LOC-001 -->',
+      'first',
+      '',
+      '## Second locator',
+      '<!-- type: semantic_locator | id: LOC-001 -->',
+      'second',
+    ].join('\n');
+
+    const result = chunker.parse(text, 'memory.md');
+
+    expect(result.chunks).toHaveLength(1);
+    expect(result.chunks[0]?.content).toBe('first');
+    expect(result.warnings.some((warning) => warning.includes('duplicate chunk id "LOC-001"'))).toBe(true);
+    expect(result.warnings.some((warning) => warning.includes('Rejected 1 invalid memory chunk(s)'))).toBe(true);
+  });
 });

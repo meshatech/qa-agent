@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { applyBaseUrlOverride } from '../src/application/helpers/apply-base-url-override.js';
 import type { RunConfig } from '../src/domain/schemas/config.schema.js';
+import { DEFAULT_TEST_MEMORY_CONFIG } from './helpers/memory-config.fixture.js';
 
 const BASE_CONFIG: RunConfig = {
   baseUrl: 'https://app.example.com',
@@ -38,6 +39,7 @@ const BASE_CONFIG: RunConfig = {
   output: { runsDir: './qa-agent-runs', keepVideoOnPass: false, keepScreenshotOnPass: false, keepTraceOnPass: false },
   scenarioSelection: { maxScenarios: 5 },
   evidence: { video: 'off', trace: 'off' },
+  memory: DEFAULT_TEST_MEMORY_CONFIG,
   agentVersion: '0.1.0',
 };
 

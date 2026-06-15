@@ -17,7 +17,9 @@ async function setupTempMemory(): Promise<void> {
   await mkdir(tempMemoryDir, { recursive: true });
   await writeFile(
     tempMemoryPath,
-    `<!-- type: scenario | id: SCN-TEST-001 -->
+    `<!-- agent-qa-memory v1 -->
+
+<!-- type: scenario | id: SCN-TEST-001 -->
 
 ## Cenário de teste
 

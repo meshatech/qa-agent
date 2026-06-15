@@ -5,6 +5,16 @@ import { tmpdir } from 'node:os';
 
 import { RunPipelineLearningUseCase } from '../src/application/use-cases/run-pipeline-learning.usecase.js';
 import { LearningCandidateExtractorService } from '../src/application/services/learning-candidate-extractor.service.js';
+import type { MemoryStorePort } from '../src/application/ports/memory-store.port.js';
+
+function fakeMemoryStore(): MemoryStorePort {
+  return {
+    search: async () => ({ chunks: [], warnings: [] }),
+    upsertPromoted: async () => ({ inserted: 0, updated: 0 }),
+    findFailureFingerprint: async () => null,
+    recordFailureFingerprint: async (input) => ({ ...input, lastSeenRunId: input.runId, firstSeenRunId: input.runId, occurrences: 1 }),
+  };
+}
 
 const MOCK_CONFIG = {
   baseUrl: 'http://127.0.0.1:4173/',
@@ -97,6 +107,7 @@ describe('RunPipelineLearningUseCase', () => {
     const useCase = new RunPipelineLearningUseCase(
       new LearningCandidateExtractorService(),
       { load: async () => MOCK_CONFIG } as unknown as import('../src/application/ports/config-loader.port.js').ConfigLoaderPort,
+      fakeMemoryStore(),
     );
 
     const result = await useCase.execute(dir, { configPath: join(dir, 'agent-qa.config.json') });
@@ -139,6 +150,7 @@ describe('RunPipelineLearningUseCase', () => {
     const useCase = new RunPipelineLearningUseCase(
       new LearningCandidateExtractorService(),
       { load: async () => MOCK_CONFIG } as unknown as import('../src/application/ports/config-loader.port.js').ConfigLoaderPort,
+      fakeMemoryStore(),
     );
 
     const result = await useCase.execute(dir, { configPath: join(dir, 'agent-qa.config.json') });
