@@ -25,6 +25,7 @@ const VALID_REPORT = {
     branchHead: { ok: true, branchHead: 'feature/test', missing: [] },
     checkoutHistory: { ok: true, errors: [], baseRef: 'main', shallow: false },
     config: { ok: true, errors: [], configPath: './agent-qa.config.json' },
+    previewReachable: { ok: true, statusCode: 200, url: 'http://127.0.0.1:4173' },
   },
 };
 

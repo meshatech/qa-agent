@@ -99,3 +99,15 @@ export class GitHubCommentError extends Error {
     super(message);
   }
 }
+
+export class LlmProviderError extends Error {
+  readonly name = 'LlmProviderError';
+  constructor(
+    message: string,
+    public readonly statusCode?: number,
+    public readonly isRetryable = false,
+    public readonly cause?: unknown,
+  ) {
+    super(message);
+  }
+}

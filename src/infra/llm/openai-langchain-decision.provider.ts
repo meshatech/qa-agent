@@ -1,5 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ChatOpenAI } from '@langchain/openai';
+import { ChatAnthropic } from '@langchain/anthropic';
+import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import type { DecisionInput, DecisionProviderPort, ReplanInput } from '../../application/ports/decision-provider.port.js';
 import { QaActionEnvelopeSchema, type QaActionEnvelope } from '../../domain/schemas/action.schema.js';
 import type { QaScenario, QaTask } from '../../domain/models/run.model.js';
@@ -22,13 +24,7 @@ export class OpenAiLangChainDecisionProvider implements DecisionProviderPort {
     if (!apiKey) throw new Error(`Missing env ${config.llm.apiKeyEnv}`);
     this.calls++;
     this.callCounts.plan++;
-    const model = new ChatOpenAI({
-      apiKey,
-      model: config.llm.model,
-      temperature: config.llm.temperature,
-      maxTokens: config.llm.maxTokens,
-      modelKwargs: { response_format: { type: 'json_object' } },
-    });
+    const model = this.model(config, apiKey);
     const res = await model.invoke([
       ['system', PLAN_SYSTEM_PROMPT],
       ['user', buildPlanUserMessage(config)],
@@ -75,13 +71,7 @@ export class OpenAiLangChainDecisionProvider implements DecisionProviderPort {
       try {
         this.calls++;
         this.callCounts.decide++;
-        const model = new ChatOpenAI({
-          apiKey,
-          model: input.config.llm.model,
-          temperature: input.config.llm.temperature,
-          maxTokens: input.config.llm.maxTokens,
-          modelKwargs: { response_format: { type: 'json_object' } },
-        });
+        const model = this.model(input.config, apiKey);
         const res = await model.invoke([
           ['system', DECISION_SYSTEM_PROMPT],
           ['user', buildDecisionUserMessage(input.observation, input.runData, input.config)],
@@ -146,14 +136,29 @@ export class OpenAiLangChainDecisionProvider implements DecisionProviderPort {
     return String(content);
   }
 
-  private model(config: RunConfig, apiKey: string): ChatOpenAI {
+  private model(config: RunConfig, apiKey: string): BaseChatModel {
+    if (config.llm.provider === 'claude') {
+      return new ChatAnthropic({
+        apiKey,
+        model: config.llm.model,
+        temperature: config.llm.temperature,
+        maxTokens: config.llm.maxTokens,
+      });
+    }
+    const baseURL = this.resolveBaseUrl(config.llm.provider);
     return new ChatOpenAI({
       apiKey,
       model: config.llm.model,
       temperature: config.llm.temperature,
       maxTokens: config.llm.maxTokens,
       modelKwargs: { response_format: { type: 'json_object' } },
+      ...(baseURL ? { configuration: { baseURL } } : {}),
     });
+  }
+
+  private resolveBaseUrl(provider: RunConfig['llm']['provider']): string | undefined {
+    if (provider === 'openrouter') return 'https://openrouter.ai/api/v1';
+    return undefined;
   }
 
   private parseOutcome(raw: unknown, task: QaTask): ExpectedOutcome {

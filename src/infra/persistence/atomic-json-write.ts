@@ -9,14 +9,24 @@ function isCrossDeviceRenameError(error: unknown): boolean {
   );
 }
 
-export async function commitAtomicJsonWrite(tmpPath: string, finalPath: string): Promise<void> {
+export interface AtomicJsonWriteFs {
+  rename(src: string, dest: string): Promise<void>;
+  copyFile(src: string, dest: string): Promise<void>;
+  unlink(path: string): Promise<void>;
+}
+
+export async function commitAtomicJsonWrite(
+  tmpPath: string,
+  finalPath: string,
+  fs: AtomicJsonWriteFs = { rename, copyFile, unlink },
+): Promise<void> {
   try {
-    await rename(tmpPath, finalPath);
+    await fs.rename(tmpPath, finalPath);
   } catch (error) {
     if (!isCrossDeviceRenameError(error)) {
       throw error;
     }
-    await copyFile(tmpPath, finalPath);
-    await unlink(tmpPath);
+    await fs.copyFile(tmpPath, finalPath);
+    await fs.unlink(tmpPath);
   }
 }

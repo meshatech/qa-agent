@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createServer, type Server } from 'node:http';
-import { chromium, type Browser } from 'playwright';
+import { type Browser } from 'playwright';
+import { launchBrowser } from './helpers/playwright-launch.js';
 import { ObservationService } from '../src/infra/observation/observation.service.js';
 import { AxTreeCollector } from '../src/infra/observation/ax-tree.collector.js';
 import { DomPurifier } from '../src/infra/observation/dom-purifier.js';
@@ -35,7 +36,7 @@ beforeAll(async () => {
   const addr = server.address();
   if (typeof addr !== 'object' || !addr) throw new Error('server failed');
   baseUrl = `http://127.0.0.1:${addr.port}`;
-  browser = await chromium.launch({ headless: true });
+  browser = await launchBrowser(true);
 });
 
 afterAll(async () => {

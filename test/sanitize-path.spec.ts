@@ -1,9 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
-
-vi.mock('node:os', () => ({
-  homedir: () => '/custom/root',
-}));
-
+import { describe, expect, it } from 'vitest';
 import { sanitizePath } from '../src/domain/helpers/sanitize-path.js';
 
 describe('sanitizePath', () => {
@@ -45,6 +40,6 @@ describe('sanitizePath', () => {
   });
 
   it('redacts paths under the process home directory', () => {
-    expect(sanitizePath('/custom/root/project/src/api.ts')).toBe('<redacted>/.../src/api.ts');
+    expect(sanitizePath('/custom/root/project/src/api.ts', '/custom/root')).toBe('<redacted>/.../src/api.ts');
   });
 });

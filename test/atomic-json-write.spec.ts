@@ -1,20 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-const { rename, copyFile, unlink } = vi.hoisted(() => ({
-  rename: vi.fn(),
-  copyFile: vi.fn(),
-  unlink: vi.fn(),
-}));
-
-vi.mock('node:fs/promises', () => ({
-  rename,
-  copyFile,
-  unlink,
-}));
-
 import { commitAtomicJsonWrite } from '../src/infra/persistence/atomic-json-write.js';
 
 describe('commitAtomicJsonWrite', () => {
+  const rename = vi.fn();
+  const copyFile = vi.fn();
+  const unlink = vi.fn();
+
+  const fs = { rename, copyFile, unlink };
+
   beforeEach(() => {
     rename.mockReset();
     copyFile.mockReset();
@@ -24,7 +17,7 @@ describe('commitAtomicJsonWrite', () => {
   it('uses rename when same filesystem', async () => {
     rename.mockResolvedValue(undefined);
 
-    await commitAtomicJsonWrite('/tmp/output.json.tmp', '/tmp/output.json');
+    await commitAtomicJsonWrite('/tmp/output.json.tmp', '/tmp/output.json', fs);
 
     expect(rename).toHaveBeenCalledWith('/tmp/output.json.tmp', '/tmp/output.json');
     expect(copyFile).not.toHaveBeenCalled();
@@ -39,7 +32,7 @@ describe('commitAtomicJsonWrite', () => {
     copyFile.mockResolvedValue(undefined);
     unlink.mockResolvedValue(undefined);
 
-    await commitAtomicJsonWrite('/tmp/output.json.tmp', '/tmp/output.json');
+    await commitAtomicJsonWrite('/tmp/output.json.tmp', '/tmp/output.json', fs);
 
     expect(rename).toHaveBeenCalledWith('/tmp/output.json.tmp', '/tmp/output.json');
     expect(copyFile).toHaveBeenCalledWith('/tmp/output.json.tmp', '/tmp/output.json');
@@ -50,7 +43,7 @@ describe('commitAtomicJsonWrite', () => {
     const error = Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
     rename.mockRejectedValueOnce(error);
 
-    await expect(commitAtomicJsonWrite('/tmp/output.json.tmp', '/tmp/output.json')).rejects.toBe(error);
+    await expect(commitAtomicJsonWrite('/tmp/output.json.tmp', '/tmp/output.json', fs)).rejects.toBe(error);
     expect(copyFile).not.toHaveBeenCalled();
   });
 });

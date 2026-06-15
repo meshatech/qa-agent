@@ -8,7 +8,7 @@ Runtime de QA guiado por LLM para executar fluxos web via Playwright, com observ
 - Release runtime: `v0.2-stable` documentada em [`doc/release-notes/v0.2-stable.md`](doc/release-notes/v0.2-stable.md)
 - Stack: `TypeScript`, `NestJS`, `Playwright`, `Zod`, `Commander`
 - Interface principal: CLI `qa-agent`
-- Providers LLM disponiveis hoje: `fake`, `groq`, `openai`
+- Providers LLM disponiveis hoje: `fake`, `groq`, `openai`, `openrouter`, `claude` — com fallback automatico em rate limit (429)
 - Engines de browser suportadas: `chromium`, `firefox`, `webkit`
 - Execucao: sequencial, um cenario por vez
 - **v2 simplificado:** runtime enxugado. Removidos `ExecutionMonitorService`, `DeepThinkService`, `RedisPlanCacheAdapter`, `FilePlanCacheAdapter`. Arquivado `ProjectGraphService` (experimental/). Isolada rota `FULL_REACTIVE` em `ReactiveRunnerService`. Ver [`docs/V2-SIMPLIFICATION-PLAN.md`](docs/V2-SIMPLIFICATION-PLAN.md).
@@ -103,7 +103,10 @@ Campos importantes do config atual:
 - `browser.engine`: `chromium`, `firefox` ou `webkit`
 - `browser.headed`: abre browser visivel
 - `auth.kind`: `none`, `storageState`, `formLogin`
-- `llm.provider`: `fake`, `groq`, `openai`
+- `llm.provider`: `fake`, `groq`, `openai`, `openrouter`, `claude`
+- `llm.fallbackProvider`: `openai`, `groq`, `openrouter`, `claude` — ativado automaticamente em rate limit (429)
+- `llm.apiKeyEnv`: nome da variavel de ambiente com a API key
+- `llm.fallbackApiKeyEnv`: nome da variavel de ambiente com a API key do fallback
 - `timeouts.*`: limites de execucao
 - `runtime.maxActionsPerTask`: teto de ciclos por task
 - `recovery.maxAttemptsPerTask`: tentativas por task
@@ -136,13 +139,108 @@ Configs versionados em `configs/`:
 
 ## Providers LLM
 
-Estado atual implementado:
+Providers disponiveis (troca via `llm.provider` no config):
 
-- `fake`: nao exige API key; util para smoke/local
-- `groq`: exige `process.env[llm.apiKeyEnv]`
-- `openai`: exige `process.env[llm.apiKeyEnv]`
+| Provider | Variavel de ambiente | Modelo default | Quando usar |
+|----------|----------------------|----------------|-------------|
+| `fake` | — (nenhuma) | `fake` | Smoke e testes locais; sem chamada HTTP |
+| `groq` | `GROQ_API_KEY` ou `GROQ_PROVIDER` | `llama-3.3-70b-versatile` | Rapido e barato; rate limit generoso |
+| `openai` | `OPENAI_API_KEY` ou `OPENAI_PROVIDER` | `gpt-4o-mini` | Qualidade alta; bom para producao |
+| `claude` | `ANTHROPIC_API_KEY` ou `CLAUDE_PROVIDER` | `claude-3-haiku-20240307` | Raciocinio longo; respostas estruturadas |
+| `openrouter` | `OPENROUTER_API_KEY` ou `OPENROUTER_PROVIDER` | `openai/gpt-4o-mini` | Acesso a multiplos modelos por uma chave |
 
-Observacao: mesmo no provider `fake`, o campo `llm` continua obrigatorio no config porque faz parte do schema atual.
+Troca de provider e so mudar o config — a factory resolve a instancia automaticamente na inicializacao.
+
+### Mensagens de erro amigáveis
+
+Quando ocorre erro de conexao, rate limit ou autenticacao com qualquer provider, a CLI exibe mensagens em portugues claras ao inves de stack traces tecnicos:
+
+- **Rate limit (429):** "Limite de requisicoes atingido no servico de IA. Aguarde um momento e tente novamente, ou configure um fallbackProvider alternativo."
+- **Autenticacao (401/403):** "Chave de API invalida ou sem permissao. Verifique a variavel de ambiente configurada em llm.apiKeyEnv."
+- **Erro de servidor (500+):** "O servico de IA esta temporariamente indisponivel. Tente novamente em alguns instantes."
+- **Problema de rede:** "Nao foi possivel conectar ao servico de IA. Verifique sua conexao com a internet ou se a URL do provider esta acessivel."
+
+O detalhe tecnico original fica disponivel no campo `cause` do JSON de erro.
+
+### Fallback automatico (rate limit)
+
+Se o provider primario retornar `429` (rate limit), o runtime tenta o `fallbackProvider` automaticamente:
+
+```json
+{
+  "llm": {
+    "provider": "groq",
+    "model": "llama-3.3-70b-versatile",
+    "apiKeyEnv": "GROQ_PROVIDER",
+    "fallbackProvider": "openai",
+    "fallbackModel": "gpt-4o-mini",
+    "fallbackApiKeyEnv": "OPENAI_API_KEY"
+  }
+}
+```
+
+Regras:
+- Fallback so ativa em erros `429` (rate limit) ou equivalente retryable
+- Erros `400`, `401`, `500` propaga direto sem tentar fallback
+- Sem `fallbackProvider` configurado, o erro `429` sobe normalmente
+- Variavel de ambiente `AGENT_QA_DISABLE_LLM_FALLBACK=1` desativa o fallback completamente (erro `429` sobe direto)
+
+### Exemplo por provider
+
+**Groq:**
+```json
+{
+  "llm": {
+    "provider": "groq",
+    "model": "llama-3.3-70b-versatile",
+    "apiKeyEnv": "GROQ_PROVIDER"
+  }
+}
+```
+
+**OpenAI:**
+```json
+{
+  "llm": {
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "apiKeyEnv": "OPENAI_API_KEY"
+  }
+}
+```
+
+**Claude (Anthropic):**
+```json
+{
+  "llm": {
+    "provider": "claude",
+    "model": "claude-3-haiku-20240307",
+    "apiKeyEnv": "ANTHROPIC_API_KEY"
+  }
+}
+```
+
+**OpenRouter:**
+```json
+{
+  "llm": {
+    "provider": "openrouter",
+    "model": "openai/gpt-4o-mini",
+    "apiKeyEnv": "OPENROUTER_API_KEY"
+  }
+}
+```
+
+**Fake (testes):**
+```json
+{
+  "llm": {
+    "provider": "fake",
+    "model": "fake",
+    "apiKeyEnv": "FAKE_KEY"
+  }
+}
+```
 
 ## Autenticacao
 

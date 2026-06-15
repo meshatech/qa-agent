@@ -34,6 +34,7 @@ describe('FilePreflightReportWriterAdapter', () => {
         branchHead: { ok: true, branchHead: 'feature/test', missing: [] },
         checkoutHistory: { ok: true, errors: [] },
         config: { ok: true, errors: [] },
+        previewReachable: { ok: true, statusCode: 200, url: 'http://127.0.0.1:4173' },
       },
     });
 
@@ -64,6 +65,7 @@ describe('FilePreflightReportWriterAdapter', () => {
         branchHead: { ok: true, branchHead: 'feature/test', missing: [] },
         checkoutHistory: { ok: true, errors: [] },
         config: { ok: true, errors: [] },
+        previewReachable: { ok: true, statusCode: 200, url: 'http://127.0.0.1:4173' },
       },
     });
 

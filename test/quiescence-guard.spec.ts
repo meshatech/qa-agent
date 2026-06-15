@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { chromium } from 'playwright';
+import { launchBrowser } from './helpers/playwright-launch.js';
 import { PlaywrightQuiescenceGuard } from '../src/infra/playwright/playwright-quiescence.guard.js';
 
 describe('PlaywrightQuiescenceGuard', () => {
   it('returns a structured result', async () => {
-    const browser = await chromium.launch();
+    const browser = await launchBrowser();
     const page = await browser.newPage();
     await page.setContent('<main>ok</main>');
     const result = await new PlaywrightQuiescenceGuard().wait(page, 1000);
@@ -14,7 +14,7 @@ describe('PlaywrightQuiescenceGuard', () => {
   }, 15000);
 
   it('does not leak observer temporal-dead-zone errors to the page', async () => {
-    const browser = await chromium.launch();
+    const browser = await launchBrowser();
     const page = await browser.newPage();
     const errors: string[] = [];
     page.on('pageerror', (err) => errors.push(err.message));
