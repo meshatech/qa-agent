@@ -70,12 +70,14 @@ export class FileMemoryStoreAdapter implements MemoryStorePort {
     const scope: ProjectScope = { projectId: input.projectId, route: input.route, component: input.component };
     const fingerprints = await this.readFingerprints(scope);
 
-    const existing = fingerprints.find((fp) => fp.failureSignature === input.failureSignature);
-    const record = existing
-      ? mergeFailureFingerprint(existing, input)
+    const existingIndex = fingerprints.findIndex((fp) => fp.failureSignature === input.failureSignature);
+    const record = existingIndex >= 0
+      ? mergeFailureFingerprint(fingerprints[existingIndex]!, input)
       : createFailureFingerprint(input);
 
-    if (!existing) {
+    if (existingIndex >= 0) {
+      fingerprints[existingIndex] = record;
+    } else {
       fingerprints.push(record);
     }
 
