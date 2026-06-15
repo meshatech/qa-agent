@@ -71,8 +71,8 @@ export function formatGitDiffFailedMessage(
   return `Git diff failed: ${readExecFileErrorMessage(error)}`;
 }
 
-export function buildPullRequestDiffArgs(baseBranch: string): readonly [string, string] {
-  return ['diff', `origin/${baseBranch}...HEAD`] as const;
+export function buildPullRequestDiffArgs(baseBranch: string): readonly [string, string, string] {
+  return ['diff', '--no-color', `origin/${baseBranch}...HEAD`] as const;
 }
 
 @Injectable()

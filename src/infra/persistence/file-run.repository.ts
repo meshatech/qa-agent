@@ -82,7 +82,7 @@ export class FileRunRepository implements RunRepositoryPort {
   }
 
   async appendRunHistory(runDir: string, entry: RunHistoryEntry): Promise<void> {
-    const target = await this.resolveInsideRunDir(runDir, 'run-history.jsonl');
+    const target = await this.resolveInsideRunDirSafe(runDir, 'run-history.jsonl');
     await mkdir(dirname(target), { recursive: true }).catch(() => undefined);
     const line = JSON.stringify(entry);
     await appendFile(target, `${line}\n`);
@@ -99,7 +99,7 @@ export class FileRunRepository implements RunRepositoryPort {
 
   async renameFile(runDir: string, oldName: string, newName: string): Promise<void> {
     const oldPath = await this.resolveInsideRunDir(runDir, oldName);
-    const newPath = await this.resolveInsideRunDir(runDir, newName);
+    const newPath = await this.resolveInsideRunDirSafe(runDir, newName);
     await rename(oldPath, newPath);
   }
 
@@ -109,6 +109,16 @@ export class FileRunRepository implements RunRepositoryPort {
     if (resolved === normalizedRunDir) return resolved;
     const prefix = normalizedRunDir.endsWith(sep) ? normalizedRunDir : `${normalizedRunDir}${sep}`;
     if (!resolved.startsWith(prefix)) {
+      throw new Error(`Path traversal blocked: ${relativePath}`);
+    }
+    return resolved;
+  }
+
+  private async resolveInsideRunDirSafe(runDir: string, relativePath: string): Promise<string> {
+    const normalizedRunDir = await realpathNative(resolve(runDir));
+    const resolved = resolve(normalizedRunDir, relativePath);
+    const prefix = normalizedRunDir.endsWith(sep) ? normalizedRunDir : `${normalizedRunDir}${sep}`;
+    if (resolved !== normalizedRunDir && !resolved.startsWith(prefix)) {
       throw new Error(`Path traversal blocked: ${relativePath}`);
     }
     return resolved;

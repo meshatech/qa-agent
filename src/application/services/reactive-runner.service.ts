@@ -39,6 +39,9 @@ export class ReactiveRunnerService {
   ) {}
 
   async runScenario(scenario: QaScenario, config: RunConfig, runDir: string, runId: string, result: QaRunResult, attempts: AttemptRecord[]): Promise<void> {
+    const startObs = await this.browser.observe().catch(() => undefined);
+    await this.evidence.recordScenarioScreenshot(runDir, scenario.id, 'start', startObs ? { observation: startObs } : undefined);
+
     for (const task of scenario.tasks) {
       if (task.status !== 'PENDING') continue;
       if (this.depsBlocked(task, scenario.tasks)) {
@@ -48,6 +51,9 @@ export class ReactiveRunnerService {
       }
       await this.runTask(task, scenario, config, runDir, runId, result, attempts);
     }
+
+    const endObs = await this.browser.observe().catch(() => undefined);
+    await this.evidence.recordScenarioScreenshot(runDir, scenario.id, 'end', endObs ? { observation: endObs } : undefined);
   }
 
   private depsBlocked(task: QaTask, tasks: QaTask[]): boolean {

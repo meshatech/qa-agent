@@ -15,6 +15,7 @@ import { buildPublicationStatusArtifact } from './pr-publication-status-artifact
 import { GitHubCommentError } from '../../domain/errors.js';
 import { redactSecretsInMessage } from '../helpers/sanitize-token.js';
 import { collectKnownSecretsFromEnv } from './known-secrets.collector.js';
+import { resolveGitHubActionsRunContext, buildArtifactsPageUrl } from '../../infra/github/github-actions-artifact-url.resolver.js';
 
 export interface PRReportResult {
   reportPath: string;
@@ -58,7 +59,7 @@ export class PRReporterService {
       coverageMap,
     });
 
-    let evidenceMap: { byBugId?: Record<string, EvidenceLink[]> } = {};
+    let evidenceMap: { byBugId?: Record<string, EvidenceLink[]>; byScenarioId?: Record<string, EvidenceLink[]>; video?: EvidenceLink[]; trace?: EvidenceLink[] } = {};
     try {
       evidenceMap = await this.discoverEvidence(input.runDir, input.result);
     } catch {
@@ -67,6 +68,9 @@ export class PRReporterService {
 
     const blocks = extractBlocksFromResult(input.result);
     const qaValueMetrics = this.metricsCalculator.compute(input.result, input.config);
+
+    const ghContext = resolveGitHubActionsRunContext();
+    const artifactsUrl = ghContext ? buildArtifactsPageUrl(ghContext) : undefined;
 
     const renderInput = {
       result: input.result,
@@ -79,6 +83,7 @@ export class PRReporterService {
       coverageMap,
       uncoveredCriteria,
       evidenceMap,
+      artifactsUrl,
       blocks,
       qaValueMetrics,
     };
@@ -141,7 +146,7 @@ export class PRReporterService {
   private async discoverEvidence(
     runDir: string,
     result: QaRunResult,
-  ): Promise<{ byBugId?: Record<string, EvidenceLink[]>; video?: EvidenceLink[]; trace?: EvidenceLink[] }> {
+  ): Promise<{ byBugId?: Record<string, EvidenceLink[]>; byScenarioId?: Record<string, EvidenceLink[]>; video?: EvidenceLink[]; trace?: EvidenceLink[] }> {
     const byBugId: Record<string, EvidenceLink[]> = {};
     const bugsWithPath = (result.bugs ?? []).filter((bug) => Boolean(bug.path));
     const discovered = await Promise.all(
@@ -159,6 +164,23 @@ export class PRReporterService {
       }
     }
 
+    const byScenarioId: Record<string, EvidenceLink[]> = {};
+    const scenarios = result.scenarios ?? [];
+    const scenarioEvidence = await Promise.all(
+      scenarios.map(async (scenario) => {
+        const files = await this.runRepository.listFiles(runDir, `scenarios/${scenario.id}`);
+        const links = files
+          .map((file) => mapFileToEvidenceLink(`scenarios/${scenario.id}/${file}`))
+          .filter((link): link is EvidenceLink => link !== undefined);
+        return { scenarioId: scenario.id, links };
+      }),
+    );
+    for (const { scenarioId, links } of scenarioEvidence) {
+      if (links.length > 0) {
+        byScenarioId[scenarioId] = links;
+      }
+    }
+
     const video: EvidenceLink[] = [];
     const trace: EvidenceLink[] = [];
     try {
@@ -171,6 +193,11 @@ export class PRReporterService {
       // artifacts dir may not exist
     }
 
-    return { byBugId, video: video.length ? video : undefined, trace: trace.length ? trace : undefined };
+    return {
+      byBugId,
+      byScenarioId: Object.keys(byScenarioId).length ? byScenarioId : undefined,
+      video: video.length ? video : undefined,
+      trace: trace.length ? trace : undefined,
+    };
   }
 }
