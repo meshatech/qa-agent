@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { PRReporterService } from '../src/application/services/pr-reporter.service.js';
 import { PRReportRenderer } from '../src/application/services/pr-report-renderer.service.js';
+import { GherkinFeatureRendererService } from '../src/application/services/gherkin-feature-renderer.service.js';
 import { QaValueMetricsCalculatorService } from '../src/application/services/qa-value-metrics-calculator.service.js';
 import type { GitHubCommentPort } from '../src/application/ports/github-comment.port.js';
 import type { RunRepositoryPort } from '../src/application/ports/run-repository.port.js';
@@ -66,7 +67,7 @@ describe('PRReporterService', () => {
       renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
 
     const result = await service.report({
       result: makeResult(),
@@ -123,7 +124,7 @@ describe('PRReporterService', () => {
       renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn(() => Promise.resolve()) };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
 
     const result = await service.report({
       result: makeResult(),
@@ -177,7 +178,7 @@ describe('PRReporterService', () => {
     const github: GitHubCommentPort = {
       postComment: vi.fn(() => Promise.reject(new GitHubCommentError('Forbidden', 403))),
     };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
 
     const result = await service.report({
       result: makeResult(),
@@ -226,7 +227,7 @@ describe('PRReporterService', () => {
     const github: GitHubCommentPort = {
       postComment: vi.fn(() => Promise.reject(new GitHubCommentError('Unauthorized', 401))),
     };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
 
     const result = await service.report({
       result: makeResult(), config: makeConfig(), runDir: '/tmp/run-001',
@@ -248,7 +249,7 @@ describe('PRReporterService', () => {
     const github: GitHubCommentPort = {
       postComment: vi.fn(() => Promise.reject(new GitHubCommentError('Not Found', 404))),
     };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
 
     const result = await service.report({
       result: makeResult(), config: makeConfig(), runDir: '/tmp/run-001',
@@ -269,7 +270,7 @@ describe('PRReporterService', () => {
     const github: GitHubCommentPort = {
       postComment: vi.fn(() => Promise.reject(new Error('Network timeout'))),
     };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
 
     const result = await service.report({
       result: makeResult(), config: makeConfig(), runDir: '/tmp/run-001',
@@ -290,7 +291,7 @@ describe('PRReporterService', () => {
       renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn(() => Promise.resolve()) };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
 
     await service.report({
       result: makeResult(), config: makeConfig(), runDir: '/tmp/run-001',
@@ -324,7 +325,7 @@ describe('PRReporterService', () => {
       renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
 
     const runResult = makeResult({
       status: 'FAILED',
@@ -407,7 +408,7 @@ describe('PRReporterService', () => {
     const github: GitHubCommentPort = {
       postComment: vi.fn(() => Promise.reject(new GitHubCommentError('ghp_secret_123 failed', 418))),
     };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
 
     const result = await service.report({
       result: makeResult(),
@@ -451,7 +452,7 @@ describe('PRReporterService', () => {
     const github: GitHubCommentPort = {
       postComment: vi.fn(() => Promise.reject(new GitHubCommentError('pk_test_abc123 failed', 418))),
     };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
 
     const result = await service.report({
       result: makeResult(),
@@ -496,7 +497,7 @@ describe('PRReporterService', () => {
       renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
 
     await service.report({
       result: makeResult({
@@ -539,7 +540,7 @@ describe('PRReporterService', () => {
       renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
 
     await service.report({
       result: makeResult(),
@@ -577,7 +578,7 @@ describe('PRReporterService', () => {
       renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
 
     await service.report({
       result: makeResult({
@@ -621,7 +622,7 @@ describe('PRReporterService', () => {
       renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
 
     await service.report({
       result: makeResult({
@@ -671,7 +672,7 @@ describe('PRReporterService', () => {
       renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
 
     await service.report({
       result: makeResult({
@@ -716,7 +717,7 @@ describe('PRReporterService', () => {
       renameFile: vi.fn(),
     };
     const github: GitHubCommentPort = { postComment: vi.fn() };
-    const service = new PRReporterService(github, repo, new PRReportRenderer(), new QaValueMetricsCalculatorService());
+    const service = new PRReporterService(github, repo, new PRReportRenderer(new GherkinFeatureRendererService()), new QaValueMetricsCalculatorService());
 
     await service.report({
       result: makeResult(),

@@ -5,6 +5,7 @@ import type { QaValueMetrics } from '../../domain/schemas/qa-value-metrics.schem
 import type { AcceptanceCriterionCoverage } from './acceptance-criteria-coverage.mapper.js';
 import type { EvidenceLink } from './evidence-link.mapper.js';
 import { sortEvidenceLinks } from './evidence-link.mapper.js';
+import { GherkinFeatureRendererService } from './gherkin-feature-renderer.service.js';
 import type { BlockItem } from './block-extractor.helper.js';
 
 export interface PRPublicationStatus {
@@ -68,6 +69,10 @@ function sanitizeTableCell(text: string): string {
 
 @Injectable()
 export class PRReportRenderer {
+  constructor(
+    private readonly gherkinRenderer: GherkinFeatureRendererService,
+  ) {}
+
   render(input: PRReportInput): string {
     const lines: string[] = [
       ...this.renderHeader(input),
@@ -77,6 +82,7 @@ export class PRReportRenderer {
       ...this.renderCoveredCriteria(input),
       ...this.renderUncoveredCriteria(input),
       ...this.renderScenarios(input),
+      ...this.renderGherkinSection(input),
       ...this.renderScenarioEvidenceSection(input),
       ...this.renderBlocks(input),
       ...this.renderBugs(input),
@@ -208,6 +214,59 @@ export class PRReportRenderer {
     }
 
     return lines;
+  }
+
+  private renderGherkinSection(input: PRReportInput): string[] {
+    const scenarios = input.result.scenarios ?? [];
+    if (!scenarios.length) return [];
+
+    const lines: string[] = ['', '## Gherkin Features'];
+
+    for (const scenario of scenarios) {
+      const emoji = this.statusEmoji(scenario.status);
+      const tag = this.statusTag(scenario.status);
+      lines.push('', `<details>`);
+      lines.push(`<summary>${emoji} ${sanitizeTableCell(scenario.title)} ${tag}</summary>`);
+      lines.push('');
+      lines.push('```gherkin');
+      lines.push(this.gherkinRenderer.renderScenarioBlock(scenario));
+      lines.push('```');
+      lines.push('</details>');
+    }
+
+    return lines;
+  }
+
+  private statusEmoji(status: string): string {
+    switch (status) {
+      case 'PASSED':
+      case 'PASSED_WITH_WARNINGS':
+        return '✅';
+      case 'FAILED':
+        return '❌';
+      case 'BLOCKED':
+        return '⛔';
+      case 'PARTIAL':
+        return '⚠️';
+      default:
+        return '⏳';
+    }
+  }
+
+  private statusTag(status: string): string {
+    switch (status) {
+      case 'PASSED':
+      case 'PASSED_WITH_WARNINGS':
+        return '(@passed)';
+      case 'FAILED':
+        return '(@failed)';
+      case 'BLOCKED':
+        return '(@blocked)';
+      case 'PARTIAL':
+        return '(@partial)';
+      default:
+        return '';
+    }
   }
 
   private renderScenarioEvidenceSection(input: PRReportInput): string[] {

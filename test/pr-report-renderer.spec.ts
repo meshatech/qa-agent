@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PRReportRenderer } from '../src/application/services/pr-report-renderer.service.js';
+import { GherkinFeatureRendererService } from '../src/application/services/gherkin-feature-renderer.service.js';
 import type { QaRunResult } from '../src/domain/models/run.model.js';
 import type { RunConfig } from '../src/domain/schemas/config.schema.js';
 
@@ -36,7 +37,7 @@ function makeResult(overrides?: Partial<QaRunResult>): QaRunResult {
 }
 
 describe('PRReportRenderer', () => {
-  const renderer = new PRReportRenderer();
+  const renderer = new PRReportRenderer(new GherkinFeatureRendererService());
 
   it('renders minimal report with no scenarios, bugs, or metrics', () => {
     const md = renderer.render({

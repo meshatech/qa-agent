@@ -29,6 +29,7 @@ import type { QaToolContext } from '../tools/qa-tool-context.js';
 import { MemorySearchService } from '../services/memory-search.service.js';
 import { DemandContextPersistenceService } from '../services/demand-context-persistence.service.js';
 import { PRReporterService } from '../services/pr-reporter.service.js';
+import { PersistGherkinFeaturesUseCase } from './persist-gherkin-features.usecase.js';
 import { collectKnownSecretsFromEnv } from '../services/known-secrets.collector.js';
 import { redactSecretsInMessage } from '../helpers/sanitize-token.js';
 import { ToolQueueSchema } from '../../domain/schemas/tool-queue.schema.js';
@@ -60,6 +61,7 @@ export class RunAgentUseCase {
     @Inject(DemandContextPersistenceService)
     private readonly demandContextPersistence: DemandContextPersistenceService,
     @Inject(PRReporterService) private readonly prReporter: PRReporterService,
+    @Inject(PersistGherkinFeaturesUseCase) private readonly persistGherkinFeatures: PersistGherkinFeaturesUseCase,
   ) { }
 
   async execute(rawDto: RunAgentDto): Promise<QaRunResult> {
@@ -471,6 +473,17 @@ export class RunAgentUseCase {
       await this.repo.writeJson(result.runDir, `scenarios/${scenario.id}/status.json`, this.sanitizer.sanitize({ id: scenario.id, status: scenario.status, tasks: scenario.tasks }));
       await this.repo.writeFile(result.runDir, `scenarios/${scenario.id}/scenario-report.md`, `# ${scenario.title}\n\nStatus: ${scenario.status}\n\nTasks: ${scenario.tasks.map((task) => `${task.id}=${task.status}`).join(', ')}\n`);
     }
+
+    try {
+      await this.persistGherkinFeatures.execute({
+        runDir: result.runDir,
+        scenarios: result.scenarios ?? [],
+        featureTitle: config.demand.title,
+      });
+    } catch {
+      // Gherkin feature generation failure should not invalidate QA
+    }
+
     await this.repo.writeJson(result.runDir, 'config.json', this.sanitizer.sanitize(config));
     await this.repo.writeJson(result.runDir, 'run-data.json', this.sanitizer.sanitize(this.data.all()));
     await this.repo.writeJson(result.runDir, 'task-memory.json', this.sanitizer.sanitize(this.memory.all()));
