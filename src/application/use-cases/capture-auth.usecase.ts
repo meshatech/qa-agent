@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ZodError } from 'zod';
 import { RunConfigSchema } from '../../domain/schemas/config.schema.js';
 import type { BrowserHarnessPort } from '../ports/browser-harness.port.js';
@@ -10,6 +10,8 @@ import { dirname } from 'node:path';
 
 @Injectable()
 export class CaptureAuthUseCase {
+  private readonly logger = new Logger(CaptureAuthUseCase.name);
+
   constructor(
     @Inject('BrowserHarnessPort') private readonly browser: BrowserHarnessPort,
     @Inject('ConfigLoaderPort') private readonly loader: ConfigLoaderPort,
@@ -40,7 +42,7 @@ export class CaptureAuthUseCase {
     await context.storageState({ path: outputPath });
     await browser.close();
 
-    console.log(`Session saved to ${outputPath}`);
+    this.logger.log(`Session saved to ${outputPath}`);
     return { ok: true, outputPath };
   }
 
@@ -48,13 +50,13 @@ export class CaptureAuthUseCase {
     const auth = config.auth as { kind: 'ssoRedirect'; loginUrl?: string; loginButtonSelector: string | import('../../domain/schemas/action.schema.js').LocatorDescriptor; idpUsernameSelector?: string | import('../../domain/schemas/action.schema.js').LocatorDescriptor; idpPasswordSelector?: string | import('../../domain/schemas/action.schema.js').LocatorDescriptor; idpSubmitSelector?: string | import('../../domain/schemas/action.schema.js').LocatorDescriptor; usernameEnv?: string; passwordEnv?: string; successUrlContains?: string; successWhen?: { urlContains?: string; textVisible?: string }; storageStatePath: string };
     const url = auth.loginUrl ? new URL(auth.loginUrl, config.baseUrl).toString() : config.baseUrl;
 
-    console.log(`[SSO] Opening ${url}`);
+    this.logger.log(`[SSO] Opening ${url}`);
     await page.goto(url, { timeout: config.timeouts.navigationMs });
 
-    console.log(`[SSO] Clicking login button: ${JSON.stringify(auth.loginButtonSelector)}`);
+    this.logger.log(`[SSO] Clicking login button: ${JSON.stringify(auth.loginButtonSelector)}`);
     await this.clickWithFallback(page, auth.loginButtonSelector, config.timeouts.actionMs);
 
-    console.log('[SSO] Waiting for SSO redirect...');
+    this.logger.log('[SSO] Waiting for SSO redirect...');
     await page.waitForTimeout(3000);
 
     const success = auth.successWhen ?? (auth.successUrlContains ? { urlContains: auth.successUrlContains } : undefined);
@@ -68,29 +70,29 @@ export class CaptureAuthUseCase {
 
       if (hasLoginFields) {
         if (username && password) {
-          console.log('[SSO] IdP login screen detected. Filling credentials automatically...');
+          this.logger.log('[SSO] IdP login screen detected. Filling credentials automatically...');
           const passLocator = this.toLocator(page, auth.idpPasswordSelector);
           const submitLocator = this.toLocator(page, auth.idpSubmitSelector);
           await userLocator.fill(username);
           await passLocator.fill(password);
           await submitLocator.click();
-          console.log('[SSO] Submitted IdP credentials. Waiting for redirect...');
+          this.logger.log('[SSO] Submitted IdP credentials. Waiting for redirect...');
         } else {
-          console.log('[SSO] IdP login screen detected. Please enter your credentials in the browser and log in.');
-          console.log(`[SSO] After logging in, press ENTER in this terminal to save the session.`);
+          this.logger.log('[SSO] IdP login screen detected. Please enter your credentials in the browser and log in.');
+          this.logger.log(`[SSO] After logging in, press ENTER in this terminal to save the session.`);
           await new Promise<void>((resolve) => { process.stdin.once('data', () => resolve()); });
         }
       }
     }
 
     if (success?.urlContains && !page.url().includes(success.urlContains)) {
-      console.log(`[SSO] Waiting for URL to contain: ${success.urlContains} (current: ${page.url()})`);
+      this.logger.log(`[SSO] Waiting for URL to contain: ${success.urlContains} (current: ${page.url()})`);
       try {
         await page.waitForURL((u) => u.toString().includes(success.urlContains!), { timeout: config.timeouts.navigationMs });
-        console.log(`[SSO] Reached success URL: ${page.url()}`);
+        this.logger.log(`[SSO] Reached success URL: ${page.url()}`);
       } catch {
-        console.log(`[SSO] Timed out waiting for success URL. Current URL: ${page.url()}`);
-        console.log('[SSO] Please finish authentication in the browser, then press ENTER here to save the session.');
+        this.logger.log(`[SSO] Timed out waiting for success URL. Current URL: ${page.url()}`);
+        this.logger.log('[SSO] Please finish authentication in the browser, then press ENTER here to save the session.');
         await new Promise<void>((resolve) => { process.stdin.once('data', () => resolve()); });
       }
     }
@@ -99,17 +101,17 @@ export class CaptureAuthUseCase {
       await page.getByText(success.textVisible).first().waitFor({ state: 'visible', timeout: config.timeouts.actionMs }).catch(() => undefined);
     }
 
-    console.log(`[SSO] Authentication flow completed. Current URL: ${page.url()}`);
+    this.logger.log(`[SSO] Authentication flow completed. Current URL: ${page.url()}`);
   }
 
   private async handleFormLogin(config: import('../../domain/schemas/config.schema.js').RunConfig, page: Page, _outputPath: string): Promise<void> {
-    console.log(`Browser opened. Navigate to ${config.baseUrl}, log in manually if needed, then press ENTER in this terminal to save session`);
+    this.logger.log(`Browser opened. Navigate to ${config.baseUrl}, log in manually if needed, then press ENTER in this terminal to save session`);
     await page.goto(config.baseUrl, { timeout: config.timeouts.navigationMs }).catch(() => undefined);
     await new Promise<void>((resolve) => { process.stdin.once('data', () => resolve()); });
   }
 
   private async handleManual(config: import('../../domain/schemas/config.schema.js').RunConfig, page: Page, _outputPath: string): Promise<void> {
-    console.log(`Browser opened. Navigate to ${config.baseUrl}, log in manually, then press ENTER in this terminal to save session`);
+    this.logger.log(`Browser opened. Navigate to ${config.baseUrl}, log in manually, then press ENTER in this terminal to save session`);
     await page.goto(config.baseUrl, { timeout: config.timeouts.navigationMs }).catch(() => undefined);
     await new Promise<void>((resolve) => { process.stdin.once('data', () => resolve()); });
   }
@@ -138,18 +140,18 @@ export class CaptureAuthUseCase {
 
     for (const attempt of attempts) {
       try {
-        console.log(`[SSO] Trying ${attempt.name}...`);
+        this.logger.log(`[SSO] Trying ${attempt.name}...`);
         await attempt.locator.waitFor({ state: 'visible', timeout: timeoutMs / 3 });
         await attempt.locator.click({ timeout: timeoutMs / 3 });
-        console.log(`[SSO] Clicked using ${attempt.name}`);
+        this.logger.log(`[SSO] Clicked using ${attempt.name}`);
         return;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes('strict mode violation')) {
-          console.log(`[SSO] ${attempt.name} resolved to multiple elements, trying next...`);
+          this.logger.log(`[SSO] ${attempt.name} resolved to multiple elements, trying next...`);
           continue;
         }
-        console.log(`[SSO] ${attempt.name} failed: ${msg.slice(0, 80)}`);
+        this.logger.log(`[SSO] ${attempt.name} failed: ${msg.slice(0, 80)}`);
       }
     }
 
