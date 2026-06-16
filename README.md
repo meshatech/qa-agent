@@ -2,10 +2,87 @@
 
 Runtime de QA guiado por LLM para executar fluxos web via Playwright, com observacao da tela, decisao de proxima acao, validacao, recovery e geracao de evidencias.
 
+```
+PR aberto ──▶ preview deploy ──▶ qa-agent run ──▶ evidencias + comentario no PR
+                 (Vercel/Netlify)   (Docker/CLI)      (screenshots, traces, report)
+```
+
+- [Onboarding de 30 min](#onboarding-rapido-30-minutos)
+- [Templates de config](#templates)
+- [Como rodar local](#como-rodar)
+- [Pipeline CI/CD](#pipeline-cicd)
+
+## Onboarding Rapido (30 minutos)
+
+1. **Clone e instale** (5 min)
+   ```bash
+   git clone git@github.com:meshatech/qa-agent.git
+   cd qa-agent
+   npm install
+   ```
+
+2. **Valide o setup** (5 min)
+   ```bash
+   npm run typecheck   # TypeScript OK?
+   npm run lint        # Lint OK?
+   npm test            # Testes passam? (roda em Docker automaticamente)
+   ```
+
+3. **Rode a fixture local** (10 min)
+   ```bash
+   node ./test/fixtures/server.mjs   # sobe servidor de teste
+   # outro terminal:
+   npm run qa-agent -- validate-config --config ./configs/agent-qa.fixture.config.json
+   npm run qa-agent -- run --config ./configs/agent-qa.fixture.config.json
+   ```
+
+4. **Explore a saida** (5 min)
+   ```bash
+   ls ./qa-agent-runs   # veja run.json, execution-report.md, screenshots
+   ```
+
+5. **Leia o PROJECT-MAP** (5 min)
+   ```bash
+   cat PROJECT-MAP.md   # arquitetura completa, ports, fluxos
+   ```
+
+Pronto. Agora voce pode criar seu proprio `agent-qa.config.json`.
+
+## Templates
+
+| Template | Uso | Arquivo |
+|----------|-----|---------|
+| Fixture local (sem LLM) | Smoke rapido | `configs/agent-qa.fixture.config.json` |
+| SPA autenticada | Login + fluxo funcional | ver [exemplo no README](#autenticacao) |
+| Pipeline CI | GitHub Actions + ClickUp | `configs/agent-qa.meshamail.config.json` |
+
+## Pipeline CI/CD
+
+O pipeline e acionado em todo PR para `main`:
+
+```
+PR aberto ──▶ GitHub Actions ──▶ typecheck ──▶ lint ──▶ test ──▶ docker-smoke ──▶ comentario no PR
+                                    │           │          │            │
+                                    ▼           ▼          ▼            ▼
+                                 TypeScript   ESLint   Vitest+Docker   build + run --version
+```
+
+Jobs do CI (`.github/workflows/ci.yml`):
+
+| Job | O que valida |
+|-----|--------------|
+| `typecheck` | `npm run typecheck` |
+| `lint` | `npm run lint` |
+| `test` | `npm test` (via container Playwright) |
+| `validate-agent-config` | `npm run validate:agent-config` |
+| `docker-smoke` | build da imagem `qa-agent:ci` + smoke tests |
+
+Imagem Docker publicada: `ghcr.io/mesha/qa-agent:v2.0.0`
+
 ## Estado Atual
 
-- Versao atual: `0.1.0`
-- Release runtime: `v0.2-stable` documentada em [`doc/release-notes/v0.2-stable.md`](doc/release-notes/v0.2-stable.md)
+- Versao atual: **`v2.0.0`** — [CHANGELOG](CHANGELOG.md)
+- Release runtime: `v2.0.0` estável
 - Stack: `TypeScript`, `NestJS`, `Playwright`, `Zod`, `Commander`
 - Interface principal: CLI `qa-agent`
 - Providers LLM disponiveis hoje: `fake`, `groq`, `openai`, `openrouter`, `claude` — com fallback automatico em rate limit (429)

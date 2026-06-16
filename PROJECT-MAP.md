@@ -34,6 +34,18 @@
 | `RunRepositoryPort` | `src/application/ports/run-repository.port.ts` | `FileSystemRunRepository` | Persistir runs, screenshots, JSONs, relatórios |
 | `ConfigLoaderPort` | `src/application/ports/config-loader.port.ts` | `JsonFileConfigLoader` | Carregar `agent-qa.config.json` |
 | `PlanCachePort` | `src/application/ports/plan-cache.port.ts` | `InMemoryPlanCacheAdapter` | Cache efêmero de planos de execução |
+| `MemoryStorePort` | `src/application/ports/memory-store.port.ts` | `PostgresMemoryStoreAdapter` | Persistência de memória em PostgreSQL |
+| `ClickUpReaderPort` | `src/application/ports/clickup-reader.port.ts` | `ClickUpHttpReaderAdapter` | Ler tarefas ClickUp como DemandContext |
+| `ClickUpApiPort` | `src/application/ports/clickup-api.port.ts` | `ClickUpApiAdapter` | CRUD de anexos e comentários ClickUp |
+| `GitHubApiPort` | `src/application/ports/github-api.port.ts` | `GitHubApiAdapter` | Postar comentários e checks no PR |
+| `GitRepositoryPort` | `src/application/ports/git-repository.port.ts` | `GitRepositoryAdapter` | Ler metadados git (branch, commit, diff) |
+| `PreflightReportWriterPort` | `src/application/ports/preflight-report-writer.port.ts` | `PreflightReportJsonWriter` | Escrever `preflight-report.json` |
+| `PrDiffContextWriterPort` | `src/application/ports/pr-diff-context-writer.port.ts` | `PrDiffContextJsonWriter` | Escrever `pr-diff-context.json` |
+| `CorrelationArtifactsWriterPort` | `src/application/ports/correlation-artifacts-writer.port.ts` | `CorrelationArtifactsJsonWriter` | Escrever `correlation-artifacts.json` |
+| `DemandContextWriterPort` | `src/application/ports/demand-context-writer.port.ts` | `DemandContextJsonWriter` | Escrever `demand-context.json` |
+| `DestructiveActionApproverPort` | `src/application/ports/destructive-action-approver.port.ts` | `PolicyDestructiveActionApproverAdapter` | Aprovar/rejeitar ações destrutivas (HITL) |
+| `LlmProviderPort` | `src/application/ports/llm-provider.port.ts` | `OpenAiLangChainDecisionProvider` | Provider genérico via LangChain |
+| `ToolExecutorPort` | `src/application/ports/tool-executor.port.ts` | `PlaywrightToolExecutorAdapter` | Executar ferramentas do agente no browser |
 
 ---
 
@@ -258,7 +270,35 @@ RunAgentUseCase.execute()
 
 ---
 
-## 13. Configuração (`RunConfigSchema`)
+## 13. CI/CD (GitHub Actions)
+
+Arquivo: `.github/workflows/ci.yml`
+
+```
+PR aberto ──▶ GitHub Actions
+   │
+   ├──▶ typecheck ──▶ npm run typecheck
+   ├──▶ lint ──▶ npm run lint
+   ├──▶ test ──▶ npm test (container Playwright)
+   ├──▶ validate-agent-config ──▶ npm run validate:agent-config
+   └──▶ docker-smoke (needs: all above)
+          ├──▶ docker build -t qa-agent:ci
+          ├──▶ docker run qa-agent:ci --version
+          ├──▶ docker run qa-agent:ci pipeline --help
+          └──▶ docker run qa-agent:ci validate-config --config ...
+```
+
+| Job | Runner | Container | O que valida |
+|-----|--------|-----------|--------------|
+| `typecheck` | ubuntu-latest | — | TypeScript strict |
+| `lint` | ubuntu-latest | — | ESLint |
+| `test` | ubuntu-latest | `mcr.microsoft.com/playwright:v1.61.0-noble` | Vitest (218 test files, 1741 tests) |
+| `validate-agent-config` | ubuntu-latest | — | Config fixture |
+| `docker-smoke` | ubuntu-latest | — | Build Docker + smoke |
+
+Imagem: `ghcr.io/mesha/qa-agent:v2.0.0`
+
+## 15. Configuração (`RunConfigSchema`)
 
 | Seção | Controles |
 |---|---|
@@ -300,11 +340,11 @@ RunAgentUseCase.execute()
 
 ---
 
-## 15. Status da v1
+## 16. Status da v1
 
 ✅ **v1 FECHADA** — todos os 11 itens do roadmap estão implementados.
 
-## 16. Status da v2 (Simplificação)
+## 17. Status da v2 (Simplificação)
 
 ✅ **v2 CONCLUÍDA** — 5 fases de enxugamento executadas. Ver `docs/V2-SIMPLIFICATION-PLAN.md`.
 
