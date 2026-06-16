@@ -78,11 +78,20 @@ function diffResult(before: PlanExecutionResult, after: PlanExecutionResult): Pa
 }
 
 // ---------------------------------------------------------------------------
+// Compiled graph contract (avoids exposing complex LangGraph internal types)
+// ---------------------------------------------------------------------------
+export interface CompiledGraph {
+  invoke(
+    input: unknown,
+    config?: { configurable?: Record<string, unknown>; recursionLimit?: number },
+  ): Promise<PlanExecutionGraphState>;
+}
+
+// ---------------------------------------------------------------------------
 // Graph factory — uses builder chain so TypeScript infers node names correctly
 // ---------------------------------------------------------------------------
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function buildPlanExecutionGraph(runner: PlanStepRunnerService, approver: DestructiveActionApproverPort, logger: Logger = new Logger('PlanExecutionGraph')): any {
+export function buildPlanExecutionGraph(runner: PlanStepRunnerService, approver: DestructiveActionApproverPort, logger: Logger = new Logger('PlanExecutionGraph')): CompiledGraph {
 
   // Node implementations defined as closures over runner/approver
 
@@ -364,7 +373,7 @@ export function buildPlanExecutionGraph(runner: PlanStepRunnerService, approver:
     .addEdge('finalAssertions', END)
     .compile({ checkpointer: new MemorySaver() });
 
-  return compiled;
+  return compiled as CompiledGraph;
 }
 
 // ---------------------------------------------------------------------------

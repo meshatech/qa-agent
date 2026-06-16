@@ -1,4 +1,5 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { readFileSync } from 'node:fs';
 import { Pool, type QueryResultRow } from 'pg';
 
 import type { MemoryChunk, MemorySearchResponse } from '../../domain/schemas/memory.schema.js';
@@ -230,7 +231,6 @@ function resolveDatabaseUrl(raw?: string): string | undefined {
   if (!raw) return undefined;
   if (!raw.includes('host.docker.internal')) return raw;
   try {
-    const { readFileSync } = require('node:fs');
     // Linux Docker does not resolve host.docker.internal by default.
     // Try to read the gateway IP from /proc/net/route (container → host).
     const route = readFileSync('/proc/net/route', 'utf8');
