@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { RecoveryPolicyService } from '../src/application/services/recovery-policy.service.js';
 import type { BrowserHarnessPort } from '../src/application/ports/browser-harness.port.js';
 import type { ScreenObservation } from '../src/domain/schemas/observation.schema.js';

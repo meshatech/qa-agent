@@ -6,17 +6,34 @@ import type { PromotedMemoryRecord } from '../src/domain/schemas/memory-record.s
 
 const databaseUrl = process.env.DATABASE_URL;
 
-describe.skipIf(!databaseUrl)('PostgresMemoryStoreAdapter (real DB)', () => {
+// Quick connectivity probe — skip the suite if the DB is not reachable.
+// This avoids failures on local dev machines that lack the postgres container.
+async function probeDb(): Promise<boolean> {
+  if (!databaseUrl) return false;
+  try {
+    const { Pool } = await import('pg');
+    const p = new Pool({ connectionString: databaseUrl, connectionTimeoutMillis: 2000 });
+    await p.query('SELECT 1');
+    await p.end();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+describe.skipIf(!databaseUrl || !(await probeDb()))('PostgresMemoryStoreAdapter (real DB)', () => {
   let pool: Pool;
   let adapter: PostgresMemoryStoreAdapter;
 
   beforeAll(async () => {
+    if (!databaseUrl) return;
     pool = new Pool({ connectionString: databaseUrl });
     await runMemoryStoreMigrations(pool);
     adapter = new PostgresMemoryStoreAdapter();
   });
 
   afterAll(async () => {
+    if (!databaseUrl) return;
     await pool.end();
   });
 
