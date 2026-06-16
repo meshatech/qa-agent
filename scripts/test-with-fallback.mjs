@@ -45,9 +45,9 @@ function dockerUserFlags() {
   return `--user ${uid}:${gid}`;
 }
 
-function hasDockerImage(docker) {
+function hasDockerImage(docker, name) {
   try {
-    const id = execSync(`${docker} images -q qa-agent-playwright`, {
+    const id = execSync(`${docker} images -q ${name}`, {
       encoding: 'utf8',
       stdio: 'pipe',
     }).trim();
@@ -74,12 +74,12 @@ function runVitestLocally() {
   execSync(`npx vitest run ${args}`, { stdio: 'inherit' });
 }
 
-function runVitestInDocker(docker) {
+function runVitestInDocker(docker, image) {
   const envFile = existsSync('.env') ? '--env-file .env ' : '';
   const vitestCmd = args ? `npx vitest run ${args}` : 'npx vitest run';
-  console.log('[test-with-fallback] Running tests via Docker (qa-agent-playwright)...');
+  console.log(`[test-with-fallback] Running tests via Docker (${image})...`);
   execSync(
-    `${docker} run --rm ${dockerUserFlags()} ${envFile}-v "${process.cwd()}:/app" -w /app qa-agent-playwright ${vitestCmd}`,
+    `${docker} run --rm --entrypoint "" ${dockerUserFlags()} ${envFile}-v "${process.cwd()}:/app" -w /app ${image} ${vitestCmd}`,
     { stdio: 'inherit' },
   );
 }
@@ -90,14 +90,18 @@ if (isInsideDocker()) {
 }
 
 const docker = dockerBinary();
-if (docker && hasDockerImage(docker)) {
-  runVitestInDocker(docker);
+const preferredImage = hasDockerImage(docker, 'qa-agent:local') ? 'qa-agent:local'
+  : hasDockerImage(docker, 'qa-agent-playwright') ? 'qa-agent-playwright'
+  : null;
+
+if (docker && preferredImage) {
+  runVitestInDocker(docker, preferredImage);
 } else if (hasPlaywrightBrowsers()) {
   runVitestLocally();
 } else {
   console.error(
-    '[test-with-fallback] ERROR: Docker image qa-agent-playwright not built and Playwright browsers not found.',
+    '[test-with-fallback] ERROR: No Docker image found (qa-agent:local or qa-agent-playwright) and Playwright browsers not installed.',
   );
-  console.error('Run: docker build -f Dockerfile.playwright -t qa-agent-playwright .');
+  console.error('Run: docker build -t qa-agent:local .');
   process.exit(1);
 }

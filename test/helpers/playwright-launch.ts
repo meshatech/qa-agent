@@ -1,5 +1,5 @@
 import { chromium, type Browser } from 'playwright';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 
 const NO_SANDBOX_ARGS = ['--no-sandbox', '--disable-setuid-sandbox'];
 
@@ -16,4 +16,17 @@ export function launchBrowser(headless = true): Promise<Browser> {
     headless,
     args: isInsideDocker() ? NO_SANDBOX_ARGS : undefined,
   });
+}
+
+/**
+ * Check if Playwright browsers are installed locally.
+ * Useful for skipping browser-dependent tests when running outside Docker.
+ */
+export function isPlaywrightAvailable(): boolean {
+  try {
+    const executable = chromium.executablePath();
+    return existsSync(executable);
+  } catch {
+    return false;
+  }
 }
