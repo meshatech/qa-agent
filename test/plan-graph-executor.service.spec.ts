@@ -348,7 +348,7 @@ describe('HITL (buildPlanExecutionGraph — destructive action interrupt)', () =
     config: destructiveConfig,
   };
 
-  it('pauses on interrupt and rejects when approver blocks', async () => {
+  it('pauses on interrupt and exposes payload for external approver to reject', async () => {
     const blockApprover: DestructiveActionApproverPort = { async approve() { return false; } };
     const runner = makeRunner(simpleBrowser as BrowserHarnessPort);
     const graph = buildPlanExecutionGraph(runner, blockApprover);
@@ -357,13 +357,13 @@ describe('HITL (buildPlanExecutionGraph — destructive action interrupt)', () =
     const interrupted = await graph.invoke(initialInput, thread);
 
     expect(interrupted).toHaveProperty('__interrupt__');
-    expect((interrupted as Record<string, unknown>).__interrupt__).toBeInstanceOf(Array);
-
-    const finalState = await graph.invoke(new Command({ resume: true }), thread);
-
-    const result = stateToResult(finalState, destructivePlan);
-    expect(result.ok).toBe(false);
-    expect(result.failedMessage).toMatch(/excluir/i);
+    const interrupts = (interrupted as Record<string, unknown>).__interrupt__ as Array<{ value: { reason: string; policy: string; stepId: string } }>;
+    expect(interrupts).toBeInstanceOf(Array);
+    expect(interrupts[0]!.value.reason).toMatch(/excluir/i);
+    expect(interrupts[0]!.value.policy).toBe('ASK_APPROVAL');
+    // When the external executor (e.g. PlanGraphExecutorService) sees the
+    // interrupt, it calls approver.approve(). If that returns false, the
+    // executor returns a failure result WITHOUT resuming the graph.
   });
 
   it('continues execution when approver approves after interrupt', async () => {

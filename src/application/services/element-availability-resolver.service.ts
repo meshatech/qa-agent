@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { BrowserHarnessPort } from '../ports/browser-harness.port.js';
 import type { RunConfig } from '../../domain/schemas/config.schema.js';
 import type { LocatorDescriptor, QaAction } from '../../domain/schemas/action.schema.js';
@@ -31,6 +31,8 @@ export interface EnsureElementAvailableResult {
 
 @Injectable()
 export class ElementAvailabilityResolver {
+  private readonly logger = new Logger('ElementAvailabilityResolver');
+
   constructor(
     @Inject('BrowserHarnessPort') private readonly browser: BrowserHarnessPort,
     @Inject(LocatorResolverService) private readonly locators: LocatorResolverService,
@@ -40,16 +42,16 @@ export class ElementAvailabilityResolver {
     const attempts: EnsureElementAvailableResult['attempts'] = [];
     const targetLabel = JSON.stringify(input.target);
 
-    console.log(`[ElementAvailability] ensureAvailable start target=${targetLabel} observationId=${input.observation.observationId}`);
+    this.logger.log(`[ElementAvailability] ensureAvailable start target=${targetLabel} observationId=${input.observation.observationId}`);
 
     // Use the target immediately when it is already visible — re-opening a container toggles menus
     // and can trigger spurious navigation or extra browser tabs.
     if (this.exists(input.observation, input.target)) {
-      console.log(`[ElementAvailability] FOUND_DIRECTLY target=${targetLabel} (no container open)`);
+      this.logger.log(`[ElementAvailability] FOUND_DIRECTLY target=${targetLabel} (no container open)`);
       return { available: true, observation: input.observation, reobserved: false, reason: 'FOUND_DIRECTLY', attempts };
     }
     if (!input.policy.enabled) {
-      console.log(`[ElementAvailability] POLICY_DISABLED target=${targetLabel}`);
+      this.logger.log(`[ElementAvailability] POLICY_DISABLED target=${targetLabel}`);
       return { available: false, observation: input.observation, reobserved: false, reason: 'POLICY_DISABLED', attempts };
     }
 
@@ -59,28 +61,28 @@ export class ElementAvailabilityResolver {
       if (!container) {
         // No container matches, check direct existence
         if (this.exists(current, input.target)) {
-          console.log(`[ElementAvailability] FOUND_DIRECTLY after loop target=${targetLabel}`);
+          this.logger.log(`[ElementAvailability] FOUND_DIRECTLY after loop target=${targetLabel}`);
           return { available: true, observation: current, reobserved: current !== input.observation, reason: 'FOUND_DIRECTLY', attempts };
         }
         break;
       }
       const action = this.resolvePlanAction(container.openAction, current);
       if (!action) {
-        console.log(`[ElementAvailability] container action unresolved semanticKey=${container.semanticKey}`);
+        this.logger.log(`[ElementAvailability] container action unresolved semanticKey=${container.semanticKey}`);
         break;
       }
-      console.log(`[ElementAvailability] opening container=${container.semanticKey} attempt=${i + 1} action=${JSON.stringify({ type: action.type, reason: 'reason' in action ? action.reason : undefined, targetElementId: 'targetElementId' in action ? action.targetElementId : undefined })}`);
+      this.logger.log(`[ElementAvailability] opening container=${container.semanticKey} attempt=${i + 1} action=${JSON.stringify({ type: action.type, reason: 'reason' in action ? action.reason : undefined, targetElementId: 'targetElementId' in action ? action.targetElementId : undefined })}`);
       const exec = await this.browser.execute(action);
       attempts.push({ actionType: action.type, result: exec.ok ? 'PASSED' : 'FAILED', reason: exec.error?.message, ts: new Date().toISOString() });
       await this.browser.waitForQuiescence(input.config.timeouts.quiescenceMs).catch(() => undefined);
       current = await this.browser.observe();
       this.locators.rebuild(current);
       if (this.exists(current, input.target)) {
-        console.log(`[ElementAvailability] FOUND_AFTER_OPEN_CONTAINER container=${container.semanticKey} target=${targetLabel}`);
+        this.logger.log(`[ElementAvailability] FOUND_AFTER_OPEN_CONTAINER container=${container.semanticKey} target=${targetLabel}`);
         return { available: true, observation: current, openedContainer: container.semanticKey, reobserved: true, reason: 'FOUND_AFTER_OPEN_CONTAINER', attempts };
       }
     }
-    console.log(`[ElementAvailability] NOT_FOUND target=${targetLabel}`);
+    this.logger.log(`[ElementAvailability] NOT_FOUND target=${targetLabel}`);
     return { available: false, observation: current, reobserved: current !== input.observation, reason: input.policy.maxOpenAttempts <= 0 ? 'MAX_ATTEMPTS_EXCEEDED' : 'NOT_FOUND', attempts };
   }
 

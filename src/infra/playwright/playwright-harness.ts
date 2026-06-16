@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { chromium, firefox, webkit, type Browser, type BrowserContext, type Page, type Locator, type BrowserType } from 'playwright';
 import { readFileSync } from 'node:fs';
 import { mkdir, rm } from 'node:fs/promises';
@@ -23,6 +23,7 @@ import { FormLoginService } from './auth/form-login.js';
 
 @Injectable()
 export class PlaywrightHarness implements BrowserHarnessPort {
+  private readonly logger = new Logger(PlaywrightHarness.name);
   private browser?: Browser;
   private context?: BrowserContext;
   private page?: Page;
@@ -59,7 +60,7 @@ export class PlaywrightHarness implements BrowserHarnessPort {
       const args = this.isDockerEnvironment() ? ['--no-sandbox', '--disable-setuid-sandbox'] : undefined;
       this.browser = await engine.launch({ headless: !config.browser.headed, slowMo: config.browser.slowMoMs, args });
       await mkdir(this.videoDir, { recursive: true });
-      console.log('[TabTrace] browser.open starting (tab trace enabled)');
+      this.logger.log('[TabTrace] browser.open starting (tab trace enabled)');
       await this.createContextAndPage(config, { withStorage: false });
       const page = this.mustPage();
       if (config.auth.kind === 'formLogin') await this.formLogin.login(page, config);
@@ -67,7 +68,7 @@ export class PlaywrightHarness implements BrowserHarnessPort {
       if (config.auth.kind === 'ssoRedirect') {
         const storagePath = this.requireStorageStatePath(config);
         if (await this.needsSsoLogin(config)) {
-          console.log('[PlaywrightHarness] Session missing or expired, performing SSO redirect login...');
+          this.logger.log('[PlaywrightHarness] Session missing or expired, performing SSO redirect login...');
           const activePage = await this.performSsoRedirectLogin(this.mustPage(), config);
           this.page = activePage;
           this.signalsCollector.attach(activePage, config, this.signals);
@@ -80,7 +81,7 @@ export class PlaywrightHarness implements BrowserHarnessPort {
           if (await this.needsSsoLogin(config)) {
             throw new HarnessFatalError('SSO redirect login completed but application is still on login page');
           }
-          console.log('[PlaywrightHarness] SSO login successful, continuing on authenticated page');
+          this.logger.log('[PlaywrightHarness] SSO login successful, continuing on authenticated page');
         }
       }
       await this.waitForQuiescence(config.timeouts.quiescenceMs).catch(() => undefined);
@@ -351,25 +352,24 @@ export class PlaywrightHarness implements BrowserHarnessPort {
   }
 
   async close(): Promise<void> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const browserPid = (this.browser as any)?.process?.()?.pid;
+    const browserPid = (this.browser as { process?: () => { pid?: number } | undefined } | undefined)?.process?.()?.pid;
     try {
       await this.context?.close();
-      console.log('[PlaywrightHarness.close] context closed');
+      this.logger.log('[PlaywrightHarness.close] context closed');
     } catch (err) {
-      console.error(`[PlaywrightHarness.close] context.close failed: ${err instanceof Error ? err.message : String(err)}`);
+      this.logger.error(`[PlaywrightHarness.close] context.close failed: ${err instanceof Error ? err.message : String(err)}`);
     }
     try {
       await this.browser?.close();
-      console.log('[PlaywrightHarness.close] browser closed');
+      this.logger.log('[PlaywrightHarness.close] browser closed');
     } catch (err) {
-      console.error(`[PlaywrightHarness.close] browser.close failed: ${err instanceof Error ? err.message : String(err)}`);
+      this.logger.error(`[PlaywrightHarness.close] browser.close failed: ${err instanceof Error ? err.message : String(err)}`);
     }
     // Fallback: kill process if still alive (headed chromium sometimes survives .close())
     if (browserPid) {
       try {
         process.kill(browserPid, 0); // check if alive
-        console.error(`[PlaywrightHarness.close] Browser process ${browserPid} still alive after close(), sending SIGKILL`);
+        this.logger.error(`[PlaywrightHarness.close] Browser process ${browserPid} still alive after close(), sending SIGKILL`);
         process.kill(browserPid, 'SIGKILL');
       } catch {
         // process already dead, ok
@@ -634,23 +634,23 @@ export class PlaywrightHarness implements BrowserHarnessPort {
     const password = auth.passwordEnv ? process.env[auth.passwordEnv] : undefined;
 
     const loginUrl = new URL(auth.loginUrl ?? '/login', config.baseUrl).toString();
-    console.log(`[PlaywrightHarness] Navigating to login URL: ${loginUrl}`);
+    this.logger.log(`[PlaywrightHarness] Navigating to login URL: ${loginUrl}`);
     await page.goto(loginUrl, { timeout: config.timeouts.navigationMs });
     await this.waitForQuiescence(config.timeouts.quiescenceMs).catch(() => undefined);
 
-    console.log(`[PlaywrightHarness] Clicking login button...`);
+    this.logger.log(`[PlaywrightHarness] Clicking login button...`);
     const loginButton = this.toPlaywrightLocator(page, auth.loginButtonSelector);
     await this.clickSameTab(loginButton, 'sso:login-button');
     await page.waitForURL(/login\.mesha\.com\.br|meshamail\.mesha\.com\.br/i, { timeout: config.timeouts.navigationMs }).catch(() => undefined);
     await this.closeExtraPages(page, 'sso:after-login-button');
     const urlAfterClick = page.url();
-    console.log(`[PlaywrightHarness] URL after login button click: ${urlAfterClick}`);
+    this.logger.log(`[PlaywrightHarness] URL after login button click: ${urlAfterClick}`);
 
     if (auth.idpUsernameSelector && auth.idpPasswordSelector && auth.idpSubmitSelector) {
       if (!username) throw new HarnessFatalError(`Missing env ${auth.usernameEnv} for ssoRedirect`);
       if (!password) throw new HarnessFatalError(`Missing env ${auth.passwordEnv} for ssoRedirect`);
 
-      console.log(`[PlaywrightHarness] Filling IDP credentials... username=${username.split('@')[0]}...@...`);
+      this.logger.log(`[PlaywrightHarness] Filling IDP credentials... username=${username.split('@')[0]}...@...`);
       const usernameLocator = this.toPlaywrightLocator(page, auth.idpUsernameSelector);
       const passwordLocator = this.toPlaywrightLocator(page, auth.idpPasswordSelector);
       const submitLocator = this.toPlaywrightLocator(page, auth.idpSubmitSelector);
@@ -660,7 +660,7 @@ export class PlaywrightHarness implements BrowserHarnessPort {
       await passwordLocator.waitFor({ state: 'visible', timeout: config.timeouts.actionMs });
       await passwordLocator.fill(password);
 
-      console.log(`[PlaywrightHarness] Submitting IDP credentials...`);
+    this.logger.log(`[PlaywrightHarness] Submitting IDP credentials...`);
       const urlBefore = page.url();
       const redirectWait = this.waitForAuthenticatedApp(config, page);
       this.tabTrace('sso:idp-submit:before', { url: urlBefore });
@@ -668,7 +668,7 @@ export class PlaywrightHarness implements BrowserHarnessPort {
       await redirectWait;
 
       const urlAfter = page.url();
-      console.log(`[PlaywrightHarness] URL after IDP submit: ${urlAfter}`);
+    this.logger.log(`[PlaywrightHarness] URL after IDP submit: ${urlAfter}`);
       if (urlAfter === urlBefore) {
         throw new HarnessFatalError(`SSO redirect login failed: URL did not change after submit (still ${urlAfter})`);
       }
@@ -676,7 +676,7 @@ export class PlaywrightHarness implements BrowserHarnessPort {
       // Check for auth failure messages on the page
       const pageText = await page.locator('body').innerText().catch(() => '');
       if (pageText.includes('Falha na autenticação') || pageText.includes('login.fail.message') || pageText.includes('Authentication failed')) {
-        console.error(`[PlaywrightHarness] IDP auth failure detected on page`);
+        this.logger.error(`[PlaywrightHarness] IDP auth failure detected on page`);
       }
 
       if (auth.successWhen?.urlContains && !urlAfter.includes(auth.successWhen.urlContains)) {
@@ -688,7 +688,7 @@ export class PlaywrightHarness implements BrowserHarnessPort {
     }
 
     await this.closeExtraPages(page, 'sso:complete');
-    console.log(`[PlaywrightHarness] SSO redirect login completed`);
+    this.logger.log(`[PlaywrightHarness] SSO redirect login completed`);
     return page;
   }
 
@@ -699,6 +699,7 @@ export class PlaywrightHarness implements BrowserHarnessPort {
   const install = () => {
     if (window.__qaSingleTabInstalled) return;
     window.__qaSingleTabInstalled = true;
+    // Intentional browser-side console.log — runs in page context, not Node.js
     console.log('[TabTrace:init] single-tab policy installed');
     const nativeOpen = window.open.bind(window);
     window.open = (url, target, features) => {
@@ -838,7 +839,7 @@ export class PlaywrightHarness implements BrowserHarnessPort {
 
   private persistEphemeralSession(storagePath: string): Promise<void> {
     return this.context?.storageState({ path: storagePath }).then(() => {
-      console.log(`[PlaywrightHarness] Ephemeral session saved to ${storagePath}`);
+      this.logger.log(`[PlaywrightHarness] Ephemeral session saved to ${storagePath}`);
     }) ?? Promise.resolve();
   }
 
@@ -1009,6 +1010,6 @@ export class PlaywrightHarness implements BrowserHarnessPort {
   private tabTrace(event: string, details: Record<string, unknown>): void {
     this.tabTraceSeq += 1;
     const pages = this.tabSnapshot();
-    console.log(`[TabTrace #${this.tabTraceSeq}] ${event} openPages=${pages.length} ${JSON.stringify({ ...details, pages })}`);
+    this.logger.log(`[TabTrace #${this.tabTraceSeq}] ${event} openPages=${pages.length} ${JSON.stringify({ ...details, pages })}`);
   }
 }

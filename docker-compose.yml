@@ -17,5 +17,32 @@ services:
       timeout: 5s
       retries: 5
 
+  qa-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agent-qa-runtime
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      # PostgreSQL memory persistence (opcional)
+      DATABASE_URL: postgresql://agent_qa:agent_qa@postgres:5432/agent_qa_memory
+      # LLM provider keys (via .env ou docker-compose.override.yml)
+      # OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      # OPENAI_API_KEY: ${OPENAI_API_KEY}
+    volumes:
+      # Configs e runs persistem no host
+      - ./configs:/app/configs:ro
+      - ./qa-agent-runs:/app/qa-agent-runs
+      - ./.agent-qa:/app/.agent-qa
+      # Reutiliza .env do host
+      - ./.env:/app/.env:ro
+    # Modo CLI: override o CMD no runtime
+    #   docker compose run --rm qa-agent run --config configs/xxx.json
+    entrypoint: ["/usr/bin/tini", "--", "/usr/local/bin/qa-agent"]
+    command: ["--help"]
+
 volumes:
   agent-qa-memory-postgres-data:

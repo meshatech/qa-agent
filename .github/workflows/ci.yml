@@ -84,15 +84,15 @@ jobs:
           COMPOSE_PROJECT_NAME: qa-agent-ci
       - run: docker build -t qa-agent:ci .
       - name: qa-agent --version
-        run: docker run --rm qa-agent:ci qa-agent --version
+        run: docker run --rm qa-agent:ci --version
       - name: pipeline help
-        run: docker run --rm qa-agent:ci qa-agent pipeline --help
+        run: docker run --rm qa-agent:ci pipeline --help
       - name: pipeline all help
-        run: docker run --rm qa-agent:ci qa-agent pipeline all --help
+        run: docker run --rm qa-agent:ci pipeline all --help
       - name: validate-config (fixture, fake LLM)
         run: |
           docker run --rm \
             -v "${{ github.workspace }}/configs:/configs:ro" \
             -e GROQ_PROVIDER=fake \
             qa-agent:ci \
-            qa-agent validate-config --config /configs/agent-qa.fixture.config.json
+            validate-config --config /configs/agent-qa.fixture.config.json

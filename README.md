@@ -38,6 +38,7 @@ Limites conhecidos do estado atual:
 - `Node.js 20+`
 - dependencias instaladas com `npm install`
 - browsers do Playwright instalados
+- PostgreSQL 14+ (opcional, para persistencia de memoria entre runs)
 
 Instalacao:
 
@@ -45,6 +46,25 @@ Instalacao:
 npm install
 npx playwright install
 ```
+
+### Persistencia de Memoria (PostgreSQL)
+
+O agente suporta persistencia de memoria em PostgreSQL via `DATABASE_URL`. Quando configurado, os chunks de memoria e fingerprints de falha sao armazenados no banco em vez de apenas em arquivo local (`memory.md`).
+
+Configuracao minima:
+
+```bash
+# .env ou export no shell
+DATABASE_URL="postgresql://user:pass@localhost:5432/qa_agent"
+```
+
+Com Docker Compose (ja incluso no projeto):
+
+```bash
+docker compose up -d postgres
+```
+
+Migrations sao aplicadas automaticamente na primeira conexao. Sem `DATABASE_URL`, o agente fallback para armazenamento em arquivo (`memory.md`).
 
 ## Como Rodar
 

@@ -417,7 +417,7 @@ export class RunAgentUseCase {
     result.finishedAt = new Date().toISOString();
     const llmStats = this.decision.stats?.();
     if (llmStats?.breakdown) {
-      console.log(`[LLM Stats] total=${llmStats.calls}, tokensIn=${llmStats.tokensIn ?? 0}, tokensOut=${llmStats.tokensOut ?? 0}, breakdown=${JSON.stringify(llmStats.breakdown)}`);
+      logger.log(`[LLM Stats] total=${llmStats.calls}, tokensIn=${llmStats.tokensIn ?? 0}, tokensOut=${llmStats.tokensOut ?? 0}, breakdown=${JSON.stringify(llmStats.breakdown)}`);
     }
     let compactPlanRuntime = this.compactPlanRuntime((result as QaRunResult & { planRuntime?: Record<string, unknown> }).planRuntime);
     (result as QaRunResult & { planRuntime?: Record<string, unknown> }).planRuntime = compactPlanRuntime;
