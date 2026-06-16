@@ -30,7 +30,7 @@ function formatCliError(err: unknown): { error: string; kind: string; suggestion
 }
 
 async function withApp<T>(fn: (controller: AgentController) => Promise<T>): Promise<T> {
-  const app = await NestFactory.createApplicationContext(AppModule, { logger: false });
+  const app = await NestFactory.createApplicationContext(AppModule, { logger: ['error', 'warn'] });
   try {
     return await fn(app.get(AgentController));
   } finally {

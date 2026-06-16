@@ -19,6 +19,8 @@ import { type ConditionEvaluationResult, type LocatorTelemetryEvent, type PlanEx
 
 @Injectable()
 export class PlanStepRunnerService {
+  private readonly logger = new Logger('PlanStepRunnerService');
+
   constructor(
     @Inject('BrowserHarnessPort') readonly browser: BrowserHarnessPort,
     @Inject(LocatorResolverService) readonly locators: LocatorResolverService,
@@ -30,7 +32,6 @@ export class PlanStepRunnerService {
     @Inject(PlanReplannerService) readonly replanner: PlanReplannerService,
     @Inject('DecisionProviderPort') readonly decision: DecisionProviderPort,
     @Inject(NetworkStateValidatorService) readonly networkValidator: NetworkStateValidatorService,
-    private readonly logger: Logger = new Logger('PlanStepRunnerService'),
   ) {}
 
   async observe(step: ExecutionStep): Promise<ScreenObservation> {

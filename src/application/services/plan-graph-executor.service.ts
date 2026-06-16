@@ -9,10 +9,11 @@ import { buildPlanExecutionGraph, stateToResult, type PlanExecutionGraphState } 
 
 @Injectable()
 export class PlanGraphExecutorService {
+  private readonly logger = new Logger('PlanGraphExecutorService');
+
   constructor(
     @Inject(PlanStepRunnerService) private readonly runner: PlanStepRunnerService,
     @Inject('DestructiveActionApproverPort') private readonly approver: DestructiveActionApproverPort,
-    private readonly logger: Logger = new Logger('PlanGraphExecutorService'),
   ) {}
 
   async execute(plan: ExecutionPlan, config: RunConfig, threadId?: string): Promise<PlanExecutionResult> {

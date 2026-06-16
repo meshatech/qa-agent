@@ -45,9 +45,10 @@ export interface ConditionEvaluationResult {
 
 @Injectable()
 export class PlanExecutorService {
+  private readonly logger = new Logger('PlanExecutorService');
+
   constructor(
     @Inject(PlanStepRunnerService) private readonly runner: PlanStepRunnerService,
-    private readonly logger: Logger = new Logger('PlanExecutorService'),
   ) {}
 
   async execute(plan: ExecutionPlan, config: RunConfig): Promise<PlanExecutionResult> {
