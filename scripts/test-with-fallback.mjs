@@ -78,8 +78,9 @@ function runVitestInDocker(docker, image) {
   const envFile = existsSync('.env') ? '--env-file .env ' : '';
   const vitestCmd = args ? `npx vitest run ${args}` : 'npx vitest run';
   console.log(`[test-with-fallback] Running tests via Docker (${image})...`);
+  // --add-host makes host.docker.internal work on Linux; --network host reaches PostgreSQL on host
   execSync(
-    `${docker} run --rm --entrypoint "" ${dockerUserFlags()} ${envFile}-v "${process.cwd()}:/app" -w /app ${image} ${vitestCmd}`,
+    `${docker} run --rm --entrypoint "" --add-host host.docker.internal:host-gateway --network host ${dockerUserFlags()} ${envFile}-v "${process.cwd()}:/app" -w /app ${image} ${vitestCmd}`,
     { stdio: 'inherit' },
   );
 }
