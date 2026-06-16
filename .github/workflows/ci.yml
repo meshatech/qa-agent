@@ -89,6 +89,11 @@ jobs:
         run: docker run --rm qa-agent:ci qa-agent pipeline --help
       - name: pipeline all help
         run: docker run --rm qa-agent:ci qa-agent pipeline all --help
+      - name: Run real PostgreSQL integration test
+        run: |
+          npx vitest run test/postgres-memory-store.real.spec.ts
+        env:
+          DATABASE_URL: postgres://agent_qa:agent_qa@localhost:5433/agent_qa_memory
       - name: validate-config (fixture, fake LLM)
         run: |
           docker run --rm \

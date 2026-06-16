@@ -82,7 +82,7 @@ function diffResult(before: PlanExecutionResult, after: PlanExecutionResult): Pa
 // ---------------------------------------------------------------------------
 export interface CompiledGraph {
   invoke(
-    input: unknown,
+    input: Partial<PlanExecutionGraphState> | import('@langchain/langgraph').Command,
     config?: { configurable?: Record<string, unknown>; recursionLimit?: number },
   ): Promise<PlanExecutionGraphState>;
 }
@@ -166,12 +166,9 @@ export function buildPlanExecutionGraph(runner: PlanStepRunnerService, approver:
 
     const destructive = runner.actionPolicy.validateDestructiveText(`${step.description} ${'reason' in action ? action.reason : ''}`, state.config);
     if (!destructive.ok) {
+      // Pause the graph. PlanGraphExecutorService detects __interrupt__,
+      // consults the approver, and resumes with Command({ resume: true }).
       interrupt({ action, reason: destructive.message, stepId: step.id, policy });
-      const approved = await approver.approve({ action, reason: destructive.message, stepId: step.id, policy });
-      if (!approved) {
-        const qaStep = runner.planStep(step, state.before!, action, action, { type: 'no_console_errors' }, { ok: false, type: 'policy', actual: destructive.message, durationMs: 0 }, undefined, destructive.message);
-        return { ok: false, failedStep: qaStep, failedObservation: state.before, failedMessage: destructive.message, steps: [qaStep], done: true };
-      }
     }
     return {};
   };
