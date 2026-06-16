@@ -27,11 +27,15 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
-      # PostgreSQL memory persistence (opcional)
+      QA_AGENT_DAEMON: '1'
+      QA_AGENT_DAEMON_PORT: '3000'
+      # Container → Chromium precisa de --no-sandbox (rodando como root)
+      QA_AGENT_CONTAINER: '1'
+      # Dentro da rede do compose o Postgres é alcançável pelo nome do serviço
+      # (porta interna 5432, não o mapeamento 5433 do host). Definido aqui para
+      # vencer qualquer DATABASE_URL do .env montado — dotenv não sobrescreve env.
       DATABASE_URL: postgresql://agent_qa:agent_qa@postgres:5432/agent_qa_memory
-      # LLM provider keys (via .env ou docker-compose.override.yml)
-      # OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
-      # OPENAI_API_KEY: ${OPENAI_API_KEY}
+      # Demais variáveis (chaves de LLM etc.) vêm do .env montado via volume abaixo.
     volumes:
       # Configs e runs persistem no host
       - ./configs:/app/configs:ro
@@ -39,10 +43,16 @@ services:
       - ./.agent-qa:/app/.agent-qa
       # Reutiliza .env do host
       - ./.env:/app/.env:ro
+    ports:
+      - '3000:3000'
+    # host.docker.internal não vem habilitado no Docker Engine Linux por padrão
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    # Modo API: fica rodando escutando na porta 3000
     # Modo CLI: override o CMD no runtime
     #   docker compose run --rm qa-agent run --config configs/xxx.json
     entrypoint: ["/usr/bin/tini", "--", "/usr/local/bin/qa-agent"]
-    command: ["--help"]
+    command: ["--daemon"]
 
 volumes:
   agent-qa-memory-postgres-data:

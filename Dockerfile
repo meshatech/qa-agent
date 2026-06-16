@@ -31,6 +31,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends tini \
 
 WORKDIR /app
 ENV NODE_ENV=production
+# Sinaliza ao harness Playwright que estamos em container → Chromium roda com
+# --no-sandbox (obrigatorio como root). Detecção por cgroup falha no cgroup v2.
+ENV QA_AGENT_CONTAINER=1
+# Browsers já vêm pré-instalados na imagem base do Playwright.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 # Copia so o necessario pra rodar
 COPY --from=builder /app/dist ./dist

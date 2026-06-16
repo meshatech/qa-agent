@@ -1,0 +1,15 @@
+{
+  "baseUrl": "http://host.docker.internal:4173/",
+  "appDomains": ["host.docker.internal"],
+  "demand": {
+    "id": "fixture-smoke",
+    "title": "Fixture smoke test",
+    "description": "Smoke test no fixture local",
+    "acceptanceCriteria": [
+      "A página inicial deve carregar sem erros de console",
+      "O servidor fixture deve responder com HTTP 200"
+    ]
+  },
+  "auth": { "kind": "none" },
+  "llm": { "provider": "fake" }
+}

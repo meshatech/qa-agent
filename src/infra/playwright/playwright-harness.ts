@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { chromium, firefox, webkit, type Browser, type BrowserContext, type Page, type Locator, type BrowserType } from 'playwright';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { mkdir, rm } from 'node:fs/promises';
 import { readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
@@ -45,19 +45,33 @@ export class PlaywrightHarness implements BrowserHarnessPort {
     this.signals = this.signalsCollector.createBuffer();
   }
 
-  private isDockerEnvironment(): boolean {
+  private isContainerEnvironment(): boolean {
+    // Explicit opt-in via env wins (set in Dockerfile / docker-compose). This is
+    // the only reliable signal across cgroup v1/v2 and rootless runtimes.
+    const flag = process.env.QA_AGENT_CONTAINER ?? process.env.QA_AGENT_NO_SANDBOX;
+    if (flag !== undefined) return flag === '1' || flag.toLowerCase() === 'true';
+    // Standard Docker marker file.
+    if (existsSync('/.dockerenv')) return true;
+    // Heuristic fallback. cgroup v1 lines contain "docker"; cgroup v2 collapses to
+    // "0::/" so we also look for other container runtime hints.
     try {
-      return readFileSync('/proc/self/cgroup', 'utf8').includes('docker');
+      return /\b(docker|containerd|kubepods|libpod|podman)\b/.test(readFileSync('/proc/self/cgroup', 'utf8'));
     } catch {
       return false;
     }
+  }
+
+  private chromiumLaunchArgs(): string[] | undefined {
+    // Chromium refuses to start as root without --no-sandbox; containers run as
+    // root by default, so disable the sandbox there.
+    return this.isContainerEnvironment() ? ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] : undefined;
   }
 
   async open(config: RunConfig): Promise<void> {
     try {
       this.config = config;
       const engine: BrowserType = config.browser.engine === 'firefox' ? firefox : config.browser.engine === 'webkit' ? webkit : chromium;
-      const args = this.isDockerEnvironment() ? ['--no-sandbox', '--disable-setuid-sandbox'] : undefined;
+      const args = config.browser.engine === 'firefox' || config.browser.engine === 'webkit' ? undefined : this.chromiumLaunchArgs();
       this.browser = await engine.launch({ headless: !config.browser.headed, slowMo: config.browser.slowMoMs, args });
       await mkdir(this.videoDir, { recursive: true });
       this.logger.log('[TabTrace] browser.open starting (tab trace enabled)');
@@ -94,7 +108,8 @@ export class PlaywrightHarness implements BrowserHarnessPort {
   async captureAuth(config: RunConfig, outputPath: string): Promise<void> {
     try {
       const engine: BrowserType = config.browser.engine === 'firefox' ? firefox : config.browser.engine === 'webkit' ? webkit : chromium;
-      this.browser = await engine.launch({ headless: !config.browser.headed });
+      const args = config.browser.engine === 'firefox' || config.browser.engine === 'webkit' ? undefined : this.chromiumLaunchArgs();
+      this.browser = await engine.launch({ headless: !config.browser.headed, args });
       this.context = await this.browser.newContext({ viewport: config.browser.viewport });
       this.page = await this.context.newPage();
       this.signals.reset();
