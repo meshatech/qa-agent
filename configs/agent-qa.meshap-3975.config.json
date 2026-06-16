@@ -1,0 +1,70 @@
+{
+  "baseUrl": "https://codeshare.io/2EDAVX",
+  "appDomains": ["codeshare.io"],
+  "demand": {
+    "id": "MESHAP-3975",
+    "title": "Clean up do repo e URL dinamica - teste simples codeshare",
+    "description": "Teste simples de validacao: abrir a pagina https://codeshare.io/2EDAVX e digitar 'teste' no editor para verificar funcionalidade basica."
+  },
+  "auth": { "kind": "none" },
+  "llm": {
+    "provider": "openrouter",
+    "model": "openai/gpt-4o-mini",
+    "apiKeyEnv": "OPENROUTER_API_KEY",
+    "maxSchemaRetries": 2,
+    "rateLimitRetries": 4,
+    "rateLimitMaxWaitMs": 30000,
+    "promptVersion": "v1",
+    "temperature": 0,
+    "maxTokens": 2048
+  },
+  "browser": {
+    "engine": "chromium",
+    "headed": false,
+    "viewport": { "width": 1366, "height": 768 },
+    "locale": "pt-BR",
+    "timezone": "America/Sao_Paulo"
+  },
+  "timeouts": {
+    "quiescenceMs": 1200,
+    "actionMs": 15000,
+    "navigationMs": 45000,
+    "scenarioMs": 180000,
+    "runMs": 600000
+  },
+  "runtime": {
+    "maxActionsPerTask": 3,
+    "mode": "HYBRID_GUARDED",
+    "engine": "graph",
+    "planning": {
+      "executionPlanStrategy": "factory_first"
+    },
+    "enforceSingleTab": true
+  },
+  "recovery": {
+    "maxAttemptsPerTask": 2,
+    "maxFallbacksPerStep": 1,
+    "maxEmergencyActionsPerScenario": 2
+  },
+  "classifier": {
+    "knownNoiseRegexes": ["ResizeObserver loop", "favicon\\.ico.*404"],
+    "knownTrackingDomains": ["google-analytics.com", "googletagmanager.com", "clarity.ms"],
+    "treatThirdPartyNetwork5xxAsBug": false
+  },
+  "privacy": {
+    "maskEmails": true,
+    "maskJwt": true,
+    "maskCookies": true
+  },
+  "allowedRoutes": ["https://codeshare.io/2EDAVX"],
+  "evidence": {
+    "video": "on",
+    "trace": "on"
+  },
+  "memory": {
+    "source": "hybrid",
+    "writeBack": "both",
+    "schemaVersion": "v1"
+  },
+  "agentVersion": "0.1.0"
+}

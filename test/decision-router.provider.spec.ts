@@ -55,13 +55,15 @@ describe('DecisionRouterProvider', () => {
   }
 
   it('aggregates stats from all providers', () => {
-    groq.stats.mockReturnValue({ calls: 3, wrappers: ['w1'], breakdown: { plan: 1, classifyOutcome: 0, buildPlan: 0, replan: 0, decide: 2 } });
-    openai.stats.mockReturnValue({ calls: 5, wrappers: ['w2'], breakdown: { plan: 2, classifyOutcome: 1, buildPlan: 0, replan: 1, decide: 1 } });
-    fake.stats.mockReturnValue({ calls: 0, wrappers: [], breakdown: { plan: 0, classifyOutcome: 0, buildPlan: 0, replan: 0, decide: 0 } });
+    groq.stats.mockReturnValue({ calls: 3, tokensIn: 1000, tokensOut: 500, wrappers: ['w1'], breakdown: { plan: 1, classifyOutcome: 0, buildPlan: 0, replan: 0, decide: 2 } });
+    openai.stats.mockReturnValue({ calls: 5, tokensIn: 2000, tokensOut: 800, wrappers: ['w2'], breakdown: { plan: 2, classifyOutcome: 1, buildPlan: 0, replan: 1, decide: 1 } });
+    fake.stats.mockReturnValue({ calls: 0, tokensIn: 0, tokensOut: 0, wrappers: [], breakdown: { plan: 0, classifyOutcome: 0, buildPlan: 0, replan: 0, decide: 0 } });
 
     const result = router.stats();
 
     expect(result.calls).toBe(8);
+    expect(result.tokensIn).toBe(3000);
+    expect(result.tokensOut).toBe(1300);
     expect(result.wrappers.groq).toEqual(['w1']);
     expect(result.wrappers.openai).toEqual(['w2']);
     expect(result.breakdown.groq.decide).toBe(2);

@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { DecisionInput, DecisionProviderPort, ReplanInput } from '../../application/ports/decision-provider.port.js';
 import type { QaActionEnvelope } from '../../domain/schemas/action.schema.js';
 import type { QaScenario } from '../../domain/models/run.model.js';
@@ -9,6 +9,8 @@ import type { ExpectedOutcome } from '../../domain/schemas/expected-outcome.sche
 import { FakeDecisionProvider } from './fake-decision.provider.js';
 import { GroqDecisionProvider } from './groq-decision.provider.js';
 import { OpenAiLangChainDecisionProvider } from './openai-langchain-decision.provider.js';
+
+const logger = new Logger('DecisionRouterProvider');
 
 @Injectable()
 export class DecisionRouterProvider implements DecisionProviderPort {
@@ -25,31 +27,45 @@ export class DecisionRouterProvider implements DecisionProviderPort {
   }
 
   decide(input: DecisionInput): Promise<QaActionEnvelope> {
-    return this.select(input.config.llm.provider).decide(input);
+    const provider = input.config.llm.provider;
+    logger.log(`[LLM Audit] method=decide provider=${provider} model=${input.config.llm.model}`);
+    return this.select(provider).decide(input);
   }
 
   plan(config: RunConfig): Promise<QaScenario[]> {
-    return this.select(config.llm.provider).plan!(config);
+    const provider = config.llm.provider;
+    logger.log(`[LLM Audit] method=plan provider=${provider} model=${config.llm.model}`);
+    return this.select(provider).plan!(config);
   }
 
   buildPlan(config: RunConfig, scenarios?: QaScenario[]): Promise<ExecutionPlan> {
-    return this.select(config.llm.provider).buildPlan!(config, scenarios);
+    const provider = config.llm.provider;
+    logger.log(`[LLM Audit] method=buildPlan provider=${provider} model=${config.llm.model}`);
+    return this.select(provider).buildPlan!(config, scenarios);
   }
 
   replan(input: ReplanInput): Promise<PlanPatch> {
-    return this.select(input.config.llm.provider).replan!(input);
+    const provider = input.config.llm.provider;
+    logger.log(`[LLM Audit] method=replan provider=${provider} model=${input.config.llm.model} reason=${input.reason}`);
+    return this.select(provider).replan!(input);
   }
 
   classifyOutcome(config: RunConfig, task: QaTask): Promise<ExpectedOutcome> {
-    return this.select(config.llm.provider).classifyOutcome!(config, task);
+    const provider = config.llm.provider;
+    logger.log(`[LLM Audit] method=classifyOutcome provider=${provider} model=${config.llm.model}`);
+    return this.select(provider).classifyOutcome!(config, task);
   }
 
   classifyOutcomes(config: RunConfig, tasks: QaTask[]): Promise<ExpectedOutcome[]> {
-    return this.select(config.llm.provider).classifyOutcomes!(config, tasks);
+    const provider = config.llm.provider;
+    logger.log(`[LLM Audit] method=classifyOutcomes provider=${provider} model=${config.llm.model} count=${tasks.length}`);
+    return this.select(provider).classifyOutcomes!(config, tasks);
   }
 
   orchestrator(input: import('../../application/ports/decision-provider.port.js').OrchestratorInput): Promise<string> {
-    return this.select(input.config.llm.provider).orchestrator!(input);
+    const provider = input.config.llm.provider;
+    logger.log(`[LLM Audit] method=orchestrator provider=${provider} model=${input.config.llm.model}`);
+    return this.select(provider).orchestrator!(input);
   }
 
   stats() {
@@ -58,6 +74,8 @@ export class DecisionRouterProvider implements DecisionProviderPort {
     const openaiStats = this.openai.stats();
     return {
       calls: (fakeStats.calls ?? 0) + (groqStats.calls ?? 0) + (openaiStats.calls ?? 0),
+      tokensIn: (fakeStats.tokensIn ?? 0) + (groqStats.tokensIn ?? 0) + (openaiStats.tokensIn ?? 0),
+      tokensOut: (fakeStats.tokensOut ?? 0) + (groqStats.tokensOut ?? 0) + (openaiStats.tokensOut ?? 0),
       wrappers: { groq: groqStats.wrappers, openai: openaiStats.wrappers },
       breakdown: {
         fake: fakeStats.breakdown ?? this.emptyBreakdown(),

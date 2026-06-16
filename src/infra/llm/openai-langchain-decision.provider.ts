@@ -11,71 +11,75 @@ import { ExpectedOutcomeSchema, type ExpectedOutcome } from '../../domain/schema
 import { CLASSIFY_OUTCOME_SYSTEM_PROMPT, DECISION_SYSTEM_PROMPT, EXECUTION_PLAN_SYSTEM_PROMPT, PLAN_SYSTEM_PROMPT, REPLAN_SYSTEM_PROMPT, buildClassifyOutcomeUserMessage, buildClassifyOutcomesUserMessage, buildDecisionUserMessage, buildExecutionPlanUserMessage, buildPlanUserMessage, buildReplanUserMessage } from './prompt-builder.js';
 import { LlmPlanPatchNormalizer } from './llm-output-normalizer.js';
 
+interface LangChainUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  total_tokens?: number;
+}
+
 @Injectable()
 export class OpenAiLangChainDecisionProvider implements DecisionProviderPort {
   private calls = 0;
   private readonly callCounts = { plan: 0, classifyOutcome: 0, buildPlan: 0, replan: 0, decide: 0 };
+  private tokensIn = 0;
+  private tokensOut = 0;
   private readonly wrappers: Array<{ kind: 'plan' | 'patch'; wrapper: string }> = [];
 
   constructor(@Inject(LlmPlanPatchNormalizer) private readonly normalizer: LlmPlanPatchNormalizer = new LlmPlanPatchNormalizer()) {}
 
   async plan(config: RunConfig): Promise<QaScenario[]> {
-    const apiKey = process.env[config.llm.apiKeyEnv];
-    if (!apiKey) throw new Error(`Missing env ${config.llm.apiKeyEnv}`);
     this.calls++;
     this.callCounts.plan++;
-    const model = this.model(config, apiKey);
+    const model = this.model(config);
     const res = await model.invoke([
       ['system', PLAN_SYSTEM_PROMPT],
       ['user', buildPlanUserMessage(config)],
     ]);
+    this.accumulateUsage(res);
     const raw = JSON.parse(this.extractContent(res.content)) as { scenarios?: PlanScenarioRaw[] };
     return this.normalizePlan(raw, config);
   }
 
   async buildPlan(config: RunConfig, scenarios: QaScenario[] = []): Promise<ExecutionPlan> {
-    const apiKey = process.env[config.llm.apiKeyEnv];
-    if (!apiKey) throw new Error(`Missing env ${config.llm.apiKeyEnv}`);
     this.calls++;
     this.callCounts.buildPlan++;
-    const model = this.model(config, apiKey);
+    const model = this.model(config);
     const res = await model.invoke([
       ['system', EXECUTION_PLAN_SYSTEM_PROMPT],
       ['user', buildExecutionPlanUserMessage(config, scenarios)],
     ]);
+    this.accumulateUsage(res);
     const parsed = this.normalizer.parsePlan(this.extractContent(res.content));
     this.wrappers.push({ kind: 'plan', wrapper: parsed.wrapper });
     return parsed.value;
   }
 
   async replan(input: ReplanInput): Promise<PlanPatch> {
-    const apiKey = process.env[input.config.llm.apiKeyEnv];
-    if (!apiKey) throw new Error(`Missing env ${input.config.llm.apiKeyEnv}`);
     this.calls++;
     this.callCounts.replan++;
-    const model = this.model(input.config, apiKey);
+    const model = this.model(input.config);
     const res = await model.invoke([
       ['system', REPLAN_SYSTEM_PROMPT],
       ['user', buildReplanUserMessage(input)],
     ]);
+    this.accumulateUsage(res);
     const parsed = this.normalizer.parsePatch(this.extractContent(res.content));
     this.wrappers.push({ kind: 'patch', wrapper: parsed.wrapper });
     return parsed.value;
   }
 
   async decide(input: DecisionInput): Promise<QaActionEnvelope> {
-    const apiKey = process.env[input.config.llm.apiKeyEnv];
-    if (!apiKey) throw new Error(`Missing env ${input.config.llm.apiKeyEnv}`);
     let last: unknown;
     for (let i = 0; i <= input.config.llm.maxSchemaRetries; i++) {
       try {
         this.calls++;
         this.callCounts.decide++;
-        const model = this.model(input.config, apiKey);
+        const model = this.model(input.config);
         const res = await model.invoke([
           ['system', DECISION_SYSTEM_PROMPT],
           ['user', buildDecisionUserMessage(input.observation, input.runData, input.config)],
         ]);
+        this.accumulateUsage(res);
         const parsed = JSON.parse(this.extractContent(res.content));
         parsed.observationId = input.observation.observationId;
         return QaActionEnvelopeSchema.parse(parsed);
@@ -88,26 +92,24 @@ export class OpenAiLangChainDecisionProvider implements DecisionProviderPort {
 
   async classifyOutcome(config: RunConfig, task: QaTask): Promise<ExpectedOutcome> {
     this.callCounts.classifyOutcome++;
-    const apiKey = process.env[config.llm.apiKeyEnv];
-    if (!apiKey) throw new Error(`Missing env ${config.llm.apiKeyEnv}`);
-    const model = this.model(config, apiKey);
+    const model = this.model(config);
     const res = await model.invoke([
       ['system', CLASSIFY_OUTCOME_SYSTEM_PROMPT],
       ['user', buildClassifyOutcomeUserMessage(task.title, task.expected)],
     ]);
+    this.accumulateUsage(res);
     const raw = JSON.parse(this.extractContent(res.content));
     return this.parseOutcome(raw, task);
   }
 
   async classifyOutcomes(config: RunConfig, tasks: QaTask[]): Promise<ExpectedOutcome[]> {
     this.callCounts.classifyOutcome++;
-    const apiKey = process.env[config.llm.apiKeyEnv];
-    if (!apiKey) throw new Error(`Missing env ${config.llm.apiKeyEnv}`);
-    const model = this.model(config, apiKey);
+    const model = this.model(config);
     const res = await model.invoke([
       ['system', CLASSIFY_OUTCOME_SYSTEM_PROMPT],
       ['user', buildClassifyOutcomesUserMessage(tasks.map((task) => ({ id: task.id, title: task.title, expected: task.expected })))],
     ]);
+    this.accumulateUsage(res);
     const raw = JSON.parse(this.extractContent(res.content));
     const items = this.extractOutcomeItems(raw);
     if (items.length !== tasks.length) throw new Error('Invalid outcome batch size from LLM');
@@ -115,19 +117,36 @@ export class OpenAiLangChainDecisionProvider implements DecisionProviderPort {
   }
 
   async orchestrator(input: import('../../application/ports/decision-provider.port.js').OrchestratorInput): Promise<string> {
-    const apiKey = process.env[input.config.llm.apiKeyEnv];
-    if (!apiKey) throw new Error(`Missing env ${input.config.llm.apiKeyEnv}`);
     this.calls++;
-    const model = this.model(input.config, apiKey);
+    const model = this.model(input.config);
     const res = await model.invoke([
       ['system', input.systemPrompt],
       ['user', input.userMessage],
     ]);
+    this.accumulateUsage(res);
     return this.extractContent(res.content);
   }
 
   stats() {
-    return { calls: this.calls, wrappers: this.wrappers.slice(-20), breakdown: { ...this.callCounts } };
+    return { calls: this.calls, tokensIn: this.tokensIn, tokensOut: this.tokensOut, wrappers: this.wrappers.slice(-20), breakdown: { ...this.callCounts } };
+  }
+
+  private extractUsage(res: unknown): LangChainUsage | undefined {
+    if (!res || typeof res !== 'object') return undefined;
+    const record = res as Record<string, unknown>;
+    const usage = record.usage_metadata as LangChainUsage | undefined;
+    if (usage) return usage;
+    const responseMeta = record.response_metadata as Record<string, unknown> | undefined;
+    const tokenUsage = responseMeta?.tokenUsage as LangChainUsage | undefined;
+    return tokenUsage;
+  }
+
+  private accumulateUsage(res: unknown): void {
+    const usage = this.extractUsage(res);
+    if (usage) {
+      this.tokensIn += usage.input_tokens ?? 0;
+      this.tokensOut += usage.output_tokens ?? 0;
+    }
   }
 
   private extractContent(content: unknown): string {
@@ -136,7 +155,9 @@ export class OpenAiLangChainDecisionProvider implements DecisionProviderPort {
     return String(content);
   }
 
-  private model(config: RunConfig, apiKey: string): BaseChatModel {
+  private model(config: RunConfig): BaseChatModel {
+    const apiKey = process.env[config.llm.apiKeyEnv];
+    if (!apiKey) throw new Error(`Missing env ${config.llm.apiKeyEnv}`);
     if (config.llm.provider === 'claude') {
       return new ChatAnthropic({
         apiKey,

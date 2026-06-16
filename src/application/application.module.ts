@@ -19,7 +19,9 @@ import { ExecutionPlanPlannerService } from './services/execution-plan-planner.s
 import { ElementAvailabilityResolver } from './services/element-availability-resolver.service.js';
 import { PlanPatchApplierService } from './services/plan-patch-applier.service.js';
 import { PlanExecutorService } from './services/plan-executor.service.js';
+import { PlanGraphExecutorService } from './services/plan-graph-executor.service.js';
 import { PlanReplannerService } from './services/plan-replanner.service.js';
+import { PlanStepRunnerService } from './services/plan-step-runner.service.js';
 import { ReactiveRunnerService } from './services/reactive-runner.service.js';
 import { NetworkStateValidatorService } from './services/network-state-validator.service.js';
 import { QaValueMetricsCalculatorService } from './services/qa-value-metrics-calculator.service.js';
@@ -90,9 +92,17 @@ import { HybridMemoryStoreAdapter } from '../infra/memory/hybrid-memory-store.ad
 import { MemoryStoreRouterAdapter } from '../infra/memory/memory-store-router.adapter.js';
 
 export const APPLICATION_PROVIDERS = [
+  // Memory store infrastructure (order matters: concrete adapters before router)
+  FileMemoryStoreAdapter,
+  PostgresMemoryStoreAdapter,
+  HybridMemoryStoreAdapter,
+  MemoryChunkRenderer,
+  MemoryStoreRouterAdapter,
+  { provide: 'MemoryStorePort', useExisting: MemoryStoreRouterAdapter },
+  // Application services and use cases
   AgentService, RunAgentUseCase, ValidateConfigUseCase, InspectRunUseCase, ReportRunUseCase, CaptureAuthUseCase, RunOnboardingUseCase, RunPipelinePreflightUseCase, RunPrDiffContextUseCase, RunPipelinePrepareUseCase, RunPipelineCorrelateUseCase, RunPipelineGeneratePlanUseCase, RunPipelineExecuteUseCase, RunPipelineReportUseCase, RunPipelineLearningUseCase, RunPipelineGenerateMemoryUseCase, RunPipelineRiskUseCase, RunPipelinePromoteLearningUseCase, RunPipelineAllUseCase, PipelineBlockedNotifier,
   DataHarnessService, LocatorResolverService, ValidationBinderService, ActionPolicyService, RecoveryPolicyService, NetworkStateValidatorService, QaValueMetricsCalculatorService,
-  SanitizerService, BugClassifierService, EvidenceService, ScenarioPlannerService, ScenarioGeneratorService, TaskMemoryService, StateContractTranslatorService, SemanticIntentDetectorService, SemanticLocatorMemoryResolverService, ExpectedOutcomeResolverService, ExecutionPlanFactoryService, ExecutionPlanPlannerService, ExecutionPlanBuilder, GherkinRendererService, ElementAvailabilityResolver, PlanPatchApplierService, PlanExecutorService, PlanReplannerService, ReactiveRunnerService, PlaywrightSpecExporter, AgentQaLayoutService, MemoryMarkdownLoader, MemoryChunker, BM25MemoryIndex, RunHistoryService, ProjectOnboardingService, ReadinessEvaluatorService, BaselineSmokeBuilderService, PipelinePreflightService, DemandContextPersistenceService, PrDiffContextPersistenceService, DemandDiffMemoryCorrelatorService, MemoryScenarioSelector, RouteScenarioSelector, ComponentScenarioSelector, CriteriaScenarioSelector, ScenarioSelectorService, ScenarioOrchestratorService, PersistSelectedScenariosUseCase, PersistExecutionPlanUseCase, PersistGherkinScenariosUseCase, PersistGherkinFeaturesUseCase, GherkinFeatureRendererService, PRReporterService, PRReportRenderer, PipelineReportRenderer, LearningExtractorService, LearningCandidateExtractorService, DiffMemoryExtractorService, RiskClassifierService, ValueGeneratorService,
+  SanitizerService, BugClassifierService, EvidenceService, ScenarioPlannerService, ScenarioGeneratorService, TaskMemoryService, StateContractTranslatorService, SemanticIntentDetectorService, SemanticLocatorMemoryResolverService, ExpectedOutcomeResolverService, ExecutionPlanFactoryService, ExecutionPlanPlannerService, ExecutionPlanBuilder, GherkinRendererService, ElementAvailabilityResolver, PlanPatchApplierService, PlanStepRunnerService, PlanExecutorService, PlanGraphExecutorService, PlanReplannerService, ReactiveRunnerService, PlaywrightSpecExporter, AgentQaLayoutService, MemoryMarkdownLoader, MemoryChunker, BM25MemoryIndex, RunHistoryService, ProjectOnboardingService, ReadinessEvaluatorService, BaselineSmokeBuilderService, PipelinePreflightService, DemandContextPersistenceService, PrDiffContextPersistenceService, DemandDiffMemoryCorrelatorService, MemoryScenarioSelector, RouteScenarioSelector, ComponentScenarioSelector, CriteriaScenarioSelector, ScenarioSelectorService, ScenarioOrchestratorService, PersistSelectedScenariosUseCase, PersistExecutionPlanUseCase, PersistGherkinScenariosUseCase, PersistGherkinFeaturesUseCase, GherkinFeatureRendererService, PRReporterService, PRReportRenderer, PipelineReportRenderer, LearningExtractorService, LearningCandidateExtractorService, DiffMemoryExtractorService, RiskClassifierService, ValueGeneratorService,
   { provide: QaToolRegistry, useFactory: () => new QaToolRegistry(ALL_QA_TOOLS) },
   {
     provide: MemorySearchService,
@@ -115,12 +125,6 @@ export const APPLICATION_PROVIDERS = [
     inject: ['ConfigLoaderPort'],
   },
   { provide: 'PlanCachePort', useClass: InMemoryPlanCacheAdapter },
-  MemoryChunkRenderer,
-  FileMemoryStoreAdapter,
-  PostgresMemoryStoreAdapter,
-  HybridMemoryStoreAdapter,
-  MemoryStoreRouterAdapter,
-  { provide: 'MemoryStorePort', useExisting: MemoryStoreRouterAdapter },
 ];
 
 @Module({ imports: [InfraModule], providers: APPLICATION_PROVIDERS, exports: APPLICATION_PROVIDERS })

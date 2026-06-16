@@ -35,6 +35,7 @@ import { AxTreeCollector } from './observation/ax-tree.collector.js';
 import { DomPurifier } from './observation/dom-purifier.js';
 import { PageStateDetector } from './observation/page-state.detector.js';
 import { SignalsCollector } from './observation/signals-buffer.js';
+import { PolicyDestructiveActionApproverAdapter } from './approval/policy-destructive-action-approver.adapter.js';
 
 export const INFRA_PROVIDERS = [
   PlaywrightHarness,
@@ -92,6 +93,8 @@ export const INFRA_PROVIDERS = [
   { provide: 'GitHubCommentPort', useExisting: FetchGitHubCommentAdapter },
   { provide: 'GitHubEventContextPort', useExisting: FileGitHubEventContextAdapter },
   { provide: 'GitHubActionsPrContextReaderPort', useExisting: GitHubActionsPrContextReaderAdapter },
+  PolicyDestructiveActionApproverAdapter,
+  { provide: 'DestructiveActionApproverPort', useExisting: PolicyDestructiveActionApproverAdapter },
 ];
 
 @Module({ providers: INFRA_PROVIDERS, exports: INFRA_PROVIDERS })

@@ -104,6 +104,7 @@ Campos importantes do config atual:
 - `browser.headed`: abre browser visivel
 - `auth.kind`: `none`, `storageState`, `formLogin`
 - `llm.provider`: `fake`, `groq`, `openai`, `openrouter`, `claude`
+- `runtime.engine`: `legacy` (default) ou `graph` — ver secao "Engines de Execucao"
 - `llm.fallbackProvider`: `openai`, `groq`, `openrouter`, `claude` — ativado automaticamente em rate limit (429)
 - `llm.apiKeyEnv`: nome da variavel de ambiente com a API key
 - `llm.fallbackApiKeyEnv`: nome da variavel de ambiente com a API key do fallback
@@ -519,6 +520,54 @@ Em alto nivel, a execucao atual faz:
 8. reobserva a tela e valida o esperado
 9. tenta recovery quando necessario
 10. persiste logs, metricas, relatorios e evidencias
+
+## Engines de Execucao
+
+O campo `runtime.engine` controla como o plano e executado:
+
+| Engine | Valor | Descricao |
+|--------|-------|-----------|
+| **Legacy** | `legacy` (default) | Executor sequencial tradicional com loops imperativos |
+| **Graph** | `graph` | Executor baseado em [LangGraph](https://langchain-ai.github.io/langgraph/) — maquina de estados com 13 nos e checkpointing |
+
+### Quando usar `graph`
+
+O engine `graph` e recomendado quando voce precisa de:
+
+- **Human-in-the-Loop (HITL):** pausar a execucao em acoes destrutivas e aguardar aprovacao externa
+- **Audit trail completo:** cada transicao de estado e checkpointada com `thread_id`
+- **Resiliencia:** o grafo pode ser retomado de qualquer interrupt sem perder contexto
+- **Observabilidade:** logs estruturados de cada no (`observe`, `precheck`, `policyGuard`, `destructiveGuard`, `execute`, `validate`, etc.)
+
+Exemplo de config:
+
+```json
+{
+  "runtime": {
+    "engine": "graph",
+    "mode": "HYBRID_GUARDED",
+    "maxActionsPerTask": 3
+  }
+}
+```
+
+### Human-in-the-Loop (HITL)
+
+Quando `runtime.destructiveActionPolicy` e `ASK_APPROVAL`, o grafo pausa antes de executar acoes consideradas destrutivas (ex.: excluir, pagar, enviar). A execucao e interrompida via `interrupt()` do LangGraph e so retoma apos aprovacao.
+
+| Policy | Comportamento |
+|--------|---------------|
+| `ALLOW` | Executa acoes destrutivas sem perguntar |
+| `BLOCK` | Rejeita acoes destrutivas imediatamente (falha o step) |
+| `ASK_APPROVAL` | Pausa o grafo e aguarda aprovacao externa (HITL) |
+
+Para HITL real em producao, e necessario um adapter que implemente `DestructiveActionApproverPort` e pause aguardando input humano. O adapter padrao (`PolicyDestructiveActionApproverAdapter`) aprova apenas quando a policy e `ALLOW`; em CI, `ASK_APPROVAL` comporta-se como `BLOCK`.
+
+O grafo retoma com `new Command({ resume: true })` no mesmo `thread_id`, preservando todo o estado (planos, observacoes, tentativas).
+
+### Backward compatibility
+
+O engine `legacy` continua funcionando identico ao comportamento anterior. A troca e so mudar `runtime.engine` no config — nenhuma outra alteracao e necessaria.
 
 ## Como O Agente Decide E Valida
 

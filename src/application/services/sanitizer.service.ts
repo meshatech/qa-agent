@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 const MASK = '***REDACTED***';
-const secretKey = /(password|secret|token|api[_-]?key|authorization|cookie)/i;
+const secretKey = /\b(password|secret|token|api[_-]?key|authorization|cookie)\b/i;
 const patterns = [
   /Bearer\s+[a-zA-Z0-9._-]+/gi,
   /eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+/g,

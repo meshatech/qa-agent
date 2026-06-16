@@ -11,9 +11,12 @@ import type { QaTask } from '../../domain/models/run.model.js';
 export class FakeDecisionProvider implements DecisionProviderPort {
   private calls = 0;
   private readonly callCounts = { plan: 0, classifyOutcome: 0, buildPlan: 0, replan: 0, decide: 0 };
+  private tokensIn = 0;
+  private tokensOut = 0;
 
   async plan(config: RunConfig): Promise<QaScenario[]> {
     this.callCounts.plan++;
+    this.accumulateFakeTokens(config.demand.title.length + config.demand.description.length, 200);
     return [{
       id: 'scenario-001',
       title: config.demand.title,
@@ -26,6 +29,7 @@ export class FakeDecisionProvider implements DecisionProviderPort {
   async buildPlan(config: RunConfig, _scenarios?: QaScenario[]): Promise<ExecutionPlan> {
     this.calls++;
     this.callCounts.buildPlan++;
+    this.accumulateFakeTokens(config.demand.title.length + config.demand.description.length, 400);
     const text = `${config.demand.title} ${config.demand.description}`;
     const isNameFill = /\b(preencher|fill|campo|field|nome|name)\b/i.test(text);
     return {
@@ -59,6 +63,7 @@ export class FakeDecisionProvider implements DecisionProviderPort {
   async replan(input: ReplanInput): Promise<PlanPatch> {
     this.calls++;
     this.callCounts.replan++;
+    this.accumulateFakeTokens(input.message.length, 100);
     return {
       basePlanId: input.plan.planId,
       basePlanVersion: input.plan.version,
@@ -73,6 +78,7 @@ export class FakeDecisionProvider implements DecisionProviderPort {
   async decide({ observation }: DecisionInput): Promise<QaActionEnvelope> {
     this.calls++;
     this.callCounts.decide++;
+    this.accumulateFakeTokens(observation.elements.map((e) => e.text?.length ?? 0).reduce((a, b) => a + b, 0), 300);
     const input = observation.elements.find((e) => e.role === 'textbox') ?? observation.elements[0];
     return {
       schemaVersion: 'action.v1',
@@ -87,16 +93,19 @@ export class FakeDecisionProvider implements DecisionProviderPort {
 
   async classifyOutcome(_config: RunConfig, task: QaTask): Promise<ExpectedOutcome> {
     this.callCounts.classifyOutcome++;
+    this.accumulateFakeTokens(task.title.length, 50);
     return { kind: 'NO_REGRESSION', description: task.title };
   }
 
   async classifyOutcomes(_config: RunConfig, tasks: QaTask[]): Promise<ExpectedOutcome[]> {
     this.callCounts.classifyOutcome++;
+    this.accumulateFakeTokens(tasks.reduce((sum, t) => sum + t.title.length, 0), 50 * tasks.length);
     return tasks.map((task) => ({ kind: 'NO_REGRESSION', description: task.title }));
   }
 
   async orchestrator(_input: import('../../application/ports/decision-provider.port.js').OrchestratorInput): Promise<string> {
     this.calls++;
+    this.accumulateFakeTokens(_input.userMessage.length, 150);
     // Return a minimal valid ToolQueue JSON for testing
     return JSON.stringify({
       taskQueue: [
@@ -107,6 +116,11 @@ export class FakeDecisionProvider implements DecisionProviderPort {
   }
 
   stats() {
-    return { calls: this.calls, breakdown: { ...this.callCounts } };
+    return { calls: this.calls, tokensIn: this.tokensIn, tokensOut: this.tokensOut, breakdown: { ...this.callCounts } };
+  }
+
+  private accumulateFakeTokens(inputChars: number, outputChars: number): void {
+    this.tokensIn += Math.ceil(inputChars / 4);
+    this.tokensOut += Math.ceil(outputChars / 4);
   }
 }

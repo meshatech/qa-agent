@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ProjectOnboardingService } from '../src/application/services/project-onboarding.service.js';
 import { PlanExecutorService } from '../src/application/services/plan-executor.service.js';
+import { PlanStepRunnerService } from '../src/application/services/plan-step-runner.service.js';
 import { RunHistoryService } from '../src/application/services/run-history.service.js';
 import { DataHarnessService } from '../src/application/services/data-harness.service.js';
 import { SanitizerService } from '../src/application/services/sanitizer.service.js';
@@ -96,7 +97,7 @@ function makePlanExecutor(result: Partial<PlanExecutionResult> = {}): PlanExecut
   const locators = new LocatorResolverService();
   const fakeDecision = { async decide() { return { action: { type: 'waitForStable', reason: 'fallback' }, expected_after_action: { type: 'no_console_errors' }, fallback_action: { type: 'waitForStable', reason: 'fallback' }, confidence: 0.5, thought_summary: 'fallback', observationId: 'obs_1', schemaVersion: 'action.v1' } as import('../src/domain/schemas/action.schema.js').QaActionEnvelope; } } as unknown as import('../src/application/ports/decision-provider.port.js').DecisionProviderPort;
   const fakeNetworkValidator = { validate() { return undefined; } } as unknown as import('../src/application/services/network-state-validator.service.js').NetworkStateValidatorService;
-  const executor = new PlanExecutorService(
+  const runner = new PlanStepRunnerService(
     browser,
     locators,
     new DataHarnessService(),
@@ -108,6 +109,7 @@ function makePlanExecutor(result: Partial<PlanExecutionResult> = {}): PlanExecut
     fakeDecision,
     fakeNetworkValidator,
   );
+  const executor = new PlanExecutorService(runner);
 
   vi.spyOn(executor, 'execute').mockResolvedValue({
     ok: true,
