@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { BrowserHarnessPort } from '../ports/browser-harness.port.js';
 import type { BoundExpectedAfterAction, QaAction } from '../../domain/schemas/action.schema.js';
 import type { AttemptRecord } from '../../domain/models/run.model.js';
@@ -6,6 +6,8 @@ import type { ScreenObservation } from '../../domain/schemas/observation.schema.
 
 @Injectable()
 export class RecoveryPolicyService {
+  private readonly logger = new Logger('RecoveryPolicyService');
+
   constructor(@Inject('BrowserHarnessPort') private readonly browser: BrowserHarnessPort) {}
 
   async recover(input: {
@@ -25,7 +27,7 @@ export class RecoveryPolicyService {
     ]).slice(0, input.maxFallbacks + input.maxEmergencyActions);
     let before = input.beforeObservation;
     for (const action of actions) {
-      console.log(`[RecoveryPolicy] executing fallback action=${JSON.stringify({ type: action.type, reason: 'reason' in action ? action.reason : undefined })}`);
+      this.logger.log(`[RecoveryPolicy] executing fallback action=${JSON.stringify({ type: action.type, reason: 'reason' in action ? action.reason : undefined })}`);
       const exec = await this.browser.execute(action);
       input.attempts.push({ actionType: action.type, result: exec.ok ? 'RECOVERED' : 'FAILED', reason: exec.error?.message, ts: new Date().toISOString() });
       await this.browser.waitForQuiescence(input.quiescenceMs);
