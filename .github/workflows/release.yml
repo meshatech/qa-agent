@@ -67,4 +67,4 @@ jobs:
       - name: Verify image
         run: |
           docker pull ghcr.io/mesha/qa-agent:${{ steps.meta.outputs.tag }}
-          docker run --rm ghcr.io/mesha/qa-agent:${{ steps.meta.outputs.tag }} qa-agent --version
+          docker run --rm ghcr.io/mesha/qa-agent:${{ steps.meta.outputs.tag }} --version
