@@ -90,12 +90,45 @@ if (isInsideDocker()) {
   process.exit(0);
 }
 
+function ensurePostgresRunning(docker) {
+  try {
+    const isRunning = execSync(`${docker} ps -q -f name=agent-qa-memory-postgres`, {
+      encoding: 'utf8',
+      stdio: 'pipe',
+    }).trim();
+    if (isRunning) {
+      console.log('[test-with-fallback] PostgreSQL container already running.');
+      return;
+    }
+  } catch {
+    // ignore
+  }
+  console.log('[test-with-fallback] Starting PostgreSQL container...');
+  execSync(`${docker} compose up -d postgres`, { stdio: 'inherit' });
+  // Wait for healthcheck (max 30s)
+  for (let i = 0; i < 30; i++) {
+    try {
+      execSync(`${docker} exec agent-qa-memory-postgres pg_isready -U agent_qa -d agent_qa_memory`, {
+        stdio: 'pipe',
+        timeout: 2000,
+      });
+      console.log('[test-with-fallback] PostgreSQL is ready.');
+      return;
+    } catch {
+      // eslint-disable-next-line no-promise-executor-return
+      execSync('sleep 1', { stdio: 'pipe' });
+    }
+  }
+  console.warn('[test-with-fallback] WARNING: PostgreSQL healthcheck timed out; postgres tests may skip.');
+}
+
 const docker = dockerBinary();
 const preferredImage = hasDockerImage(docker, 'qa-agent:local') ? 'qa-agent:local'
   : hasDockerImage(docker, 'qa-agent-playwright') ? 'qa-agent-playwright'
   : null;
 
 if (docker && preferredImage) {
+  ensurePostgresRunning(docker);
   runVitestInDocker(docker, preferredImage);
 } else if (hasPlaywrightBrowsers()) {
   runVitestLocally();
