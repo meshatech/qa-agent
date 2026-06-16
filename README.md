@@ -36,6 +36,14 @@ PR aberto ──▶ preview deploy ──▶ qa-agent run ──▶ evidencias +
    npm run qa-agent -- run --config ./configs/agent-qa.fixture.config.json
    ```
 
+   **Dentro do Docker Compose**, use a config com `host.docker.internal`:
+   ```bash
+   docker compose up -d
+   curl -s -X POST http://localhost:3000/api/v1/run \
+     -H "Content-Type: application/json" \
+     -d '{"command":"run","args":{"config":"configs/agent-qa.fixture.docker.config.json"}}'
+   ```
+
 4. **Explore a saida** (5 min)
    ```bash
    ls ./qa-agent-runs   # veja run.json, execution-report.md, screenshots
@@ -158,6 +166,49 @@ Depois de buildar:
 npm run build
 node dist/main.js validate-config --config ./agent-qa.config.json
 node dist/main.js run --config ./agent-qa.config.json
+```
+
+## Modo API (HTTP)
+
+O `qa-agent` pode rodar como servidor HTTP para receber comandos via REST:
+
+```bash
+# Local
+QA_AGENT_DAEMON=1 QA_AGENT_DAEMON_PORT=3000 node dist/main.js
+
+# Docker Compose (ja configurado)
+docker compose up -d qa-agent
+```
+
+Endpoints (`/api/v1`):
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| `GET` | `/api/v1/health` | Health check |
+| `POST` | `/api/v1/run` | Executa comando (`{ command, args }`) |
+| `GET` | `/api/v1/jobs` | Lista jobs |
+| `GET` | `/api/v1/jobs/:id` | Resultado de um job |
+| `GET` | `/api/v1/logs?tail=100` | Logs do serviço |
+
+Comandos disponíveis via API: `run`, `capture-auth`, `validate-config`, `preflight`, `read-pr-context`, `pipeline-all`, `pipeline-prepare`, `pipeline-correlate`, `onboard`, `inspect`, `report`.
+
+Exemplo:
+
+```bash
+curl -s http://localhost:3000/api/v1/health
+
+# Rodar validate-config
+curl -s -X POST http://localhost:3000/api/v1/run \
+  -H "Content-Type: application/json" \
+  -d '{"command":"validate-config","args":{"config":"configs/agent-qa.fixture.config.json"}}'
+
+# Rodar fixture via Docker (host.docker.internal)
+curl -s -X POST http://localhost:3000/api/v1/run \
+  -H "Content-Type: application/json" \
+  -d '{"command":"run","args":{"config":"configs/agent-qa.fixture.docker.config.json"}}'
+
+# Ver jobs
+curl -s http://localhost:3000/api/v1/jobs
 ```
 
 ## Configuracao Minima
