@@ -16,7 +16,7 @@ const BASE: RunConfig = {
   },
   llm: { provider: 'fake', model: 'fake', apiKeyEnv: 'X', maxSchemaRetries: 1, promptVersion: 'v1', temperature: 0, maxTokens: 1, rateLimitRetries: 1, rateLimitMaxWaitMs: 1000 },
   timeouts: { quiescenceMs: 1000, actionMs: 1000, navigationMs: 1000, scenarioMs: 1000, runMs: 1000 },
-  runtime: { maxActionsPerTask: 1, mode: 'HYBRID_GUARDED', maxAttemptsPerStep: 1, maxReplansPerScenario: 1, destructiveActionPolicy: 'BLOCK', semanticKeys: {}, semanticAliases: {}, elementAvailability: { enabled: false, maxOpenAttempts: 0, allowGlobalEscape: false, allowClickOutside: false, allowedContainers: [] }, tools: { enabled: false }, enforceSingleTab: false },
+  runtime: { maxActionsPerTask: 1, mode: 'HYBRID_GUARDED', maxAttemptsPerStep: 1, maxReplansPerScenario: 1, destructiveActionPolicy: 'BLOCK', semanticKeys: {}, semanticAliases: {}, elementAvailability: { enabled: false, maxOpenAttempts: 0, allowGlobalEscape: false, allowClickOutside: false, allowedContainers: [] }, tools: { enabled: false }, enforceSingleTab: false, engine: 'legacy' },
   recovery: { maxAttemptsPerTask: 1, maxFallbacksPerStep: 1, maxEmergencyActionsPerScenario: 1 },
   classifier: { treatThirdPartyNetwork5xxAsBug: false },
   privacy: { maskEmails: true, maskJwt: true, maskCookies: true },

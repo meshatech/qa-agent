@@ -32,6 +32,7 @@ const BASE_CONFIG: RunConfig = {
     elementAvailability: { enabled: true, maxOpenAttempts: 1, allowGlobalEscape: false, allowClickOutside: false, allowedContainers: [] },
     tools: { enabled: false },
     enforceSingleTab: false,
+    engine: 'legacy',
   },
   recovery: { maxAttemptsPerTask: 3, maxFallbacksPerStep: 1, maxEmergencyActionsPerScenario: 5 },
   classifier: { treatThirdPartyNetwork5xxAsBug: false },

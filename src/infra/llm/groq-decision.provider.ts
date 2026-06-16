@@ -15,6 +15,8 @@ const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 export class GroqDecisionProvider implements DecisionProviderPort {
   private calls = 0;
   private readonly callCounts = { plan: 0, classifyOutcome: 0, buildPlan: 0, replan: 0, decide: 0 };
+  private tokensIn = 0;
+  private tokensOut = 0;
   private readonly wrappers: Array<{ kind: 'plan' | 'patch'; wrapper: string }> = [];
 
   constructor(@Inject(LlmPlanPatchNormalizer) private readonly normalizer: LlmPlanPatchNormalizer = new LlmPlanPatchNormalizer()) {}
@@ -186,7 +188,7 @@ export class GroqDecisionProvider implements DecisionProviderPort {
   }
 
   stats() {
-    return { calls: this.calls, wrappers: this.wrappers.slice(-20), breakdown: { ...this.callCounts } };
+    return { calls: this.calls, tokensIn: this.tokensIn, tokensOut: this.tokensOut, wrappers: this.wrappers.slice(-20), breakdown: { ...this.callCounts } };
   }
 
   private async chatJson(config: RunConfig, key: string, kind: 'plan' | 'decision' | 'execution-plan' | 'replan' | 'classify-outcome' | 'orchestrator', body: unknown): Promise<GroqChatResponse> {
@@ -194,7 +196,14 @@ export class GroqDecisionProvider implements DecisionProviderPort {
     for (let attempt = 0; attempt <= config.llm.rateLimitRetries; attempt++) {
       this.calls++;
       const res = await this.fetchGroq(key, body, kind);
-      if (res.ok) return (await res.json()) as GroqChatResponse;
+      if (res.ok) {
+        const json = (await res.json()) as GroqChatResponse;
+        if (json.usage) {
+          this.tokensIn += json.usage.prompt_tokens;
+          this.tokensOut += json.usage.completion_tokens;
+        }
+        return json;
+      }
 
       const text = await res.text().catch(() => '');
       lastError = `Groq ${kind} error ${res.status}: ${text}`;
@@ -403,4 +412,5 @@ interface PlanScenarioRaw {
 
 interface GroqChatResponse {
   choices: Array<{ message: { content: string } }>;
+  usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
 }

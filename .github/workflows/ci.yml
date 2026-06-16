@@ -73,6 +73,15 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm run build
+      - name: Start PostgreSQL
+        run: |
+          docker compose up -d postgres
+          until docker compose exec -T postgres pg_isready -U agent_qa -d agent_qa_memory; do
+            echo "Waiting for postgres..."
+            sleep 2
+          done
+        env:
+          COMPOSE_PROJECT_NAME: qa-agent-ci
       - run: docker build -t qa-agent:ci .
       - name: qa-agent --version
         run: docker run --rm qa-agent:ci qa-agent --version

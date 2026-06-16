@@ -1,0 +1,26 @@
+{
+  "baseUrl": "http://localhost:8765",
+  "appDomains": ["localhost"],
+  "demand": {
+    "id": "TEST-E2E-LEARNING",
+    "title": "Test learning candidate generation",
+    "description": "Click the submit button and verify the result"
+  },
+  "auth": { "kind": "none" },
+  "llm": { "provider": "fake" },
+  "runtime": {
+    "maxActionsPerTask": 3,
+    "mode": "HYBRID_GUARDED",
+    "engine": "graph"
+  },
+  "evidence": {
+    "video": "off",
+    "trace": "off"
+  },
+  "memory": {
+    "source": "hybrid",
+    "writeBack": "both",
+    "schemaVersion": "v1"
+  },
+  "agentVersion": "0.1.0"
+}

@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Test Learning Page</title>
+</head>
+<body>
+  <h1>Test Learning Page</h1>
+  <button id="btn-submit" data-testid="submit-button">Submit</button>
+  <div id="result"></div>
+  <script>
+    document.getElementById('btn-submit').addEventListener('click', () => {
+      document.getElementById('result').textContent = 'Clicked!';
+    });
+  </script>
+</body>
+</html>

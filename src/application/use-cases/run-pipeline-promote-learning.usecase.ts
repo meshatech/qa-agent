@@ -8,6 +8,7 @@ import { RunHistoryService } from '../services/run-history.service.js';
 import type { ConfigLoaderPort } from '../ports/config-loader.port.js';
 import type { RunRepositoryPort } from '../ports/run-repository.port.js';
 import type { MemoryStorePort } from '../ports/memory-store.port.js';
+import { MemoryStoreRouterAdapter } from '../../infra/memory/memory-store-router.adapter.js';
 import { RunConfigSchema } from '../../domain/schemas/config.schema.js';
 import { applyBaseUrlOverride } from '../helpers/apply-base-url-override.js';
 import { computeContentHash, type PromotedMemoryRecord } from '../../domain/schemas/memory-record.schema.js';
@@ -29,7 +30,7 @@ export class RunPipelinePromoteLearningUseCase {
   constructor(
     @Inject(MemoryChunkRenderer) private readonly renderer: MemoryChunkRenderer,
     @Inject('RunRepositoryPort') private readonly repository: RunRepositoryPort,
-    @Inject('MemoryStorePort') private readonly memoryStore: MemoryStorePort,
+    @Inject(MemoryStoreRouterAdapter) private readonly memoryStore: MemoryStorePort,
     @Inject(RunHistoryService) private readonly runHistory: RunHistoryService,
     @Inject('ConfigLoaderPort') private readonly configLoader: ConfigLoaderPort,
   ) {}
@@ -146,7 +147,7 @@ export class RunPipelinePromoteLearningUseCase {
     let approved = false;
 
     // Reject: ephemeral IDs in content
-    if (/el_\d{3,}/.test(candidate.content)) {
+    if (/\bel_\d{3,}\b/.test(candidate.content)) {
       return {
         candidateId: candidate.id,
         approved: false,

@@ -21,6 +21,7 @@ import { applyBaseUrlOverride } from '../helpers/apply-base-url-override.js';
 import { applyEphemeralAuthStorage } from '../helpers/ephemeral-auth-storage.js';
 import { ExecutionPlanPlannerService, type ExecutionPlanSource } from '../services/execution-plan-planner.service.js';
 import { PlanExecutorService, type PlanExecutionResult } from '../services/plan-executor.service.js';
+import { PlanGraphExecutorService } from '../services/plan-graph-executor.service.js';
 import { ReactiveRunnerService } from '../services/reactive-runner.service.js';
 import { PlaywrightSpecExporter } from '../services/playwright-spec-exporter.service.js';
 import type { ExecutionPlan } from '../../domain/schemas/execution-plan.schema.js';
@@ -54,6 +55,7 @@ export class RunAgentUseCase {
     @Inject(ValidateConfigUseCase) private readonly validateConfig: ValidateConfigUseCase,
     @Inject(ExecutionPlanPlannerService) private readonly executionPlanPlanner: ExecutionPlanPlannerService,
     @Inject(PlanExecutorService) private readonly planExecutor: PlanExecutorService,
+    @Inject(PlanGraphExecutorService) private readonly planGraphExecutor: PlanGraphExecutorService,
     @Inject(ReactiveRunnerService) private readonly reactiveRunner: ReactiveRunnerService,
     @Inject(PlaywrightSpecExporter) private readonly specExporter: PlaywrightSpecExporter,
     @Inject(MemorySearchService) private readonly memorySearch: MemorySearchService,
@@ -241,7 +243,8 @@ export class RunAgentUseCase {
 
   private async runExecutionPlan(executionPlan: ExecutionPlan, result: QaRunResult, config: RunConfig, attempts: AttemptRecord[], runDir: string, runId: string): Promise<void> {
     for (const scenario of result.scenarios ?? []) scenario.status = 'RUNNING';
-    const planResult = await this.planExecutor.execute(executionPlan, config);
+    const executor = config.runtime.engine === 'graph' ? this.planGraphExecutor : this.planExecutor;
+    const planResult = await executor.execute(executionPlan, config);
     await this.applyPlanExecutionResult(planResult, result, config, attempts, runDir, runId);
   }
 
@@ -343,6 +346,7 @@ export class RunAgentUseCase {
         fallbackWarning: buildResult?.fallbackWarning,
       };
 
+      // qa.plan.execute tool uses PlanExecutorService internally; graph engine is applied inside runExecutionPlan
       const executeOutput = await this.toolRegistry.execute('qa.plan.execute', { plan: executionPlan, config, planRef: { runDir } }, toolContext);
       usedTools.push('qa.plan.execute');
       const executionResult = (executeOutput as { result?: { executionResult?: unknown } }).result?.executionResult as PlanExecutionResult | undefined;
@@ -413,7 +417,7 @@ export class RunAgentUseCase {
     result.finishedAt = new Date().toISOString();
     const llmStats = this.decision.stats?.();
     if (llmStats?.breakdown) {
-      console.log(`[LLM Stats] total=${llmStats.calls}, breakdown=${JSON.stringify(llmStats.breakdown)}`);
+      console.log(`[LLM Stats] total=${llmStats.calls}, tokensIn=${llmStats.tokensIn ?? 0}, tokensOut=${llmStats.tokensOut ?? 0}, breakdown=${JSON.stringify(llmStats.breakdown)}`);
     }
     let compactPlanRuntime = this.compactPlanRuntime((result as QaRunResult & { planRuntime?: Record<string, unknown> }).planRuntime);
     (result as QaRunResult & { planRuntime?: Record<string, unknown> }).planRuntime = compactPlanRuntime;
@@ -687,8 +691,9 @@ export class RunAgentUseCase {
             taskId: task.id,
           });
 
-          // 5. Execute via PlanExecutorService
-          const planResult = await this.planExecutor.execute(plan, config);
+          // 5. Execute via the selected executor
+          const executor = config.runtime.engine === 'graph' ? this.planGraphExecutor : this.planExecutor;
+          const planResult = await executor.execute(plan, config);
           result.steps.push(...planResult.steps);
           attempts.push(...planResult.attempts);
 
