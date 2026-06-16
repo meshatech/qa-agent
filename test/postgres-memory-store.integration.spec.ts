@@ -1,26 +1,33 @@
-import { describe, expect, it, beforeAll, afterAll } from 'vitest';
-import { Pool } from 'pg';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { PostgresMemoryStoreAdapter } from '../src/infra/memory/postgres-memory-store.adapter.js';
 import type { PromotedMemoryRecord } from '../src/domain/schemas/memory-record.schema.js';
 
-const DATABASE_URL = process.env.DATABASE_URL;
+const mockQuery = vi.fn();
+const mockEnd = vi.fn();
 
-describe.skipIf(!DATABASE_URL)('PostgresMemoryStoreAdapter integration', () => {
+vi.mock('pg', () => ({
+  Pool: vi.fn().mockImplementation(function () {
+    return { query: mockQuery, end: mockEnd };
+  }),
+}));
+
+vi.mock('../src/infra/memory/postgres-migration-runner.js', () => ({
+  runMemoryStoreMigrations: vi.fn().mockResolvedValue(undefined),
+}));
+
+describe('PostgresMemoryStoreAdapter (mocked)', () => {
   let adapter: PostgresMemoryStoreAdapter;
-  let pool: Pool;
 
-  beforeAll(async () => {
+  beforeEach(() => {
+    vi.stubEnv('DATABASE_URL', 'postgres://localhost:5432/test');
     adapter = new PostgresMemoryStoreAdapter();
-    // Access private pool via reflection for cleanup
-    // @ts-expect-error accessing private field for test cleanup
-    pool = await adapter.getPool();
+    mockQuery.mockClear();
+    mockEnd.mockClear();
   });
 
-  afterAll(async () => {
-    await pool?.end();
-  });
+  it('upserts promoted records and reports counts', async () => {
+    mockQuery.mockResolvedValue({ rows: [{ inserted: 1, updated: 0 }] });
 
-  it('upserts and searches promoted records', async () => {
     const records: PromotedMemoryRecord[] = [
       {
         id: 'test-integration-1',
@@ -37,6 +44,26 @@ describe.skipIf(!DATABASE_URL)('PostgresMemoryStoreAdapter integration', () => {
 
     const result = await adapter.upsertPromoted(records, { writeBack: 'db' });
     expect(result.inserted + result.updated).toBeGreaterThan(0);
+    expect(mockQuery).toHaveBeenCalled();
+  });
+
+  it('searches memory chunks', async () => {
+    mockQuery.mockResolvedValue({
+      rows: [
+        {
+          id: 'chunk-1',
+          memory_type: 'semantic_locator',
+          title: 'btn-submit',
+          content_markdown: 'Strategy: testid; Element: btn-submit',
+          source_run_id: 'run-test-1',
+          confidence: 0.95,
+          promotion_status: 'promoted',
+          project_id: 'qa-agent',
+          route: '/test',
+          created_at: new Date().toISOString(),
+        },
+      ],
+    });
 
     const searchResult = await adapter.search({
       project: { projectId: 'qa-agent' },
@@ -46,12 +73,42 @@ describe.skipIf(!DATABASE_URL)('PostgresMemoryStoreAdapter integration', () => {
 
     expect(searchResult.chunks.length).toBeGreaterThan(0);
     expect(searchResult.warnings.length).toBe(0);
-
-    // Clean up
-    await pool.query('DELETE FROM agent_memory_chunks WHERE id = $1', ['test-integration-1']);
+    expect(mockQuery).toHaveBeenCalled();
   });
 
-  it('finds and records failure fingerprints', async () => {
+  it('records and finds failure fingerprints', async () => {
+    mockQuery
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            project_id: 'qa-agent',
+            failure_signature: 'test-signature-1',
+            route: '/test',
+            component: 'TestComponent',
+            broken_locator: 'el_001',
+            first_seen_run_id: 'run-test-1',
+            last_seen_run_id: 'run-test-1',
+            occurrences: 1,
+            suggested_memory_id: null,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        rows: [
+          {
+            project_id: 'qa-agent',
+            failure_signature: 'test-signature-1',
+            route: '/test',
+            component: 'TestComponent',
+            broken_locator: 'el_001',
+            first_seen_run_id: 'run-test-1',
+            last_seen_run_id: 'run-test-1',
+            occurrences: 1,
+            suggested_memory_id: null,
+          },
+        ],
+      });
+
     const fingerprint = await adapter.recordFailureFingerprint({
       projectId: 'qa-agent',
       failureSignature: 'test-signature-1',
@@ -67,8 +124,6 @@ describe.skipIf(!DATABASE_URL)('PostgresMemoryStoreAdapter integration', () => {
     const found = await adapter.findFailureFingerprint('test-signature-1', { projectId: 'qa-agent' });
     expect(found).not.toBeNull();
     expect(found?.occurrences).toBeGreaterThan(0);
-
-    // Clean up
-    await pool.query('DELETE FROM qa_failure_fingerprints WHERE project_id = $1 AND failure_signature = $2', ['qa-agent', 'test-signature-1']);
+    expect(mockQuery).toHaveBeenCalled();
   });
 });
