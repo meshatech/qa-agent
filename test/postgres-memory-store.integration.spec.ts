@@ -1,25 +1,31 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
-import { PostgresMemoryStoreAdapter } from '../src/infra/memory/postgres-memory-store.adapter.js';
+import type { PostgresMemoryStoreAdapter as AdapterType } from '../src/infra/memory/postgres-memory-store.adapter.js';
 import type { PromotedMemoryRecord } from '../src/domain/schemas/memory-record.schema.js';
 
 const mockQuery = vi.fn();
 const mockEnd = vi.fn();
 
-vi.mock('pg', () => ({
-  Pool: vi.fn().mockImplementation(function () {
-    return { query: mockQuery, end: mockEnd };
-  }),
-}));
-
-vi.mock('../src/infra/memory/postgres-migration-runner.js', () => ({
-  runMemoryStoreMigrations: vi.fn().mockResolvedValue(undefined),
-}));
-
 describe('PostgresMemoryStoreAdapter (mocked)', () => {
-  let adapter: PostgresMemoryStoreAdapter;
+  let adapter: AdapterType;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.stubEnv('DATABASE_URL', 'postgres://localhost:5432/test');
+
+    // Reset module cache so pg gets re-mocked on import
+    vi.resetModules();
+
+    // Dynamically mock pg before importing the adapter
+    vi.doMock('pg', () => ({
+      Pool: vi.fn().mockImplementation(function () {
+        return { query: mockQuery, end: mockEnd };
+      }),
+    }));
+
+    vi.doMock('../src/infra/memory/postgres-migration-runner.js', () => ({
+      runMemoryStoreMigrations: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const { PostgresMemoryStoreAdapter } = await import('../src/infra/memory/postgres-memory-store.adapter.js');
     adapter = new PostgresMemoryStoreAdapter();
     mockQuery.mockClear();
     mockEnd.mockClear();
