@@ -65,6 +65,7 @@ function makeUseCase(overrides: {
   report?: { execute: ReturnType<typeof vi.fn> };
   learning?: { execute: ReturnType<typeof vi.fn> };
   promoteLearning?: { execute: ReturnType<typeof vi.fn> };
+  autoConfig?: { execute: ReturnType<typeof vi.fn> };
   notifier?: { notify: ReturnType<typeof vi.fn> };
 }) {
   const prepareExecute = overrides.prepare?.execute ?? vi.fn().mockResolvedValue({
@@ -129,6 +130,14 @@ function makeUseCase(overrides: {
     warnings: [],
   });
   const notifierNotify = overrides.notifier?.notify ?? vi.fn().mockResolvedValue(true);
+  const autoConfigExecute = overrides.autoConfig?.execute ?? vi.fn().mockResolvedValue({
+    configPath: '/tmp/pipeline/agent-qa.config.json',
+    config: {} as never,
+    projectKey: { repo: 'local/project', branch: 'release' },
+    knowledgeFromMemory: false,
+    knowledgeAnalyzed: true,
+    warnings: [],
+  });
 
   const useCase = new RunPipelineAllUseCase(
     { execute: prepareExecute } as never,
@@ -139,6 +148,7 @@ function makeUseCase(overrides: {
     { execute: reportExecute } as never,
     { execute: learningExecute } as never,
     { execute: promoteExecute } as never,
+    { execute: autoConfigExecute } as never,
     { notify: notifierNotify } as never,
   );
 
@@ -153,6 +163,7 @@ function makeUseCase(overrides: {
     learningExecute,
     promoteExecute,
     notifierNotify,
+    autoConfigExecute,
   };
 }
 
@@ -168,6 +179,31 @@ describe('RunPipelineAllUseCase', () => {
     expect(result.blockedAt).toBeUndefined();
     expect(result.commentPosted).toBeUndefined();
     expect(notifierNotify).not.toHaveBeenCalled();
+  });
+
+  it('runs auto-config step and propagates generated config path to downstream steps', async () => {
+    const { useCase, autoConfigExecute, generatePlanExecute } = makeUseCase({});
+
+    const result = await useCase.execute('/tmp/pipeline', {
+      autoConfig: true,
+      previewUrl: 'https://kriya-pr-94.preview.kriya-hml.mesha.com.br',
+    });
+
+    expect(result.exitCode).toBe(ExitCodes.OK);
+    expect(result.steps).toHaveLength(9);
+    expect(result.steps.map((s) => s.name)).toEqual([
+      'prepare', 'correlate', 'auto-config', 'risk',
+      'generate-plan', 'execute', 'report', 'learning', 'promote-learning',
+    ]);
+    expect(autoConfigExecute).toHaveBeenCalledOnce();
+    expect(autoConfigExecute).toHaveBeenCalledWith('/tmp/pipeline', {
+      previewUrl: 'https://kriya-pr-94.preview.kriya-hml.mesha.com.br',
+      projectPath: process.cwd(),
+    });
+    expect(generatePlanExecute).toHaveBeenCalledWith('/tmp/pipeline', {
+      configPath: '/tmp/pipeline/agent-qa.config.json',
+      projectPath: process.cwd(),
+    });
   });
 
   it('stops after prepare BLOCKED and posts specific preflight reason', async () => {

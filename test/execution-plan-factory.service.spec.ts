@@ -160,10 +160,11 @@ describe('ExecutionPlanFactoryService', () => {
   });
 
   it('generates waitForStable for authenticated area task with auth_state postcondition', async () => {
+    const authConfig: RunConfig = { ...config, auth: { kind: 'formLogin', loginUrl: 'http://localhost:3000/login', usernameSelector: '#email', passwordSelector: '#password', submitSelector: '#submit', usernameEnv: 'TEST_USER', passwordEnv: 'TEST_PASS', successWhen: { urlContains: '/dashboard' }, maxRetries: 1 } };
     const scenario = makeScenario('SCN-007', 'Verificar área autenticada', [
       { id: 'T007', title: 'Verificar área autenticada', expected: 'Área visível', status: 'PENDING', expectedOutcome: { kind: 'AUTHENTICATION', description: 'auth' } },
     ]);
-    const plan = await factory.fromScenarios(config, [scenario]);
+    const plan = await factory.fromScenarios(authConfig, [scenario]);
 
     const step = plan!.steps[0];
     expect(step.action.type).toBe('waitForStable');
@@ -246,10 +247,11 @@ describe('ExecutionPlanFactoryService', () => {
   });
 
   it('generates single step for logout task with multiple text alternatives', async () => {
+    const authConfig: RunConfig = { ...config, auth: { kind: 'formLogin', loginUrl: 'http://localhost:3000/login', usernameSelector: '#email', passwordSelector: '#password', submitSelector: '#submit', usernameEnv: 'TEST_USER', passwordEnv: 'TEST_PASS', successWhen: { urlContains: '/dashboard' }, maxRetries: 1 } };
     const logoutConfig: RunConfig = {
-      ...config,
+      ...authConfig,
       runtime: {
-        ...config.runtime,
+        ...authConfig.runtime,
         semanticAliases: {
           DEAUTHENTICATION: ['Sair', 'Logout', 'Sign out'],
         },

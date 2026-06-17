@@ -276,7 +276,13 @@ export class PlaywrightHarness implements BrowserHarnessPort {
         return { ok: actual.includes(expected.value), type: expected.type, expected: expected.value, actual, durationMs: Date.now() - started };
       }
       if (expected.type === 'no_console_errors') {
-        const errors = this.signals.console.filter((c) => c.level === 'error' && c.isAppOrigin && !this.isKnownConsoleNoise(c.text));
+        const errors = this.signals.console.filter(
+          (c) =>
+            c.level === 'error' &&
+            c.isAppOrigin &&
+            !this.isKnownConsoleNoise(c.text) &&
+            !this.isTrackingConsoleError(c.text),
+        );
         return { ok: errors.length === 0, type: expected.type, durationMs: Date.now() - started, actual: errors.length ? errors.map((e) => e.text).join(' | ').slice(0, 200) : undefined };
       }
       return { ok: true, type: (expected as { type: string }).type, durationMs: Date.now() - started };
@@ -468,6 +474,17 @@ export class PlaywrightHarness implements BrowserHarnessPort {
   }
 
   private isKnownConsoleNoise(text: string): boolean {
+    const defaultPatterns = [
+      /ResizeObserver loop limit exceeded/i,
+      /ResizeObserver loop completed with undelivered notifications/i,
+      /Non-Error promise rejection captured/i,
+      /favicon\.ico.*404/i,
+      /Loading chunk \d+ failed/i,
+      /Failed to register a ServiceWorker/i,
+      /the connection is being closed/i,
+      /Script error\.?$/i,
+    ];
+    if (defaultPatterns.some((re) => re.test(text))) return true;
     return (this.config?.classifier.knownNoiseRegexes ?? []).some((pattern) => {
       try {
         return new RegExp(pattern, 'i').test(text);
@@ -475,6 +492,12 @@ export class PlaywrightHarness implements BrowserHarnessPort {
         return false;
       }
     });
+  }
+
+  private isTrackingConsoleError(text: string): boolean {
+    const urlMatches = text.match(/https?:\/\/[^\s'")]+/g);
+    if (!urlMatches) return false;
+    return urlMatches.some((url) => this.signalsCollector.isTrackingHost(url));
   }
 
   private mustPage(): Page {

@@ -26,6 +26,13 @@ const DEFAULT_TRACKING_DOMAINS = [
   'mixpanel.com',
   'sentry.io',
   'newrelic.com',
+  'omnitagjs.com',
+  'googlesyndication.com',
+  'adsafeprotected.com',
+  'moatads.com',
+  'amazon-adsystem.com',
+  'outbrain.com',
+  'taboola.com',
 ];
 
 const DEPRECATION_PATTERNS: RegExp[] = [

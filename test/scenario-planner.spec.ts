@@ -278,7 +278,13 @@ describe('ScenarioPlannerService', () => {
       },
     };
 
-    const scenarios = await new ScenarioPlannerService(provider, resolver).plan(config);
+    const authConfig = RunConfigSchema.parse({
+      baseUrl: 'http://127.0.0.1',
+      appDomains: ['127.0.0.1'],
+      demand: { id: 'D', title: 'Demand', description: 'fallback task', acceptanceCriteria: ['task one', 'task two'] },
+      auth: { kind: 'formLogin', loginUrl: 'http://127.0.0.1/login', usernameSelector: '#user', passwordSelector: '#pass', submitSelector: '#btn', usernameEnv: 'U', passwordEnv: 'P', maxRetries: 1 },
+    });
+    const scenarios = await new ScenarioPlannerService(provider, resolver).plan(authConfig);
 
     expect(scenarios[0]?.tasks[0]?.expected).toContain('appearance state');
     expect(scenarios[0]?.tasks[1]?.expected).toContain('deauthentication state');

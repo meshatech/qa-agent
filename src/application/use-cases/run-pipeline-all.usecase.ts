@@ -19,6 +19,7 @@ import { RunPipelinePrepareUseCase } from './run-pipeline-prepare.usecase.js';
 import { RunPipelinePromoteLearningUseCase } from './run-pipeline-promote-learning.usecase.js';
 import { RunPipelineReportUseCase } from './run-pipeline-report.usecase.js';
 import { RunPipelineRiskUseCase } from './run-pipeline-risk.usecase.js';
+import { RunAutoConfigUseCase } from './run-auto-config.usecase.js';
 import { describePreflightBlockedMessage } from '../helpers/describe-preflight-blocked-message.js';
 
 @Injectable()
@@ -32,14 +33,15 @@ export class RunPipelineAllUseCase {
     @Inject(RunPipelineReportUseCase) private readonly report: RunPipelineReportUseCase,
     @Inject(RunPipelineLearningUseCase) private readonly learning: RunPipelineLearningUseCase,
     @Inject(RunPipelinePromoteLearningUseCase) private readonly promoteLearning: RunPipelinePromoteLearningUseCase,
+    @Inject(RunAutoConfigUseCase) private readonly autoConfig: RunAutoConfigUseCase,
     @Inject(PipelineBlockedNotifier) private readonly notifier: PipelineBlockedNotifier,
   ) {}
 
   async execute(
     outputDir: string,
-    options?: { configPath?: string; projectPath?: string },
+    options?: { configPath?: string; projectPath?: string; autoConfig?: boolean; previewUrl?: string },
   ): Promise<PipelineAllRunResult> {
-    const configPath = options?.configPath ?? './agent-qa.config.json';
+    let configPath = options?.configPath ?? './agent-qa.config.json';
     const projectPath = options?.projectPath ?? process.cwd();
     const steps: PipelineAllStepRecord[] = [];
 
@@ -62,6 +64,20 @@ export class RunPipelineAllUseCase {
       (err) => (err instanceof CorrelationBlockedError ? (err.result.blockReason ?? err.message) : undefined),
     );
     if (!correlateResult.shouldContinue) return this.finish(steps, 'correlate', correlateResult.commentPosted);
+
+    if (options?.autoConfig) {
+      let autoConfigOk = false;
+      await this.runStep(steps, 'auto-config', async () => {
+        const result = await this.autoConfig.execute(outputDir, {
+          previewUrl: options.previewUrl,
+          projectPath,
+        });
+        configPath = result.configPath;
+        autoConfigOk = true;
+        return ExitCodes.OK;
+      });
+      if (!autoConfigOk) return this.finish(steps, 'auto-config');
+    }
 
     await this.runStep(steps, 'risk', async () => {
       await this.risk.execute(outputDir, { projectPath });

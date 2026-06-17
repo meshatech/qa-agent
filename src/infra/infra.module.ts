@@ -36,6 +36,9 @@ import { DomPurifier } from './observation/dom-purifier.js';
 import { PageStateDetector } from './observation/page-state.detector.js';
 import { SignalsCollector } from './observation/signals-buffer.js';
 import { PolicyDestructiveActionApproverAdapter } from './approval/policy-destructive-action-approver.adapter.js';
+import { FileProjectMemoryAdapter } from './memory/file-project-memory.adapter.js';
+import { PostgresProjectMemoryAdapter } from './memory/postgres-project-memory.adapter.js';
+import { ProjectMemoryStoreRouterAdapter } from './memory/project-memory-store-router.adapter.js';
 
 export const INFRA_PROVIDERS = [
   PlaywrightHarness,
@@ -95,6 +98,10 @@ export const INFRA_PROVIDERS = [
   { provide: 'GitHubActionsPrContextReaderPort', useExisting: GitHubActionsPrContextReaderAdapter },
   PolicyDestructiveActionApproverAdapter,
   { provide: 'DestructiveActionApproverPort', useExisting: PolicyDestructiveActionApproverAdapter },
+  { provide: FileProjectMemoryAdapter, useFactory: () => new FileProjectMemoryAdapter() },
+  PostgresProjectMemoryAdapter,
+  ProjectMemoryStoreRouterAdapter,
+  { provide: 'ProjectMemoryStorePort', useExisting: ProjectMemoryStoreRouterAdapter },
 ];
 
 @Module({ providers: INFRA_PROVIDERS, exports: INFRA_PROVIDERS })

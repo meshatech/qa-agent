@@ -43,10 +43,11 @@ describe('ExecutionPlanFactoryService — contract-driven (typed state, no words
   it('DEAUTHENTICATION proves logout via auth_state anonymous (not by words)', async () => {
     // Title is intentionally word-free for "logout" to prove the postcondition
     // comes from the typed contract, not from matching "Sair"/"logout".
+    const authConfig: RunConfig = { ...config, auth: { kind: 'formLogin', loginUrl: 'http://localhost:3000/login', usernameSelector: '#email', passwordSelector: '#password', submitSelector: '#submit', usernameEnv: 'TEST_USER', passwordEnv: 'TEST_PASS', successWhen: { urlContains: '/dashboard' }, maxRetries: 1 } };
     const scenario = makeScenario('SCN-001', [
       makeTask('T001', 'Encerrar acesso do usuario', { kind: 'DEAUTHENTICATION', description: 'usuario encerra o acesso' }),
     ]);
-    const plan = await factory.fromScenarios(config, [scenario]);
+    const plan = await factory.fromScenarios(authConfig, [scenario]);
 
     expect(plan!.steps).toHaveLength(1);
     const logoutStep = plan!.steps[0];
@@ -56,10 +57,11 @@ describe('ExecutionPlanFactoryService — contract-driven (typed state, no words
   });
 
   it('AUTHENTICATION proves login via auth_state authenticated', async () => {
+    const authConfig: RunConfig = { ...config, auth: { kind: 'formLogin', loginUrl: 'http://localhost:3000/login', usernameSelector: '#email', passwordSelector: '#password', submitSelector: '#submit', usernameEnv: 'TEST_USER', passwordEnv: 'TEST_PASS', successWhen: { urlContains: '/dashboard' }, maxRetries: 1 } };
     const scenario = makeScenario('SCN-002', [
       makeTask('T002', 'Entrar no sistema', { kind: 'AUTHENTICATION', description: 'usuario acessa area autenticada' }),
     ]);
-    const plan = await factory.fromScenarios(config, [scenario]);
+    const plan = await factory.fromScenarios(authConfig, [scenario]);
 
     expect(plan!.steps[0].postconditions).toEqual([{ type: 'auth_state', expected: 'authenticated' }]);
   });

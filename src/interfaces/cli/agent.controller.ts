@@ -77,7 +77,16 @@ export class AgentController {
     return this.service.pipelinePromoteLearning(outputDir, configPath, projectPath, autoApprove);
   }
 
-  pipelineAll(outputDir: string, configPath?: string, projectPath?: string) {
-    return this.service.pipelineAll(outputDir, configPath, projectPath);
+  pipelineAll(
+    outputDir: string,
+    configPath?: string,
+    projectPath?: string,
+    options?: { autoConfig?: boolean; previewUrl?: string },
+  ) {
+    return this.service.pipelineAll(outputDir, configPath, projectPath, options);
+  }
+
+  pipelineAutoConfig(outputDir: string, previewUrl?: string, projectPath?: string) {
+    return this.service.pipelineAutoConfig(outputDir, previewUrl, projectPath);
   }
 }

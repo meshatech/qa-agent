@@ -132,7 +132,10 @@ export class ScenarioPlannerService {
   }
 
   private authAwareTasks(tasks: QaTask[], config: RunConfig): QaTask[] {
-    if (config.auth.kind === 'none') return tasks;
+    if (config.auth.kind === 'none') {
+      const kept = tasks.filter((task) => !this.isLoginTask(task) && !this.isLogoutTask(task));
+      return this.relinkDependencies(kept);
+    }
     const kept = tasks.filter((task) => !this.isLoginTask(task));
     if (kept.length) return this.relinkDependencies(kept);
     return [this.fallbackAuthTask(config)];

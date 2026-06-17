@@ -1,6 +1,7 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
-import { readFileSync } from 'node:fs';
 import { Pool, type QueryResultRow } from 'pg';
+
+import { resolveDatabaseUrl } from './resolve-database-url.js';
 
 import type { MemoryChunk, MemorySearchResponse } from '../../domain/schemas/memory.schema.js';
 import { MemoryChunkSchema } from '../../domain/schemas/memory.schema.js';
@@ -225,33 +226,6 @@ export class PostgresMemoryStoreAdapter implements MemoryStorePort, OnModuleDest
 
     return this.pool;
   }
-}
-
-function resolveDatabaseUrl(raw?: string): string | undefined {
-  if (!raw) return undefined;
-  if (!raw.includes('host.docker.internal')) return raw;
-  try {
-    // Linux Docker does not resolve host.docker.internal by default.
-    // Try to read the gateway IP from /proc/net/route (container → host).
-    const route = readFileSync('/proc/net/route', 'utf8');
-    const line = route.split('\n').find((l: string) => l.startsWith('eth0') || l.startsWith('ens'));
-    if (line) {
-      const gatewayHex = line.trim().split(/\s+/)[2];
-      if (gatewayHex) {
-        const octets = [
-          parseInt(gatewayHex.slice(6, 8), 16),
-          parseInt(gatewayHex.slice(4, 6), 16),
-          parseInt(gatewayHex.slice(2, 4), 16),
-          parseInt(gatewayHex.slice(0, 2), 16),
-        ];
-        const gatewayIp = octets.join('.');
-        return raw.replace(/host\.docker\.internal/g, gatewayIp);
-      }
-    }
-  } catch {
-    // Fallback: leave host.docker.internal as-is and let DNS resolve it
-  }
-  return raw;
 }
 
 function mapFingerprintRow(row: FingerprintRow): FailureFingerprint {

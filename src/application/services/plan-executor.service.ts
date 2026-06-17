@@ -181,6 +181,7 @@ export class PlanExecutorService {
           const qaStep = this.runner.planStep(step, after, action, action, this.runner.boundCondition(step.postconditions[0] ?? { type: 'no_console_errors' }, after), validation, quiescence, validation.ok ? undefined : 'RECOVERY_EXHAUSTED');
           result.steps.push(qaStep);
           if (!validation.ok) {
+            if (attempt < attempts - 1) continue;
             const patched = await this.runner.tryReplan({ result, config, currentPlan, step, before: after, reason: recovered.ok ? 'POSTCONDITION_FAILED' : 'RECOVERY_FAILED', message: validation.actual ?? 'postcondition failed', replans });
             if (patched) {
               currentPlan = patched;
@@ -201,6 +202,7 @@ export class PlanExecutorService {
         if (!business.ok) {
           const qaStep = this.runner.planStep(step, after, action, action, this.runner.boundCondition(step.assertions[0] ?? step.postconditions[0] ?? { type: 'no_console_errors' }, after), business, quiescence, 'business assertion failed');
           result.steps.push(qaStep);
+          if (attempt < attempts - 1) continue;
           const patched = await this.runner.tryReplan({ result, config, currentPlan, step, before: after, reason: 'ASSERTION_FAILED', message: business.actual ?? 'business assertion failed', replans });
           if (patched) {
             currentPlan = patched;
