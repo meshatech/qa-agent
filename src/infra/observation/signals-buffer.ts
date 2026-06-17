@@ -28,7 +28,25 @@ export interface SignalsBuffer {
   reset(): void;
 }
 
-const TRACKING_HOSTS = ['google-analytics.com', 'googletagmanager.com', 'facebook.net', 'hotjar.com', 'segment.io', 'segment.com', 'clarity.ms', 'mixpanel.com'];
+const TRACKING_HOSTS = [
+  'google-analytics.com',
+  'googletagmanager.com',
+  'facebook.net',
+  'hotjar.com',
+  'segment.io',
+  'segment.com',
+  'clarity.ms',
+  'mixpanel.com',
+  'omnitagjs.com',
+  'doubleclick.net',
+  'googlesyndication.com',
+  'adsafeprotected.com',
+  'prebid',
+  'moatads.com',
+  'amazon-adsystem.com',
+  'outbrain.com',
+  'taboola.com',
+];
 
 @Injectable()
 export class SignalsCollector {
@@ -51,7 +69,7 @@ export class SignalsCollector {
         level: 'error',
         text: error.message,
         source: undefined,
-        isAppOrigin: true,
+        isAppOrigin: false,
         timestamp: new Date().toISOString(),
       });
       if (buffer.console.length > 200) buffer.console.shift();
@@ -107,7 +125,7 @@ export class SignalsCollector {
   }
 
   private isApp(url: string | undefined, domains: string[]): boolean {
-    if (!url) return true;
+    if (!url) return false;
     const host = this.host(url);
     return domains.some((d) => host === d || host.endsWith(`.${d}`));
   }

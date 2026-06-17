@@ -68,6 +68,9 @@ export class ExecutionPlanFactoryService {
    * can resolve them on the actual page at runtime.
    */
   private async contractSteps(scenarioId: string, task: QaTask, config: RunConfig, outcome: ExpectedOutcome): Promise<ExecutionStep[]> {
+    if (config.auth.kind === 'none' && (outcome.kind === 'AUTHENTICATION' || outcome.kind === 'DEAUTHENTICATION')) {
+      return [this.makeSafeCheckStep(scenarioId, task, outcome.description)];
+    }
     switch (outcome.kind) {
       case 'AUTHENTICATION':
         return [this.makeStep(scenarioId, task, { type: 'waitForStable', timeoutMs: 1000, reason: outcome.description }, [{ type: 'auth_state', expected: 'authenticated' }])];

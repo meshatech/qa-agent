@@ -197,7 +197,10 @@ export class PlanStepRunnerService {
 
   async recordAccessibilityWarnings(result: PlanExecutionResult, stepId: string): Promise<void> {
     const auditResult = await this.browser.auditAccessibility?.().catch((error: unknown) => {
-      result.warnings.push({ stepId, message: `Accessibility audit failed: ${error instanceof Error ? error.message : String(error)}` });
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/has been closed|Target page|context or browser has been closed/i.test(message)) {
+        result.warnings.push({ stepId, message: `Accessibility audit failed: ${message}` });
+      }
       return [];
     });
     const violations = auditResult ?? [];
