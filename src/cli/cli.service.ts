@@ -107,11 +107,30 @@ export class CliService {
   }
 
   // ── pipeline all ─────────────────────────────────────
-  async pipelineAll(opts: { outputDir: string; config: string; projectDir: string }): Promise<{ output: string; exitCode: number }> {
+  async pipelineAll(opts: {
+    outputDir: string;
+    config: string;
+    projectDir: string;
+    autoConfig?: boolean;
+    previewUrl?: string;
+  }): Promise<{ output: string; exitCode: number }> {
     try {
-      const result = await this.agent.pipelineAll(opts.outputDir, opts.config, opts.projectDir);
+      const result = await this.agent.pipelineAll(opts.outputDir, opts.config, opts.projectDir, {
+        autoConfig: Boolean(opts.autoConfig),
+        previewUrl: opts.previewUrl,
+      });
       const output = JSON.stringify(result, null, 2) + '\n' + formatPipelineAllSummary(result);
       return { output, exitCode: result.exitCode };
+    } catch (err) {
+      return { output: JSON.stringify(formatCliError(err), null, 2), exitCode: classifyError(err) };
+    }
+  }
+
+  // ── pipeline auto-config ─────────────────────────────
+  async autoConfig(opts: { outputDir: string; previewUrl?: string; projectDir?: string }): Promise<{ output: string; exitCode: number }> {
+    try {
+      const result = await this.agent.pipelineAutoConfig(opts.outputDir, opts.previewUrl, opts.projectDir);
+      return { output: JSON.stringify(result, null, 2), exitCode: EXIT.OK };
     } catch (err) {
       return { output: JSON.stringify(formatCliError(err), null, 2), exitCode: classifyError(err) };
     }

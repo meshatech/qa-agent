@@ -73,8 +73,26 @@ export class CliCommand {
       .option('--output-dir <path>', 'pipeline artifacts directory', './.agent-qa/pipeline')
       .option('--config <path>', 'config path', './agent-qa.config.json')
       .option('--project-dir <path>', 'project root', process.cwd())
+      .option('--auto-config', 'generate agent-qa.config.json automatically (no manual config)')
+      .option('--preview-url <url>', 'preview URL for auto-config (defaults to QA_AGENT_BASE_URL)')
       .action(async (opts) => {
         const { output, exitCode } = await this.cli.pipelineAll(opts);
+        console.log(output);
+        process.exitCode = exitCode;
+      });
+
+    pipeline
+      .command('auto-config')
+      .description('Generate agent-qa.config.json from preview URL + demand + diff + project memory')
+      .option('--output-dir <path>', 'pipeline artifacts directory', './.agent-qa/pipeline')
+      .option('--preview-url <url>', 'preview URL (defaults to QA_AGENT_BASE_URL)')
+      .option('--project-dir <path>', 'project root', process.cwd())
+      .action(async (opts) => {
+        const { output, exitCode } = await this.cli.autoConfig({
+          outputDir: opts.outputDir,
+          previewUrl: opts.previewUrl,
+          projectDir: opts.projectDir,
+        });
         console.log(output);
         process.exitCode = exitCode;
       });
