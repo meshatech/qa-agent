@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { ApiController } from '../src/api/api.controller.js';
-import { ApiService, type ApiJob } from '../src/api/api.service.js';
+import { ApiService } from '../src/api/api.service.js';
+import { type ApiJob } from '../src/api/models/index.js';
 import { CliService } from '../src/cli/cli.service.js';
 
 function makeCliServiceMock(): CliService {

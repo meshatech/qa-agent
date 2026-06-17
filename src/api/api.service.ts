@@ -1,17 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CliService } from '../cli/cli.service.js';
-
-export interface ApiJob {
-  id: string;
-  command: string;
-  args: Record<string, unknown>;
-  status: 'pending' | 'running' | 'success' | 'error';
-  output?: string;
-  exitCode?: number;
-  startedAt?: string;
-  finishedAt?: string;
-  error?: string;
-}
+import { ApiJob } from './models/index.js';
 
 @Injectable()
 export class ApiService {
