@@ -14,10 +14,16 @@ export const ProjectKnowledgeConfidenceSchema = z.enum(['low', 'medium', 'high']
 
 const AuthSelectorsSchema = z
   .object({
+    // formLogin selectors (app-hosted form)
     username: z.string().optional(),
     password: z.string().optional(),
     submit: z.string().optional(),
+    // ssoRedirect: button that delegates to the external IdP
     loginButton: z.string().optional(),
+    // ssoRedirect: selectors on the IdP login page (when the IdP form is automatable)
+    idpUsername: z.string().optional(),
+    idpPassword: z.string().optional(),
+    idpSubmit: z.string().optional(),
   })
   .partial();
 
@@ -37,6 +43,8 @@ export const ProjectKnowledgeAuthSchema = z.object({
   successWhen: SuccessWhenSchema.optional(),
   /** External identity provider, when SSO (e.g. "WSO2", "Keycloak"). */
   idp: z.string().optional(),
+  /** Path to a pre-captured storageState the SSO flow can reuse, when applicable. */
+  storageStatePath: z.string().optional(),
 });
 
 const ModuleSchema = z.object({
@@ -80,8 +88,10 @@ export const ProjectKnowledgeSchema = z.object({
   externalDependencies: z.array(z.string().min(1)).default([]),
   uiPatterns: z.array(z.string().min(1)).default([]),
   testData: z.array(TestDatumSchema).default([]),
-  /** Known non-bug console noise (trackers, ads, SDKs). */
+  /** Known non-bug console noise (trackers, ads, SDKs) as regex patterns. */
   consoleNoisePatterns: z.array(z.string().min(1)).default([]),
+  /** Known third-party tracking/analytics domains to ignore in the bug classifier. */
+  knownTrackingDomains: z.array(z.string().min(1)).default([]),
   performanceBaselines: z.array(PerformanceBaselineSchema).default([]),
   notes: z.array(z.string().min(1)).default([]),
 });

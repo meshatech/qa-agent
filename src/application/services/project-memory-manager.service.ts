@@ -72,6 +72,7 @@ export function mergeKnowledge(existing: ProjectKnowledge, fresh: ProjectKnowled
     uiPatterns: unionStrings(existing.uiPatterns, fresh.uiPatterns),
     testData: unionByJson(existing.testData, fresh.testData),
     consoleNoisePatterns: unionStrings(existing.consoleNoisePatterns, fresh.consoleNoisePatterns),
+    knownTrackingDomains: unionStrings(existing.knownTrackingDomains, fresh.knownTrackingDomains),
     performanceBaselines: unionByJson(existing.performanceBaselines, fresh.performanceBaselines),
     notes: unionStrings(existing.notes, fresh.notes),
   };

@@ -85,6 +85,7 @@ export class AutoConfigBuilderService {
       },
       classifier: {
         knownNoiseRegexes: knowledge.consoleNoisePatterns.length ? [...knowledge.consoleNoisePatterns] : undefined,
+        knownTrackingDomains: knowledge.knownTrackingDomains.length ? [...knowledge.knownTrackingDomains] : undefined,
         treatThirdPartyNetwork5xxAsBug: false,
       },
       agentVersion: '0.1.0',
@@ -149,10 +150,26 @@ export class AutoConfigBuilderService {
 
     // ssoRedirect
     if (selectors.loginButton) {
+      // The IdP login form is automatable only when all three IdP selectors are known;
+      // username/password envs are useless without them.
+      const idpComplete = Boolean(selectors.idpUsername && selectors.idpPassword && selectors.idpSubmit);
+      if ((selectors.idpUsername || selectors.idpPassword || selectors.idpSubmit) && !idpComplete) {
+        warnings.push('ssoRedirect IdP selectors incomplete; emitting redirect without IdP form automation.');
+      }
       return {
         kind: 'ssoRedirect',
         ...(knowledge.auth.loginUrl ? { loginUrl: knowledge.auth.loginUrl } : {}),
         loginButtonSelector: selectors.loginButton,
+        ...(idpComplete
+          ? {
+              idpUsernameSelector: selectors.idpUsername,
+              idpPasswordSelector: selectors.idpPassword,
+              idpSubmitSelector: selectors.idpSubmit,
+              usernameEnv: env.QA_USERNAME_ENV?.trim() || 'QA_USERNAME',
+              passwordEnv: env.QA_PASSWORD_ENV?.trim() || 'QA_PASSWORD',
+            }
+          : {}),
+        ...(knowledge.auth.storageStatePath ? { storageStatePath: knowledge.auth.storageStatePath } : {}),
         ...(knowledge.auth.successWhen ? { successWhen: knowledge.auth.successWhen } : {}),
       };
     }

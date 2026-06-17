@@ -25,9 +25,14 @@ Return ONLY a single JSON object (no markdown, no prose) with this shape:
     "kind": "none" | "formLogin" | "ssoRedirect" | "storageState" | "unknown",
     "loginUrl": string?,            // e.g. "/login"
     "loginModule": string?,         // e.g. "src/modules/auth/"
-    "selectors": { "username": string?, "password": string?, "submit": string?, "loginButton": string? }?,
+    "selectors": {
+      "username": string?, "password": string?, "submit": string?,  // formLogin (app-hosted form)
+      "loginButton": string?,                                        // ssoRedirect: button to the IdP
+      "idpUsername": string?, "idpPassword": string?, "idpSubmit": string?  // ssoRedirect: IdP login page form
+    }?,
     "successWhen": { "urlContains": string?, "textVisible": string? }?,
-    "idp": string?                  // e.g. "WSO2", "Keycloak" when SSO
+    "idp": string?,                 // e.g. "WSO2", "Keycloak" when SSO
+    "storageStatePath": string?     // path to a reusable storageState, when applicable
   },
   "modulesRequiringAuth": [ { "name": string, "route": string?, "requiresAuth": true, "description": string? } ],
   "allModules": [ { "name": string, "route": string?, "requiresAuth": boolean, "description": string? } ],
@@ -36,7 +41,8 @@ Return ONLY a single JSON object (no markdown, no prose) with this shape:
   "externalDependencies": string[],
   "uiPatterns": string[],
   "testData": [ { "field": string, "value": string, "note": string? } ],
-  "consoleNoisePatterns": string[], // known non-bug console/network noise (trackers, ads, SDKs)
+  "consoleNoisePatterns": string[],  // known non-bug console/network noise as regex (trackers, ads, SDKs)
+  "knownTrackingDomains": string[],  // analytics/ads/tracking domains to ignore (e.g. "google-analytics.com")
   "performanceBaselines": [ { "page": string, "metric": string, "value": string, "note": string? } ],
   "notes": string[]
 }
@@ -45,6 +51,8 @@ Rules:
 - Choose auth.kind: "formLogin" if you find email/password inputs + submit; "ssoRedirect" if you find an
   SSO/identity-provider redirect or a single "login" button delegating to an external IdP; "none" if the app
   has no authentication; "unknown" only if truly inconclusive.
+- For "ssoRedirect", always provide selectors.loginButton. Provide idpUsername/idpPassword/idpSubmit ONLY when
+  the external IdP login form is known and automatable; otherwise omit them (the redirect still works).
 - Prefer stable selectors (name/aria-label/data-testid). Omit fields you cannot infer (do not invent values).
 - Keep arrays focused and deduplicated. Be concise.`;
 

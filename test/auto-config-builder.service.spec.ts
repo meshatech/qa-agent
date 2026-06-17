@@ -133,6 +133,103 @@ describe('AutoConfigBuilderService.build', () => {
     expect(out.config.auth.kind).toBe('none');
   });
 
+  it('infers ssoRedirect with only the login button when IdP selectors are unknown', async () => {
+    const knowledge = makeKnowledge({
+      auth: { kind: 'ssoRedirect', idp: 'WSO2', loginUrl: '/login', loginModule: 'src/modules/auth/', selectors: { loginButton: 'button[data-testid="sso-login"]' } },
+      modulesRequiringAuth: [{ name: 'Dashboard', route: '/dashboard', requiresAuth: true }],
+    });
+    const { service } = makeBuilder({ knowledge });
+    const out = await service.build({
+      previewUrl: 'https://app.example.com',
+      prDiff: makePrDiff({ affectedRoutes: ['/dashboard'] }),
+      demand,
+      projectPath: process.cwd(),
+      env: {},
+    });
+    expect(out.config.auth.kind).toBe('ssoRedirect');
+    if (out.config.auth.kind === 'ssoRedirect') {
+      expect(out.config.auth.loginButtonSelector).toBe('button[data-testid="sso-login"]');
+      expect(out.config.auth.idpUsernameSelector).toBeUndefined();
+      expect(out.config.auth.usernameEnv).toBeUndefined();
+    }
+  });
+
+  it('enriches ssoRedirect with IdP selectors and envs when the IdP form is fully known', async () => {
+    const knowledge = makeKnowledge({
+      auth: {
+        kind: 'ssoRedirect',
+        idp: 'Keycloak',
+        loginUrl: '/login',
+        loginModule: 'src/modules/auth/',
+        storageStatePath: '/tmp/sso-state.json',
+        selectors: {
+          loginButton: '#sso',
+          idpUsername: '#idp-user',
+          idpPassword: '#idp-pass',
+          idpSubmit: '#idp-submit',
+        },
+        successWhen: { urlContains: '/dashboard' },
+      },
+      modulesRequiringAuth: [{ name: 'Dashboard', route: '/dashboard', requiresAuth: true }],
+    });
+    const { service } = makeBuilder({ knowledge });
+    const out = await service.build({
+      previewUrl: 'https://app.example.com',
+      prDiff: makePrDiff({ affectedRoutes: ['/dashboard'] }),
+      demand,
+      projectPath: process.cwd(),
+      env: { QA_USERNAME_ENV: 'SSO_USER', QA_PASSWORD_ENV: 'SSO_PASS' },
+    });
+    expect(out.config.auth.kind).toBe('ssoRedirect');
+    if (out.config.auth.kind === 'ssoRedirect') {
+      expect(out.config.auth.idpUsernameSelector).toBe('#idp-user');
+      expect(out.config.auth.idpPasswordSelector).toBe('#idp-pass');
+      expect(out.config.auth.idpSubmitSelector).toBe('#idp-submit');
+      expect(out.config.auth.usernameEnv).toBe('SSO_USER');
+      expect(out.config.auth.passwordEnv).toBe('SSO_PASS');
+      expect(out.config.auth.storageStatePath).toBe('/tmp/sso-state.json');
+      expect(out.config.auth.successWhen?.urlContains).toBe('/dashboard');
+    }
+  });
+
+  it('warns and omits IdP automation when ssoRedirect IdP selectors are partial', async () => {
+    const knowledge = makeKnowledge({
+      auth: { kind: 'ssoRedirect', loginUrl: '/login', loginModule: 'src/modules/auth/', selectors: { loginButton: '#sso', idpUsername: '#idp-user' } },
+      modulesRequiringAuth: [{ name: 'Dashboard', route: '/dashboard', requiresAuth: true }],
+    });
+    const { service } = makeBuilder({ knowledge });
+    const out = await service.build({
+      previewUrl: 'https://app.example.com',
+      prDiff: makePrDiff({ affectedRoutes: ['/dashboard'] }),
+      demand,
+      projectPath: process.cwd(),
+      env: {},
+    });
+    expect(out.config.auth.kind).toBe('ssoRedirect');
+    if (out.config.auth.kind === 'ssoRedirect') {
+      expect(out.config.auth.idpUsernameSelector).toBeUndefined();
+      expect(out.config.auth.usernameEnv).toBeUndefined();
+    }
+    expect(out.warnings.some((w) => w.includes('IdP selectors incomplete'))).toBe(true);
+  });
+
+  it('seeds classifier tracking domains and noise patterns from project knowledge', async () => {
+    const knowledge = makeKnowledge({
+      consoleNoisePatterns: ['ResizeObserver loop'],
+      knownTrackingDomains: ['google-analytics.com', 'doubleclick.net'],
+    });
+    const { service } = makeBuilder({ knowledge });
+    const out = await service.build({
+      previewUrl: 'https://app.example.com',
+      prDiff: makePrDiff(),
+      demand,
+      projectPath: process.cwd(),
+      env: {},
+    });
+    expect(out.config.classifier?.knownTrackingDomains).toEqual(['google-analytics.com', 'doubleclick.net']);
+    expect(out.config.classifier?.knownNoiseRegexes).toEqual(['ResizeObserver loop']);
+  });
+
   it('merges LLM enrichment (maxScenarios, allowedRoutes)', async () => {
     const { service } = makeBuilder({
       knowledge: makeKnowledge(),
