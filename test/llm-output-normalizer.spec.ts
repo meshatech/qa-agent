@@ -54,6 +54,28 @@ describe('LlmPlanPatchNormalizer', () => {
     expect(result.value.steps[1]?.action).toMatchObject({ type: 'fill', value: '{{uniqueName:name:QA}}' });
   });
 
+  it('derives target.text from name/value for text|label|placeholder strategies', () => {
+    const result = new LlmPlanPatchNormalizer().parsePlan({
+      ...plan,
+      steps: [
+        { id: 'S1', description: 'open', action: { type: 'click', target: { strategy: 'text', name: 'Novo cliente' }, reason: 'open dialog' }, postconditions: [{ type: 'no_console_errors' }] },
+        { id: 'S2', description: 'fill', action: { type: 'fill', target: { strategy: 'label', value: 'Nome' }, value: 'x', reason: 'fill name' }, postconditions: [{ type: 'no_console_errors' }] },
+      ],
+    });
+
+    expect(result.value.steps[0]?.action).toMatchObject({ type: 'click', target: { strategy: 'text', text: 'Novo cliente' } });
+    expect(result.value.steps[1]?.action).toMatchObject({ type: 'fill', target: { strategy: 'label', text: 'Nome' } });
+  });
+
+  it('falls back to document strategy when a text locator has no usable text', () => {
+    const result = new LlmPlanPatchNormalizer().parsePlan({
+      ...plan,
+      steps: [{ id: 'S1', description: 'click', action: { type: 'click', target: { strategy: 'placeholder' }, reason: 'click' }, postconditions: [{ type: 'no_console_errors' }] }],
+    });
+
+    expect(result.value.steps[0]?.action).toMatchObject({ type: 'click', target: { strategy: 'document' } });
+  });
+
   it('repairs route_state expected values that are phrased as contains', () => {
     const result = new LlmPlanPatchNormalizer().parsePlan({
       ...plan,

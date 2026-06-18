@@ -210,6 +210,29 @@ export class LlmPlanPatchNormalizer {
       const texts = Array.isArray(item.value) ? item.value : Array.isArray(item.text) ? item.text : [];
       item.texts = texts.filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
     }
+    // strategies 'text' | 'label' | 'placeholder' exigem `text: string`. O LLM
+    // às vezes põe o rótulo em name/label/value/placeholder (ou em texts[]).
+    // Sem isso, o plano inteiro era rejeitado e caía no factory (plano raso).
+    if (item.strategy === 'text' || item.strategy === 'label' || item.strategy === 'placeholder') {
+      if (typeof item.text !== 'string' || !item.text.trim()) {
+        const textsArr = Array.isArray(item.texts) ? (item.texts as unknown[]) : [];
+        const fromArray = textsArr.find((t): t is string => typeof t === 'string' && t.trim().length > 0);
+        const derived = this.stringField(item, ['text', 'name', 'label', 'value', 'placeholder']) ?? fromArray;
+        if (derived) item.text = derived;
+        else item.strategy = 'document';
+      }
+    }
+    // 'role' exige `role: string`; 'testid' exige `value: string`.
+    if (item.strategy === 'role' && typeof item.role !== 'string') {
+      const role = this.stringField(item, ['role', 'name']);
+      if (role) item.role = role;
+      else item.strategy = 'document';
+    }
+    if (item.strategy === 'testid' && typeof item.value !== 'string') {
+      const value = this.stringField(item, ['value', 'testid', 'text', 'name']);
+      if (value) item.value = value;
+      else item.strategy = 'document';
+    }
     return item;
   }
 }
