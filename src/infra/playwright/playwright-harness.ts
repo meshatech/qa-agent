@@ -424,11 +424,14 @@ export class PlaywrightHarness implements BrowserHarnessPort {
     if (desc.strategy === 'index') return this.locator(desc.target).nth(desc.index);
     if (desc.strategy === 'text_any') return p.getByText(new RegExp(desc.texts.map((t) => this.escapeRegExp(t)).join('|'), desc.exact ? undefined : 'i')).first();
     if (desc.strategy === 'document') return p.locator('html');
-    if (desc.strategy === 'label') return p.getByLabel(desc.text, { exact: desc.exact });
-    if (desc.strategy === 'placeholder') return p.getByPlaceholder(desc.text, { exact: desc.exact });
-    if (desc.strategy === 'text') return p.getByText(desc.text, { exact: desc.exact });
-    if (desc.strategy === 'testid') return p.getByTestId(desc.value);
-    return p.getByRole(desc.role as Parameters<Page['getByRole']>[0], { name: desc.name, exact: desc.exact });
+    // `.filter({ visible: true }).first()`: quando o locator casa com vários
+    // elementos (ex.: 2 botões "Novo cliente" na mesma tela), o strict mode do
+    // Playwright estoura. Pegamos o primeiro VISÍVEL em vez de falhar.
+    if (desc.strategy === 'label') return p.getByLabel(desc.text, { exact: desc.exact }).filter({ visible: true }).first();
+    if (desc.strategy === 'placeholder') return p.getByPlaceholder(desc.text, { exact: desc.exact }).filter({ visible: true }).first();
+    if (desc.strategy === 'text') return p.getByText(desc.text, { exact: desc.exact }).filter({ visible: true }).first();
+    if (desc.strategy === 'testid') return p.getByTestId(desc.value).filter({ visible: true }).first();
+    return p.getByRole(desc.role as Parameters<Page['getByRole']>[0], { name: desc.name, exact: desc.exact }).filter({ visible: true }).first();
   }
 
   private semanticStates(observation: ScreenObservation, domState: Record<string, unknown> = {}): Record<string, unknown> {
