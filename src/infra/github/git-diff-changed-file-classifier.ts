@@ -33,7 +33,9 @@ export function classifyChangedFileKind(path: string): ChangedFileKind {
     normalized.startsWith('src/routes/') ||
     normalized.startsWith('src/pages/') ||
     normalized.includes('/routes/') ||
-    normalized.includes('/pages/')
+    normalized.includes('/pages/') ||
+    // Next.js App Router: app/**/{page,route,layout}.{tsx,ts,jsx,js}
+    /(?:^|\/)app\/(?:.*\/)?(?:page|route|layout)\.(?:tsx?|jsx?)$/.test(normalized)
   ) {
     return 'route';
   }

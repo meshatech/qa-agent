@@ -36,8 +36,18 @@ describe('extractRouteFromChangedFilePath', () => {
     ['src/routes/index.ts', '/'],
     ['src/routes/admin/index.ts', '/admin'],
     ['app/routes/dashboard.ts', '/dashboard'],
+    // Next.js App Router (page/route/layout + route groups)
+    ['src/app/(dashboard)/clients/page.tsx', '/clients'],
+    ['src/app/(dashboard)/page.tsx', '/'],
+    ['src/app/clients/[id]/page.tsx', '/clients/[id]'],
+    ['app/admin/route.ts', '/admin'],
+    ['src/app/(dashboard)/clients/[id]/configuracoes/page.tsx', '/clients/[id]/configuracoes'],
   ] as const)('maps %s to %s', (path, route) => {
     expect(extractRouteFromChangedFilePath(path)).toBe(route);
+  });
+
+  it('ignores non-route files under app/ (component, not page)', () => {
+    expect(extractRouteFromChangedFilePath('src/app/(dashboard)/clients/ClientRow.tsx')).toBeUndefined();
   });
 
   it('returns undefined for paths without routes or pages segment', () => {

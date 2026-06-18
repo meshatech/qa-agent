@@ -75,7 +75,10 @@ export class PlaywrightHarness implements BrowserHarnessPort {
       this.browser = await engine.launch({ headless: !config.browser.headed, slowMo: config.browser.slowMoMs, args });
       await mkdir(this.videoDir, { recursive: true });
       this.logger.log('[TabTrace] browser.open starting (tab trace enabled)');
-      await this.createContextAndPage(config, { withStorage: false });
+      // storageState auth: o contexto inicial JÁ precisa dos cookies, senão a
+      // 1ª navegação vai anônima e o app gateia pro /login. formLogin/ssoRedirect
+      // começam limpos (logam depois), então mantêm withStorage:false.
+      await this.createContextAndPage(config, { withStorage: config.auth.kind === 'storageState' });
       const page = this.mustPage();
       if (config.auth.kind === 'formLogin') await this.formLogin.login(page, config);
       await this.navigateWithRetry(config.baseUrl);

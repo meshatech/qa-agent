@@ -7,10 +7,14 @@ import { readPipelineArtifact } from '../helpers/read-pipeline-artifact.js';
 import { ExecutionPlanPlannerService, type PlannedExecutionPlan } from '../services/execution-plan-planner.service.js';
 import type { ConfigLoaderPort } from '../ports/config-loader.port.js';
 import { SelectedScenariosSchema } from '../../domain/schemas/selected-scenarios.schema.js';
+import { CorrelationResultSchema, type RequiredScenario } from '../../domain/schemas/correlation.schema.js';
+import type { QaScenario } from '../../domain/schemas/qa-scenario.schema.js';
 import { RunConfigSchema, type RunConfig } from '../../domain/schemas/config.schema.js';
 import { applyBaseUrlOverride } from '../helpers/apply-base-url-override.js';
+import { ConfigError } from '../../domain/errors.js';
 
 const SELECTED_SCENARIOS_FILE = 'selected-scenarios.json';
+const REQUIRED_SCENARIOS_FILE = 'required-scenarios.json';
 const EXECUTION_PLAN_FILE = 'execution-plan.json';
 
 @Injectable()
@@ -26,14 +30,10 @@ export class RunPipelineGeneratePlanUseCase {
   ): Promise<PipelineGeneratePlanRunResult> {
     const warnings: string[] = [];
 
-    const selected = await readPipelineArtifact(
-      outputDir,
-      SELECTED_SCENARIOS_FILE,
-      SelectedScenariosSchema,
-    );
+    const scenarios = await this.resolveScenarios(outputDir, warnings);
 
-    if (selected.scenarios.length === 0) {
-      warnings.push('No scenarios found in selected-scenarios.json; skipping plan generation.');
+    if (scenarios.length === 0) {
+      warnings.push('No scenarios available (selected nor required); skipping plan generation.');
       return {
         warnings,
         qualityAudit: {
@@ -49,7 +49,7 @@ export class RunPipelineGeneratePlanUseCase {
 
     let planned: PlannedExecutionPlan;
     try {
-      planned = await this.planner.build(config, selected.scenarios);
+      planned = await this.planner.build(config, scenarios);
     } catch (error) {
       warnings.push(`ExecutionPlanPlanner failed: ${error instanceof Error ? error.message : String(error)}`);
       return {
@@ -102,6 +102,59 @@ export class RunPipelineGeneratePlanUseCase {
       fallbackWarning: planned.fallbackReason ? `Plan used fallback: ${planned.fallbackReason}` : undefined,
       qualityAudit,
       warnings,
+    };
+  }
+
+  /**
+   * Cenários a planejar. Caminho normal: `selected-scenarios.json` (vindos da
+   * memória). Se ele não existir ou vier vazio (cold start / nenhum match na
+   * memória), cai pro factory: planeja os `required-scenarios.json` direto —
+   * senão o pipeline travava na 1ª execução de qualquer repo (memória vazia).
+   */
+  private async resolveScenarios(outputDir: string, warnings: string[]): Promise<QaScenario[]> {
+    let selectedScenarios: QaScenario[] = [];
+    try {
+      const selected = await readPipelineArtifact(outputDir, SELECTED_SCENARIOS_FILE, SelectedScenariosSchema);
+      selectedScenarios = selected.scenarios;
+    } catch (error) {
+      if (!(error instanceof ConfigError)) throw error;
+      warnings.push(`selected-scenarios.json unavailable (${error.message}); falling back to required scenarios.`);
+    }
+
+    if (selectedScenarios.length > 0) {
+      return selectedScenarios;
+    }
+
+    let correlation;
+    try {
+      correlation = await readPipelineArtifact(outputDir, REQUIRED_SCENARIOS_FILE, CorrelationResultSchema);
+    } catch (error) {
+      if (!(error instanceof ConfigError)) throw error;
+      warnings.push(`required-scenarios.json unavailable (${error.message}); nothing to plan.`);
+      return [];
+    }
+    if (correlation.scenarios.length === 0) {
+      return [];
+    }
+    warnings.push(`Factory fallback: planning ${correlation.scenarios.length} required scenario(s) (no memory selection).`);
+    return correlation.scenarios.map((required) => this.requiredToQaScenario(required));
+  }
+
+  private requiredToQaScenario(required: RequiredScenario): QaScenario {
+    return {
+      id: required.id,
+      title: required.title,
+      status: 'PLANNED',
+      intent: required.intent,
+      tasks: [
+        {
+          id: 'T001',
+          title: required.title,
+          expected: required.rationale || required.title,
+          status: 'PENDING',
+          intent: required.intent,
+        },
+      ],
     };
   }
 
