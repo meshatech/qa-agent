@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 import type { PipelineExecuteRunResult } from '../dto/pipeline-execute-result.dto.js';
@@ -35,10 +35,15 @@ export class RunPipelineExecuteUseCase {
     const config = await this.loadConfig(options?.configPath ?? 'agent-qa.config.json');
 
     let executionResult: import('../services/plan-executor.service.js').PlanExecutionResult;
+    let executionOk = false;
     try {
       await this.browser.open(config);
       executionResult = await this.planExecutor.execute(plan, config);
+      executionOk = executionResult.ok;
     } finally {
+      // Persiste evidência visual ANTES de fechar (no pipeline o vídeo era
+      // gravado num temp e descartado). Best-effort: nunca derruba o run.
+      await this.persistEvidence(outputDir, config, executionOk).catch(() => undefined);
       await this.browser.close().catch(() => undefined);
     }
 
@@ -72,6 +77,32 @@ export class RunPipelineExecuteUseCase {
   private async loadConfig(configPath: string): Promise<RunConfig> {
     const raw = await this.configLoader.load(configPath);
     return applyBaseUrlOverride(RunConfigSchema.parse(raw));
+  }
+
+  /**
+   * Persiste evidência visual do run no `<outputDir>/evidence/` pra subir no
+   * artifact e anexar onde for (PR/ClickUp). Screenshot SEMPRE (estado final),
+   * vídeo/trace conforme `config.evidence` ('on' ou 'on-failure' + falhou).
+   * `saveVideo`/`saveTrace` fecham o contexto, então rodam por último.
+   */
+  private async persistEvidence(outputDir: string, config: RunConfig, ok: boolean): Promise<void> {
+    const evidenceDir = resolve(join(outputDir, 'evidence'));
+    await mkdir(evidenceDir, { recursive: true }).catch(() => undefined);
+
+    const shot = await this.browser.screenshot().catch(() => undefined);
+    if (shot) {
+      await writeFile(join(evidenceDir, 'final-screenshot.png'), shot).catch(() => undefined);
+    }
+
+    const wantTrace = config.evidence?.trace === 'on' || (config.evidence?.trace === 'on-failure' && !ok);
+    if (wantTrace) {
+      await this.browser.saveTrace(join(evidenceDir, 'trace.zip')).catch(() => undefined);
+    }
+
+    const wantVideo = config.evidence?.video === 'on' || (config.evidence?.video === 'on-failure' && !ok);
+    if (wantVideo) {
+      await this.browser.saveVideo(join(evidenceDir, 'run-video.webm')).catch(() => undefined);
+    }
   }
 
   private summarizeTelemetry(telemetry: LocatorTelemetryEvent[]): PipelineExecuteRunResult['telemetrySummary'] {
